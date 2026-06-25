@@ -68,6 +68,7 @@ type WorkspaceState = {
   activeView: WorkspaceView;
   commandOpen: boolean;
   collapsedSidebar: boolean;
+  contextualBackCount: number;
   lastActionResult: string;
   localAssignments: FieldAssignment[];
   localForms: LocalWorkspaceForm[];
@@ -81,6 +82,8 @@ type WorkspaceState = {
   upsertLocalForm: (form: LocalWorkspaceForm) => void;
   upsertLocalProject: (project: ProjectListItemRead) => void;
   upsertLocalSubmission: (submission: SubmissionRecord) => void;
+  registerContextualBack: () => void;
+  unregisterContextualBack: () => void;
   setActiveView: (view: WorkspaceView) => void;
   setCommandOpen: (open: boolean) => void;
   setLastActionResult: (result: string) => void;
@@ -99,6 +102,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       activeView: "dashboard",
       commandOpen: false,
       collapsedSidebar: false,
+      contextualBackCount: 0,
       lastActionResult: "",
       localAssignments: [],
       localForms: [],
@@ -142,6 +146,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             ),
           ],
         })),
+      registerContextualBack: () =>
+        set((state) => ({ contextualBackCount: state.contextualBackCount + 1 })),
+      unregisterContextualBack: () =>
+        set((state) => ({ contextualBackCount: Math.max(0, state.contextualBackCount - 1) })),
       setActiveView: (activeView) => set({ activeView }),
       setCommandOpen: (commandOpen) => set({ commandOpen }),
       setLastActionResult: (lastActionResult) => set({ lastActionResult }),

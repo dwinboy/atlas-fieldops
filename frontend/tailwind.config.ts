@@ -108,7 +108,7 @@ const config: Config = {
       },
       boxShadow: {
         line: "inset 0 0 0 1px hsl(var(--border))",
-        elevated: "0 18px 50px -30px rgba(15, 23, 42, 0.35)",
+        elevated: "0 20px 48px -32px rgba(13, 38, 28, 0.34)",
       },
       fontFamily: {
         sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],

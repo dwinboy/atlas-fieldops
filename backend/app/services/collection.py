@@ -2228,6 +2228,17 @@ class SubmissionService:
             raise CollectionNotFoundError("Survey not found for the selected project")
         controls_json = form.controls_json or {}
         entity_controls = self._entity_controls(controls_json)
+        requires_existing_entity = self._requires_existing_entity_selection(controls_json)
+        allows_anonymous = self._allows_anonymous_submission(controls_json)
+        if requires_existing_entity and payload.entity_id is None and not allows_anonymous:
+            entity_label = await self._entity_type_from_controls(
+                organization_id,
+                entity_controls,
+                payload.entity_type,
+            )
+            raise CollectionConflictError(
+                f"Select an existing {entity_label.lower()} before submitting this form."
+            )
         frequency_rule = _normalize_submission_frequency(entity_controls.get("submission_frequency") or "unlimited")
         effective_frequency_period = payload.frequency_period or _derive_frequency_period(
             frequency_rule,
@@ -3596,6 +3607,8 @@ class SubmissionService:
 
         values = self._flat_payload_values(submission.payload_json or {})
         entity_type = await self._entity_type_from_controls(organization_id, controls, submission.entity_type)
+        raw_entity_category_id = controls.get("entity_category_id") or controls.get("entityCategoryId")
+        entity_category_id = str(raw_entity_category_id) if raw_entity_category_id else None
         mapped_profile_values = self._mapped_beneficiary_profile_values(submission.payload_json or {}, values)
         display_name = self._string_from_object(mapped_profile_values.get("display_name")) or self._entity_display_name(values)
         if not display_name:
@@ -3629,9 +3642,14 @@ class SubmissionService:
         unique_field_keys = [
             key for key in (self._profile_key_from_mapping(field) for field in _as_list(controls.get("unique_fields"))) if key
         ]
+        candidate_beneficiary_uids = list(
+            self._extract_beneficiary_uids_from_payload(submission.payload_json or {}).keys()
+        )
         existing = await self._find_beneficiary_for_submission(
             organization_id=organization_id,
             submission=submission,
+            entity_type=entity_type,
+            candidate_beneficiary_uids=candidate_beneficiary_uids,
             display_name=display_name,
             phone=phone,
             national_id=national_id,
@@ -3654,6 +3672,7 @@ class SubmissionService:
                 else await self._possible_duplicate_for_submission(
                     organization_id=organization_id,
                     submission=submission,
+                    entity_type=entity_type,
                     display_name=display_name,
                     phone=phone,
                     national_id=national_id,
@@ -3754,7 +3773,7 @@ class SubmissionService:
                     "matched_fields": matched_fields,
                     "duplicate_action": duplicate_action,
                 }
-            if bool(controls.get("requires_existing_entity") or controls.get("requiresExistingEntity")):
+            if self._requires_existing_entity_selection({"entity_controls": controls}):
                 processing_time = datetime.now(UTC).isoformat()
                 submission.payload_json = {
                     **(submission.payload_json or {}),
@@ -3819,6 +3838,8 @@ class SubmissionService:
                     "sourceClientSubmissionId": submission.client_submission_id,
                     "createdFromFormId": str(submission.form_id),
                     "approvalLinkedAt": created_at,
+                    "entityCategoryId": entity_category_id,
+                    "entityCategoryName": entity_type if entity_category_id else None,
                     "national_id": national_id,
                     "household_id": household_id,
                     "fieldLineage": self._profile_field_lineage(
@@ -3952,6 +3973,8 @@ class SubmissionService:
             "lastApprovedSubmissionId": str(submission.id),
             "lastApprovedFormId": str(submission.form_id),
             "lastApprovalLinkedAt": linked_at,
+            "entityCategoryId": original_profile.get("entityCategoryId") or entity_category_id,
+            "entityCategoryName": original_profile.get("entityCategoryName") or (entity_type if entity_category_id else None),
             "national_id": original_profile.get("national_id") or national_id,
             "household_id": original_profile.get("household_id") or household_id,
             "fieldLineage": {
@@ -4411,6 +4434,64 @@ class SubmissionService:
     def _entity_controls(self, controls_json: dict[str, Any]) -> dict[str, Any]:
         return _as_dict(controls_json.get("entity_controls"))
 
+    def _allows_anonymous_submission(self, controls_json: dict[str, Any]) -> bool:
+        entity_controls = self._entity_controls(controls_json)
+        if "allows_anonymous" in entity_controls:
+            return bool(entity_controls.get("allows_anonymous"))
+        if "allowsAnonymous" in entity_controls:
+            return bool(entity_controls.get("allowsAnonymous"))
+        linked_to_entity = bool(
+            entity_controls.get("linked_to_entity")
+            or entity_controls.get("is_entity_linked")
+            or entity_controls.get("linkedToEntity")
+        )
+        creates_new_entity = bool(
+            entity_controls.get("creates_new_entity") or entity_controls.get("createsNewEntity")
+        )
+        updates_existing_entity = bool(
+            entity_controls.get("updates_existing_entity") or entity_controls.get("updatesExistingEntity")
+        )
+        requires_existing_entity = bool(
+            entity_controls.get("requires_existing_entity") or entity_controls.get("requiresExistingEntity")
+        )
+        return not (
+            linked_to_entity
+            or creates_new_entity
+            or updates_existing_entity
+            or requires_existing_entity
+        )
+
+    def _requires_existing_entity_selection(self, controls_json: dict[str, Any]) -> bool:
+        entity_controls = self._entity_controls(controls_json)
+        instrument = _as_dict(controls_json.get("instrument"))
+        respondent_identity = _as_dict(
+            instrument.get("respondent_identity") or controls_json.get("respondent_identity")
+        )
+        raw_mode = respondent_identity.get("mode") or entity_controls.get("respondent_identification")
+        mode = str(raw_mode).strip() if isinstance(raw_mode, str) and str(raw_mode).strip() else None
+        if mode == "existing_beneficiary":
+            return True
+        if mode in {"existing_or_new", "new_registration", "anonymous_allowed"}:
+            return False
+
+        creates_new_entity = bool(
+            entity_controls.get("creates_new_entity") or entity_controls.get("createsNewEntity")
+        )
+        updates_existing_entity = bool(
+            entity_controls.get("updates_existing_entity") or entity_controls.get("updatesExistingEntity")
+        )
+        requires_existing_entity = bool(
+            entity_controls.get("requires_existing_entity") or entity_controls.get("requiresExistingEntity")
+        )
+
+        if creates_new_entity and updates_existing_entity:
+            return False
+        if creates_new_entity:
+            return False
+        if updates_existing_entity:
+            return True
+        return requires_existing_entity
+
     async def _entity_type_from_controls(
         self,
         organization_id: UUID,
@@ -4625,6 +4706,8 @@ class SubmissionService:
         *,
         organization_id: UUID,
         submission: Submission,
+        entity_type: str | None = None,
+        candidate_beneficiary_uids: list[str] | None = None,
         display_name: str,
         phone: str | None,
         national_id: str | None,
@@ -4650,13 +4733,44 @@ class SubmissionService:
                 Beneficiary.deleted_at.is_(None),
             )
         )
+        normalized_entity_type = entity_type.strip().lower() if isinstance(entity_type, str) and entity_type.strip() else None
+        candidates = list(result.scalars())
+        candidates.sort(
+            key=lambda beneficiary: (
+                0
+                if submission.project_id is not None
+                and beneficiary.project_id == submission.project_id
+                and (
+                    normalized_entity_type is None
+                    or beneficiary.beneficiary_type.strip().lower() == normalized_entity_type
+                )
+                else 1
+                if submission.project_id is not None and beneficiary.project_id == submission.project_id
+                else 2
+                if normalized_entity_type is not None
+                and beneficiary.beneficiary_type.strip().lower() == normalized_entity_type
+                else 3
+            )
+        )
         normalized_phone = self._normalize_phone(phone)
         normalized_name = display_name.strip().lower()
         normalized_village = (village or "").strip().lower()
+        normalized_candidate_uids = {
+            value.strip().upper()
+            for value in (candidate_beneficiary_uids or [])
+            if value.strip()
+        }
         submitted_profile_values = submitted_profile_values or {}
         unique_field_keys = unique_field_keys or []
-        for beneficiary in result.scalars():
+        for beneficiary in candidates:
             profile = beneficiary.profile_json or {}
+            beneficiary_uid = str(beneficiary.beneficiary_uid or "").strip().upper()
+            legacy_id = str(profile.get("legacy_id") or profile.get("legacyId") or "").strip().upper()
+            if normalized_candidate_uids and (
+                beneficiary_uid in normalized_candidate_uids
+                or (legacy_id and legacy_id in normalized_candidate_uids)
+            ):
+                return beneficiary
             if normalized_phone and self._normalize_phone(beneficiary.phone_number) == normalized_phone:
                 return beneficiary
             if national_id and str(profile.get("national_id") or profile.get("nationalId") or "").strip().lower() == national_id.strip().lower():
@@ -4696,6 +4810,7 @@ class SubmissionService:
         *,
         organization_id: UUID,
         submission: Submission,
+        entity_type: str | None = None,
         display_name: str,
         phone: str | None,
         national_id: str | None,
@@ -4709,11 +4824,29 @@ class SubmissionService:
                 Beneficiary.deleted_at.is_(None),
             )
         )
+        normalized_entity_type = entity_type.strip().lower() if isinstance(entity_type, str) and entity_type.strip() else None
+        candidates = list(result.scalars())
         normalized_phone = self._normalize_phone(phone)
         normalized_name = display_name.strip().lower()
         normalized_village = (village or "").strip().lower()
         best: tuple[Beneficiary, int, list[str]] | None = None
-        for beneficiary in result.scalars():
+        best_rank = 99
+        for beneficiary in candidates:
+            rank = (
+                0
+                if submission.project_id is not None
+                and beneficiary.project_id == submission.project_id
+                and (
+                    normalized_entity_type is None
+                    or beneficiary.beneficiary_type.strip().lower() == normalized_entity_type
+                )
+                else 1
+                if submission.project_id is not None and beneficiary.project_id == submission.project_id
+                else 2
+                if normalized_entity_type is not None
+                and beneficiary.beneficiary_type.strip().lower() == normalized_entity_type
+                else 3
+            )
             profile = beneficiary.profile_json or {}
             score = 0
             matched_fields: list[str] = []
@@ -4752,8 +4885,9 @@ class SubmissionService:
             score = min(score, 100)
             if score < threshold:
                 continue
-            if best is None or score > best[1]:
+            if best is None or rank < best_rank or (rank == best_rank and score > best[1]):
                 best = (beneficiary, score, matched_fields)
+                best_rank = rank
         return best
 
     def _gps_distance_meters(

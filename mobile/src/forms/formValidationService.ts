@@ -67,6 +67,19 @@ export class FormValidationService {
         if (missing) {
           continue;
         }
+        if (question.governanceControls?.changeReasonRequired && prefilledValueChanged(question, value)) {
+          const reasonValue = responses.get(changeReasonQuestionId(question.id));
+          if (this.isMissing(reasonValue, "Text")) {
+            issues.push({
+              questionId: question.id,
+              label: question.label,
+              message: "Explain why this prefilled value changed before submitting.",
+              fixHint: "Add a short reason in the change-reason box under this question so reviewers can trace the profile update.",
+              severity: "Error",
+            });
+            continue;
+          }
+        }
         issues.push(...this.validateValue(question, value, { responses, referenceLists }));
       }
     }
@@ -546,6 +559,14 @@ export class FormValidationService {
     }
     return { answered, total, percent: total === 0 ? 0 : Math.round((answered / total) * 100) };
   }
+}
+
+function changeReasonQuestionId(questionId: string): string {
+  return `${questionId}__change_reason`;
+}
+
+function prefilledValueChanged(question: MobileQuestion, value: unknown): boolean {
+  return JSON.stringify(question.defaultValue ?? null) !== JSON.stringify(value ?? null);
 }
 
 function hasCustomRule(question: MobileQuestion, value: string): boolean {

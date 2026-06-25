@@ -5,6 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Badge, Card, EmptyState, Input } from "@/components/ui";
 import { useAppContext } from "@/context/AppContext";
+import { describeFormEntityWorkflow, requiresEntitySelection } from "@/entities/entityCategoryUtils";
 import type { MobileFormVersion } from "@/models/contracts";
 import { localDatabase } from "@/storage/localDatabase";
 import { colors, fontFamily, radii, spacing, tone, typography } from "@/theme";
@@ -142,15 +143,24 @@ function mobileReadiness(version: MobileFormVersion | null): { score: number; to
 }
 
 function entityPurpose(version: MobileFormVersion): string {
-  const settings = version.entitySettings;
-  const category = settings.entityCategoryId
-    ? localDatabase.entityCategories.list().find((item) => item.id === settings.entityCategoryId)
-    : null;
-  const label = category?.name ?? settings.entityType ?? "entity";
-  if (settings.createsNewEntity) return `Creates new ${label} records`;
-  if (settings.requiresExistingEntity) return `Requires existing ${label} selection`;
-  if (settings.updatesExistingEntity) return `Updates existing ${label} records`;
-  return `Linked to ${label} records`;
+  const workflow = describeFormEntityWorkflow(
+    version.entitySettings,
+    localDatabase.entityCategories.list(),
+  );
+  const mode = version.entitySettings.respondentIdentityMode;
+  if (mode === "existing_beneficiary") return `Follow-up on existing ${workflow.label} records`;
+  if (mode === "existing_or_new") return `Use existing or register new ${workflow.label} records`;
+  if (mode === "new_registration") return `Register new ${workflow.label} records`;
+  if (mode === "anonymous_allowed") return "Anonymous or unlinked collection allowed";
+  if (version.entitySettings.createsNewEntity && version.entitySettings.updatesExistingEntity) {
+    return `Use existing or register new ${workflow.label} records`;
+  }
+  if (version.entitySettings.createsNewEntity) return `Register new ${workflow.label} records`;
+  if (requiresEntitySelection(version.entitySettings)) {
+    return `Follow-up on existing ${workflow.label} records`;
+  }
+  if (version.entitySettings.updatesExistingEntity) return `Updates existing ${workflow.label} records`;
+  return `Linked to ${workflow.label} records`;
 }
 
 const styles = StyleSheet.create({

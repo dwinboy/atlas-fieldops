@@ -4,6 +4,7 @@ import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  ArrowLeft,
   ArrowRight,
   ChevronDown,
   ChevronRight,
@@ -19,7 +20,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { AtlasFieldOpsLogo } from "@/components/brand/AtlasFieldOpsLogo";
 import { Badge } from "@/components/ui/badge";
@@ -283,6 +284,15 @@ export function AppShell({
   const lastActionResult = useWorkspaceStore((state) => state.lastActionResult);
   const theme = useWorkspaceStore((state) => state.theme);
   const toggleTheme = useWorkspaceStore((state) => state.toggleTheme);
+  const contextualBackCount = useWorkspaceStore((state) => state.contextualBackCount);
+
+  // Show a single global back button on every window, except when the current
+  // view already renders its own back/close control (so we never duplicate it).
+  const [canGoBack, setCanGoBack] = useState(false);
+  useEffect(() => {
+    setCanGoBack(typeof window !== "undefined" && window.history.length > 1);
+  }, [pathname]);
+  const showGlobalBack = canGoBack && contextualBackCount === 0;
 
   const isSupportMode = principal?.support_mode ?? false;
   const visibleNavSections = getVisibleNavigationSections(principal);
@@ -654,41 +664,54 @@ export function AppShell({
             <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-2">
               <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
                 <div className="flex min-w-0 flex-1 items-center gap-2">
+                  {showGlobalBack ? (
+                    <button
+                      aria-label="Go back to the previous view"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-panel/80 text-muted-foreground shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:text-foreground"
+                      onClick={() => router.back()}
+                      title="Back"
+                      type="button"
+                    >
+                      <ArrowLeft aria-hidden="true" size={16} />
+                    </button>
+                  ) : null}
                   <span className={cn("section-icon h-8 w-8", activeTone.icon)}>
                     <ActiveIcon aria-hidden="true" size={16} />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <nav
-                        aria-label="Breadcrumb"
-                        className="flex min-w-0 flex-wrap items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
-                      >
-                        {activeBreadcrumbs.map((breadcrumb, index) => (
+                    <nav
+                      aria-label="Breadcrumb"
+                      className="flex min-w-0 flex-wrap items-center gap-1 text-xs font-semibold uppercase tracking-[0.14em]"
+                    >
+                      {activeBreadcrumbs.map((breadcrumb, index) => {
+                        const isCurrent = index === activeBreadcrumbs.length - 1;
+                        return (
                           <span
-                            className="inline-flex items-center gap-1"
+                            aria-current={isCurrent ? "page" : undefined}
+                            className={cn(
+                              "inline-flex items-center gap-1",
+                              isCurrent ? "text-foreground" : "text-muted-foreground",
+                            )}
                             key={`${breadcrumb.label}-${index}`}
                           >
                             {index ? (
-                              <ChevronRight aria-hidden="true" size={12} />
+                              <ChevronRight
+                                aria-hidden="true"
+                                className="text-muted-foreground/70"
+                                size={12}
+                              />
                             ) : null}
                             {breadcrumb.label}
                           </span>
-                        ))}
-                      </nav>
-                      <Badge tone={activeTone.badge}>{activeItem.route}</Badge>
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      <h1 className="text-lg font-semibold tracking-tight">
-                        {activeItem.label}
-                      </h1>
+                        );
+                      })}
                       <HelpHint
                         label={`About ${activeItem.label}`}
                         title={activeItem.label}
                       >
                         {guidance.outcome}
                       </HelpHint>
-                      <Badge tone={activeTone.badge}>{guidance.step}</Badge>
-                    </div>
+                    </nav>
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-1.5">

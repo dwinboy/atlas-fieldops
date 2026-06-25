@@ -1,4 +1,5 @@
 import { buildAssignmentList } from "@/assignments/assignmentModels";
+import { entityMatchesFormEntityScope } from "@/entities/entityCategoryUtils";
 import type { FormValidationIssue } from "@/forms/formValidationService";
 import { FormValidationService } from "@/forms/formValidationService";
 import type { MobileAppState } from "@/state/mobileAppState";
@@ -16,7 +17,14 @@ export type AssignmentDetailModel = {
 
 export type EntitySelectionModel = {
   title: string;
-  entities: Array<{ localId: string; entityUid: string; name: string; location: string; phone: string | null }>;
+  entities: Array<{
+    localId: string;
+    entityUid: string;
+    name: string;
+    location: string;
+    phone: string | null;
+    hierarchySummary: string | null;
+  }>;
   emptyState: string | null;
 };
 
@@ -75,9 +83,12 @@ export function entitySelectionModel(database: LocalDatabase, assignmentLocalId:
     return { title: "Select entity", entities: [], emptyState: "Assignment not found on this device." };
   }
   const normalized = query.trim().toLowerCase();
+  const formVersion = assignment.formVersionId ? database.formVersions.get(assignment.formVersionId) : null;
+  const categories = database.entityCategories.list();
   const entities = database.entities
     .list()
     .filter((entity) => assignment.entityIds.includes(entity.id))
+    .filter((entity) => !formVersion || entityMatchesFormEntityScope(entity, formVersion, categories))
     .filter((entity) => {
       if (!normalized) {
         return true;
@@ -92,6 +103,15 @@ export function entitySelectionModel(database: LocalDatabase, assignmentLocalId:
       name: entity.name,
       location: entity.location.village ?? entity.location.community ?? entity.location.district ?? "No location",
       phone: entity.phone,
+      hierarchySummary:
+        entity.parentEntityIds.length || entity.childEntityIds.length
+          ? [
+              entity.parentEntityIds.length ? `${entity.parentEntityIds.length} parent` : null,
+              entity.childEntityIds.length ? `${entity.childEntityIds.length} child` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")
+          : null,
     }));
   return {
     title: "Select entity",

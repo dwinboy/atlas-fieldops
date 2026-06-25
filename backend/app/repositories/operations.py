@@ -20,6 +20,7 @@ from app.models.operations import (
     DonorReport,
     EntityAttribute,
     EntityCategory,
+    EntityRelationship,
     InterventionRecord,
     KnowledgeDocument,
     MediaEvidence,
@@ -129,6 +130,69 @@ class OperationsRepository:
             setattr(beneficiary, key, value)
         await self.session.flush()
         return beneficiary
+
+    async def list_beneficiaries_by_ids(
+        self,
+        *,
+        organization_id: UUID,
+        beneficiary_ids: set[UUID],
+    ) -> list[Beneficiary]:
+        if not beneficiary_ids:
+            return []
+        result = await self.session.execute(
+            select(Beneficiary).where(
+                Beneficiary.organization_id == organization_id,
+                Beneficiary.id.in_(beneficiary_ids),
+                Beneficiary.deleted_at.is_(None),
+            )
+        )
+        return list(result.scalars())
+
+    async def list_entity_relationships(
+        self,
+        *,
+        organization_id: UUID,
+        beneficiary_id: UUID,
+    ) -> list[EntityRelationship]:
+        result = await self.session.execute(
+            select(EntityRelationship).where(
+                EntityRelationship.organization_id == organization_id,
+                EntityRelationship.deleted_at.is_(None),
+                (EntityRelationship.parent_beneficiary_id == beneficiary_id)
+                | (EntityRelationship.child_beneficiary_id == beneficiary_id),
+            )
+        )
+        return list(result.scalars())
+
+    async def create_entity_relationship(
+        self,
+        *,
+        organization_id: UUID,
+        values: dict[str, object],
+    ) -> EntityRelationship:
+        relationship = EntityRelationship(organization_id=organization_id, **values)
+        self.session.add(relationship)
+        await self.session.flush()
+        return relationship
+
+    async def get_entity_relationship(
+        self,
+        *,
+        organization_id: UUID,
+        relationship_id: UUID,
+    ) -> EntityRelationship | None:
+        result = await self.session.execute(
+            select(EntityRelationship).where(
+                EntityRelationship.organization_id == organization_id,
+                EntityRelationship.id == relationship_id,
+                EntityRelationship.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def delete_entity_relationship(self, relationship: EntityRelationship) -> None:
+        relationship.deleted_at = datetime.now(UTC)
+        await self.session.flush()
 
     async def move_duplicate_links(
         self,

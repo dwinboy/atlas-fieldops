@@ -6,6 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Badge, Card, EmptyState, Input } from "@/components/ui";
 import { useAppContext } from "@/context/AppContext";
+import { describeFormEntityWorkflow } from "@/entities/entityCategoryUtils";
 import { DataCollectionSessionService } from "@/forms/dataCollectionSession";
 import { localDatabase } from "@/storage/localDatabase";
 import type { MobileAssignment } from "@/models/contracts";
@@ -51,7 +52,12 @@ export default function AssignmentsScreen() {
       return;
     }
 
-    if (formVersion.entitySettings.requiresExistingEntity) {
+    const workflow = describeFormEntityWorkflow(
+      formVersion.entitySettings,
+      localDatabase.entityCategories.list(),
+    );
+
+    if (workflow.needsEntityPicker) {
       router.push(`/entity-select/${assignment.localId}`);
     } else {
       try {
@@ -89,6 +95,7 @@ export default function AssignmentsScreen() {
           assignments.map((assignment) => {
             const isReady = Boolean(assignment.formId && assignment.formVersionId);
             const label = assignmentEntityLabel(assignment);
+            const workflow = assignmentWorkflowSummary(assignment);
             const progress = assignment.targetCount
               ? `${assignment.completedCount} / ${assignment.targetCount} ${pluralize(label)}`
               : `${assignment.completedCount} ${pluralize(label)} collected`;
@@ -105,6 +112,12 @@ export default function AssignmentsScreen() {
                     <BarChart3 size={14} color={colors.mutedForeground} />
                     <Text style={styles.metaText}>{progress}</Text>
                   </View>
+                  {workflow ? (
+                    <View style={styles.metaRow}>
+                      <ClipboardList size={14} color={colors.mutedForeground} />
+                      <Text style={styles.metaText}>{workflow}</Text>
+                    </View>
+                  ) : null}
                   {assignment.locationIds?.length > 0 ? (
                     <View style={styles.metaRow}>
                       <MapPin size={14} color={colors.mutedForeground} />
@@ -138,11 +151,17 @@ export default function AssignmentsScreen() {
 function assignmentEntityLabel(assignment: MobileAssignment): string {
   if (!assignment.formVersionId) return "record";
   const version = localDatabase.formVersions.list().find((v) => v.id === assignment.formVersionId);
-  const settings = version?.entitySettings;
-  const category = settings?.entityCategoryId
-    ? localDatabase.entityCategories.list().find((item) => item.id === settings.entityCategoryId)
+  const workflow = version
+    ? describeFormEntityWorkflow(version.entitySettings, localDatabase.entityCategories.list())
     : null;
-  return category?.name ?? settings?.entityType ?? "record";
+  return workflow?.label ?? "record";
+}
+
+function assignmentWorkflowSummary(assignment: MobileAssignment): string | null {
+  if (!assignment.formVersionId) return null;
+  const version = localDatabase.formVersions.list().find((v) => v.id === assignment.formVersionId);
+  if (!version) return null;
+  return describeFormEntityWorkflow(version.entitySettings, localDatabase.entityCategories.list()).helperText;
 }
 
 function pluralize(label: string): string {

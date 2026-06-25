@@ -488,7 +488,7 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
   if (workbenchOpen) {
     return (
       <section className="space-y-3">
-        <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+        <div className="module-header rounded-xl p-3.5">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <Badge tone="governance">Governance workbench</Badge>
@@ -512,7 +512,7 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
 
   return (
     <section className="space-y-3">
-      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="module-header rounded-xl p-3.5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">

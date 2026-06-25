@@ -3,27 +3,45 @@ import type { ProjectDetailRead, ProjectListItemRead, ProjectSummaryRead, Projec
 export const projectSections = [
   { id: "dashboard", label: "Overview", route: "/projects" },
   { id: "all", label: "All Projects", route: "/projects/all" },
-  { id: "active", label: "Active", route: "/projects/active" },
-  { id: "draft", label: "Draft", route: "/projects/draft" },
-  { id: "closed", label: "Closed", route: "/projects/closed" },
   { id: "templates", label: "Templates", route: "/projects/templates" },
 ] as const;
 
 export type ProjectSection = (typeof projectSections)[number]["id"];
 
+// Status groups previously lived as separate nav sections (Active/Draft/Closed).
+// They are now quick filters inside the single "All Projects" view, but the old
+// routes stay deep-linkable so existing sidebar links and bookmarks keep working.
+export type StatusGroup = "" | "active" | "draft" | "closed";
+
+export const statusGroupChips: { id: StatusGroup; label: string }[] = [
+  { id: "", label: "All" },
+  { id: "active", label: "Active" },
+  { id: "draft", label: "Draft" },
+  { id: "closed", label: "Closed" },
+];
+
 export function projectSectionFromPath(pathname: string): ProjectSection {
-  const match = projectSections.find((section) => section.route !== "/projects" && pathname.startsWith(section.route));
-  return match?.id ?? "dashboard";
+  if (/^\/projects\/(all|active|draft|closed)(\/|$)/.test(pathname)) return "all";
+  if (pathname.startsWith("/projects/templates")) return "templates";
+  return "dashboard";
+}
+
+export function statusGroupFromPath(pathname: string): StatusGroup {
+  if (/^\/projects\/active(\/|$)/.test(pathname)) return "active";
+  if (/^\/projects\/draft(\/|$)/.test(pathname)) return "draft";
+  if (/^\/projects\/closed(\/|$)/.test(pathname)) return "closed";
+  return "";
+}
+
+export function routeForStatusGroup(group: StatusGroup): string {
+  return group ? `/projects/${group}` : "/projects/all";
 }
 
 export const projectTabs = [
   "Overview",
   "Entities",
-  "Forms & Metrics",
-  "Locations & Teams",
-  "Submissions & Reports",
-  "Data Quality & Governance",
-  "Settings",
+  "Linked work",
+  "Settings & Governance",
 ] as const;
 
 export type ProjectTab = (typeof projectTabs)[number];

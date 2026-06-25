@@ -8,6 +8,7 @@ import {
   Building2,
   CalendarClock,
   CheckCircle2,
+  ChevronRight,
   ClipboardList,
   Download,
   FileChartColumn,
@@ -23,8 +24,9 @@ import {
   UsersRound,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
 
+import { useContextualBack } from "@/hooks/useContextualBack";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -74,8 +76,12 @@ import {
   previewProjects,
   previewSummary,
   previewTemplates,
+  routeForStatusGroup,
+  statusGroupChips,
+  statusGroupFromPath,
   type ProjectSection,
   type ProjectTab,
+  type StatusGroup,
 } from "@/modules/projects/data";
 import {
   computeProjectSummary,
@@ -158,6 +164,29 @@ const defaultProjectDraft: ProjectCreate = {
   start_date: null,
   status: "draft",
 };
+
+const indicatorSetupModes = [
+  {
+    value: "Configure later",
+    label: "Skip metrics for now and finish project setup",
+    help: "The project can still be created, forms can still be attached, and metrics can be added later from Indicators.",
+  },
+  {
+    value: "Create now",
+    label: "Create metrics now",
+    help: "Define the first metrics during project setup.",
+  },
+  {
+    value: "Import indicators",
+    label: "Import metrics",
+    help: "Bring in a prepared metric list from another source.",
+  },
+  {
+    value: "Use templates",
+    label: "Use metric templates",
+    help: "Start from sector-based metric templates and adjust them later.",
+  },
+] as const;
 
 const richPreviewSectorPacks: ProjectSectorPackRead[] = ([
   {
@@ -503,18 +532,14 @@ const projectFrequencyOptions = [
   "Event-based",
 ];
 
-const wizardSteps = [
-  "Basic Information",
-  "Program Setup",
-  "Geographic Scope",
-  "Entities",
-  "Metrics",
-  "Forms Setup",
-  "Team Setup",
-  "Governance",
-  "Review",
-  "Activate",
-] as const;
+const wizardSteps = ["Basics", "Setup", "Review & activate"] as const;
+
+// Maps a readiness check's original section index onto the new 3-step model.
+// Only the create-required fields (name, code, type) live on step 0 "Basics";
+// every other field is grouped under step 1 "Setup". Step 2 is review/activate.
+function wizardStepForCheck(targetStep: number): number {
+  return targetStep === 0 ? 0 : 1;
+}
 
 function isPreview(token: string | null): boolean {
   return !token || token === "preview-token";
@@ -1037,6 +1062,9 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
   const router = useRouter();
   const [activeSection, setActiveSection] =
     useState<ProjectSection>(() => projectSectionFromPath(pathname));
+  const [statusGroup, setStatusGroup] = useState<StatusGroup>(() =>
+    statusGroupFromPath(pathname),
+  );
   const [activeTab, setActiveTab] = useState<ProjectTab>("Overview");
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState(0);
@@ -1047,6 +1075,7 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     null,
   );
+  useContextualBack(Boolean(selectedProjectId));
   const queryClient = useQueryClient();
   const localProjects = useWorkspaceStore((state) => state.localProjects);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
@@ -1119,8 +1148,8 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
       (selectedProject ? detailFromProject(selectedProject) : preview ? previewDetail : null))
     : null;
   const visibleProjects = useMemo(
-    () => filterProjects(projects, activeSection),
-    [activeSection, projects],
+    () => filterProjects(projects, statusGroup || "all"),
+    [projects, statusGroup],
   );
   const [filterStatus, setFilterStatus] = useState("");
   const [filterCountry, setFilterCountry] = useState("");
@@ -1164,8 +1193,16 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
 
   function selectSection(section: ProjectSection): void {
     setActiveSection(section);
+    if (section !== "all") setStatusGroup("");
     const route = projectSections.find((item) => item.id === section)?.route;
     if (route && route !== pathname) router.push(route);
+  }
+
+  function selectStatusGroup(group: StatusGroup): void {
+    setActiveSection("all");
+    setStatusGroup(group);
+    const route = routeForStatusGroup(group);
+    if (route !== pathname) router.push(route);
   }
 
   useEffect(() => {
@@ -1184,14 +1221,14 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
     if (match?.[1]) {
       setSelectedProjectId(match[1]);
       setActiveSection("all");
-      setActiveTab("Settings");
+      setActiveTab("Settings & Governance");
       return;
     }
     const nextSection = projectSectionFromPath(normalizedPath);
-    if (nextSection !== activeSection) {
-      setActiveSection(nextSection);
-    }
-  }, [activeSection, pathname]);
+    setActiveSection((current) => (current === nextSection ? current : nextSection));
+    const nextStatusGroup = statusGroupFromPath(normalizedPath);
+    setStatusGroup((current) => (current === nextStatusGroup ? current : nextStatusGroup));
+  }, [pathname]);
 
   const createProjectMutation = useMutation({
     mutationFn: () =>
@@ -1446,6 +1483,17 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
     setActiveTab("Overview");
   }
 
+  function openAttentionProject(): void {
+    const attentionProject = [...projects]
+      .filter((project) => project.health_score < 70)
+      .sort((left, right) => left.health_score - right.health_score)[0];
+    if (attentionProject) {
+      openProject(attentionProject);
+      return;
+    }
+    selectSection("all");
+  }
+
   function saveProjectSettings(settings: Record<string, unknown>): void {
     if (!detail) return;
     if (preview) {
@@ -1575,16 +1623,28 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
 
   return (
     <section className="space-y-3">
-      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="module-header rounded-xl p-3.5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="monitor">OPERATIONS</Badge>
-              <Badge tone={summary.attention_projects ? "warning" : "success"}>
-                {summary.attention_projects
-                  ? `${summary.attention_projects} need attention`
-                  : "Projects healthy"}
-              </Badge>
+              <button
+                className="rounded-full"
+                onClick={() => {
+                  if (summary.attention_projects) {
+                    openAttentionProject();
+                    return;
+                  }
+                  selectSection("all");
+                }}
+                type="button"
+              >
+                <Badge tone={summary.attention_projects ? "warning" : "success"}>
+                  {summary.attention_projects
+                    ? `${summary.attention_projects} need attention`
+                    : "Projects healthy"}
+                </Badge>
+              </button>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight">
@@ -1656,6 +1716,10 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
           installSectorReportsPending={installSectorReportsMutation.isPending}
           isSavingSettings={updateProjectSettingsMutation.isPending}
           onClose={() => setSelectedProjectId(null)}
+          onEditProject={() => {
+            const selectedProject = projects.find((project) => project.id === detail.id);
+            if (selectedProject) openProjectEditor(selectedProject);
+          }}
           onInstallSectorForms={() => {
             if (preview) {
               pushToast({
@@ -1730,22 +1794,40 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
 
       {!selectedProjectId && activeSection === "dashboard" ? (
         <ProjectsDashboard
+          onOpenEntities={() => router.push("/beneficiaries")}
+          onOpenForms={() => router.push("/forms")}
           projects={projects}
+          onOpenIndicators={() => router.push("/indicators")}
           summary={summary}
           onOpenProject={openProject}
+          onOpenSection={selectSection}
+          onOpenStatusGroup={selectStatusGroup}
+          onOpenSubmissions={() => router.push("/submissions")}
         />
       ) : null}
 
-      {!selectedProjectId &&
-      ["all", "active", "draft", "closed"].includes(activeSection) ? (
+      {!selectedProjectId && activeSection === "all" ? (
         <section className="space-y-4">
-          <SectionHeader
-            description="Search, filter, sort, export, and open project workspaces. Detailed forms, submissions, mapping, reports, and governance remain in their modules."
-            title={
-              projectSections.find((section) => section.id === activeSection)
-                ?.label ?? "Projects"
-            }
-          />
+          <div className="flex flex-wrap items-center gap-1.5">
+            {statusGroupChips.map((chip) => (
+              <button
+                className={cn(
+                  "shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition",
+                  statusGroup === chip.id
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "bg-panel hover:bg-muted",
+                )}
+                key={chip.id || "all"}
+                onClick={() => selectStatusGroup(chip.id)}
+                type="button"
+              >
+                {chip.label}
+                <span className="ml-1.5 text-[11px] opacity-70">
+                  {filterProjects(projects, chip.id || "all").length}
+                </span>
+              </button>
+            ))}
+          </div>
           <ProjectFilters
             filters={projectFilters}
             onChange={setProjectFilters}
@@ -1817,41 +1899,58 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
 }
 
 function ProjectsDashboard({
+  onOpenEntities,
+  onOpenForms,
+  onOpenIndicators,
   onOpenProject,
+  onOpenSection,
+  onOpenStatusGroup,
+  onOpenSubmissions,
   projects,
   summary,
 }: {
+  onOpenEntities: () => void;
+  onOpenForms: () => void;
+  onOpenIndicators: () => void;
   onOpenProject: (project: ProjectListItemRead) => void;
+  onOpenSection: (section: ProjectSection) => void;
+  onOpenStatusGroup: (group: StatusGroup) => void;
+  onOpenSubmissions: () => void;
   projects: ProjectListItemRead[];
   summary: ProjectSummaryRead;
 }) {
   const cards = [
-    { icon: Layers3, label: "Total Projects", value: summary.total_projects },
+    { icon: Layers3, label: "Total Projects", onClick: () => onOpenStatusGroup(""), value: summary.total_projects },
     {
       icon: CheckCircle2,
       label: "Active Projects",
+      onClick: () => onOpenStatusGroup("active"),
       value: summary.active_projects,
     },
     {
       icon: ClipboardList,
       label: "Draft Projects",
+      onClick: () => onOpenStatusGroup("draft"),
       value: summary.draft_projects,
     },
-    { icon: Archive, label: "Closed Projects", value: summary.closed_projects },
+    { icon: Archive, label: "Closed Projects", onClick: () => onOpenStatusGroup("closed"), value: summary.closed_projects },
     {
       icon: UsersRound,
       label: "Entities",
+      onClick: onOpenEntities,
       value: summary.total_beneficiaries,
     },
     {
       icon: FileChartColumn,
       label: "Submissions",
+      onClick: onOpenSubmissions,
       value: summary.total_submissions,
     },
-    { icon: BarChart3, label: "Active Forms", value: summary.active_forms },
+    { icon: BarChart3, label: "Active Forms", onClick: onOpenForms, value: summary.active_forms },
     {
       icon: Target,
       label: "Metric Rate",
+      onClick: onOpenIndicators,
       value: `${summary.indicator_achievement_rate}%`,
     },
   ];
@@ -1862,14 +1961,16 @@ function ProjectsDashboard({
     <div className="space-y-3">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
-          <div
-            className="rounded-xl border bg-panel p-3 shadow-line"
+          <button
+            className="rounded-xl border bg-panel p-3 text-left shadow-line transition hover:border-primary/35 hover:bg-muted/30"
             key={card.label}
+            onClick={card.onClick}
+            type="button"
           >
             <card.icon aria-hidden="true" className="text-primary" size={18} />
             <p className="mt-4 text-2xl font-semibold">{card.value}</p>
             <p className="text-xs text-muted-foreground">{card.label}</p>
-          </div>
+          </button>
         ))}
       </div>
       <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
@@ -1971,6 +2072,7 @@ function ProjectDetailWorkspace({
   installSectorReportsPending,
   isSavingSettings,
   onClose,
+  onEditProject,
   onInstallSectorForms,
   onInstallSectorIndicators,
   onInstallSectorReports,
@@ -1994,6 +2096,7 @@ function ProjectDetailWorkspace({
   installSectorReportsPending: boolean;
   isSavingSettings: boolean;
   onClose: () => void;
+  onEditProject: () => void;
   onInstallSectorForms: () => void;
   onInstallSectorIndicators: () => void;
   onInstallSectorReports: () => void;
@@ -2026,9 +2129,16 @@ function ProjectDetailWorkspace({
             {detail.region ?? "All regions"}
           </p>
         </div>
-        <Button onClick={onClose} variant="secondary">
-          Back to list
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {canManageProjects ? (
+            <Button onClick={onEditProject} variant="primary">
+              Edit project
+            </Button>
+          ) : null}
+          <Button onClick={onClose} variant="secondary">
+            Back to list
+          </Button>
+        </div>
       </div>
       <div className="flex gap-2 overflow-x-auto product-scrollbar">
         {projectTabs.map((item) => (
@@ -2068,81 +2178,65 @@ function ProjectDetailWorkspace({
           token={token}
         />
       ) : null}
-      {tab === "Forms & Metrics" ? (
-        <div className="space-y-4">
-          <RelatedTab
-            actionLabel="Open Forms"
-            description="Forms are managed in the Forms module. This tab shows the project relationship only."
-            onAction={onOpenForms}
-            records={detail.forms}
-            title="Project Forms"
-          />
-          <RelatedTab
-            actionLabel="Open Metrics"
-            description="Metrics stay reusable and are tracked in the Metrics workspace when the project needs KPI or results tracking."
-            onAction={onOpenIndicators}
-            records={detail.indicators}
-            title="Project Metrics"
-          />
+      {tab === "Linked work" ? (
+        <div className="space-y-5">
+          <p className="rounded-xl border border-dashed bg-muted/20 px-3 py-2.5 text-xs leading-5 text-muted-foreground">
+            Forms, metrics, locations, teams, submissions, and reports stay in
+            their own workspaces so they remain reusable. This tab shows how each
+            one is linked to this project and lets you jump straight there.
+          </p>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <RelatedTab
+              actionLabel="Open Forms"
+              description="Forms are managed in the Forms module. This shows the project relationship only."
+              onAction={onOpenForms}
+              records={detail.forms}
+              title="Forms"
+            />
+            <RelatedTab
+              actionLabel="Open Metrics"
+              description="Metrics stay reusable and are tracked in the Metrics workspace for KPI and results tracking."
+              onAction={onOpenIndicators}
+              records={detail.indicators}
+              title="Metrics"
+            />
+            <RelatedTab
+              actionLabel="Open Mapping"
+              description="Projects consume mapping boundaries and coverage; GIS tools remain in Mapping."
+              onAction={onOpenMapping}
+              records={detail.locations}
+              title="Locations"
+            />
+            <RelatedTab
+              actionLabel="Open Users & Teams"
+              description="Project teams reference Users & Teams without duplicating identity management."
+              onAction={onOpenTeams}
+              records={detail.teams}
+              title="Teams"
+            />
+            <RelatedTab
+              description="Assignments are operational activities owned by Field Operations."
+              records={detail.assignments}
+              title="Assignments"
+            />
+            <RelatedTab
+              actionLabel="Open Submissions"
+              description="Collected records are reviewed in Submissions; this shows project-level counts and recent records."
+              onAction={onOpenSubmissions}
+              records={detail.submissions}
+              title="Submissions"
+            />
+            <RelatedTab
+              actionLabel="Open Reports"
+              description="Project reports, metric reports, and coverage reports are produced in Reports."
+              onAction={onOpenReports}
+              records={detail.reports}
+              title="Reports"
+            />
+          </div>
         </div>
       ) : null}
-      {tab === "Locations & Teams" ? (
-        <div className="space-y-4">
-          <RelatedTab
-            actionLabel="Open Mapping"
-            description="Projects consume mapping boundaries and coverage; GIS tools remain in Mapping."
-            onAction={onOpenMapping}
-            records={detail.locations}
-            title="Project Locations"
-          />
-          <RelatedTab
-            actionLabel="Open Users & Teams"
-            description="Project teams reference Users & Teams without duplicating identity management."
-            onAction={onOpenTeams}
-            records={detail.teams}
-            title="Project Teams"
-          />
-          <RelatedTab
-            description="Assignments are operational activities owned by Field Operations."
-            records={detail.assignments}
-            title="Project Assignments"
-          />
-        </div>
-      ) : null}
-      {tab === "Submissions & Reports" ? (
-        <div className="space-y-4">
-          <RelatedTab
-            actionLabel="Open Submissions"
-            description="Collected records are reviewed in Submissions; this tab shows project-level counts and recent records."
-            onAction={onOpenSubmissions}
-            records={detail.submissions}
-            title="Project Submissions"
-          />
-          <RelatedTab
-            actionLabel="Open Reports"
-            description="Project reports, metric reports, and coverage reports are produced in Reports."
-            onAction={onOpenReports}
-            records={detail.reports}
-            title="Project Reports"
-          />
-        </div>
-      ) : null}
-      {tab === "Data Quality & Governance" ? (
-        <div className="space-y-4">
-          <ProjectDataQuality detail={detail} />
-          <SectionHeader
-            description="Default approval workflow, consent, retention, and entity rules applied to this project."
-            title="Governance"
-          />
-          <ProjectGovernance detail={detail} />
-          <SectionHeader
-            description="Immutable record of changes made to this project."
-            title="Audit Trail"
-          />
-          <AuditTrail detail={detail} />
-        </div>
-      ) : null}
-      {tab === "Settings" ? (
+      {tab === "Settings & Governance" ? (
         <div className="space-y-4">
           <ProjectSettings
             canManageProjects={canManageProjects}
@@ -2152,10 +2246,25 @@ function ProjectDetailWorkspace({
             token={token}
           />
           <SectionHeader
+            description="Default approval workflow, consent, retention, and entity rules applied to this project."
+            title="Governance"
+          />
+          <ProjectGovernance detail={detail} />
+          <SectionHeader
+            description="Validation coverage, GPS quality, and duplicate review for this project."
+            title="Data Quality"
+          />
+          <ProjectDataQuality detail={detail} />
+          <SectionHeader
             description="Bring external data into this project or migrate records between systems."
             title="Data Import & Migration"
           />
           <ImportsMigrationModule mode="project" projectId={detail.id} token={token} />
+          <SectionHeader
+            description="Immutable record of changes made to this project."
+            title="Audit Trail"
+          />
+          <AuditTrail detail={detail} />
         </div>
       ) : null}
     </section>
@@ -2236,36 +2345,36 @@ function ProjectOverview({
       tab: "Entities",
       value: `${detail.beneficiary_count}`,
     },
-    { label: "Forms", tab: "Forms & Metrics", value: `${detail.active_forms}` },
+    { label: "Forms", tab: "Linked work", value: `${detail.active_forms}` },
     {
       label: "Assignments",
-      tab: "Locations & Teams",
+      tab: "Linked work",
       value: `${detail.active_assignments}`,
     },
     {
       label: "Submissions",
-      tab: "Submissions & Reports",
+      tab: "Linked work",
       value: `${detail.total_submissions}`,
     },
     {
       label: "Metrics",
-      tab: "Forms & Metrics",
+      tab: "Linked work",
       value: `${detail.indicator_count}`,
     },
     {
       label: "Data Quality",
-      tab: "Data Quality & Governance",
+      tab: "Settings & Governance",
       tone: health.qualityTone,
       value: health.qualityLabel,
     },
     {
       label: "Coverage",
-      tab: "Locations & Teams",
+      tab: "Linked work",
       value: detail.region ?? detail.country ?? "All areas",
     },
     {
       label: "Field Officers",
-      tab: "Locations & Teams",
+      tab: "Linked work",
       value: `${detail.teams.length || detail.active_assignments}`,
     },
   ];
@@ -2331,12 +2440,12 @@ function ProjectOverview({
         <div className="mt-4 grid gap-2 md:grid-cols-3 xl:grid-cols-7">
           {[
             ["Sector", detail.sector_id ? "Ready" : "Select pack", Boolean(detail.sector_id), "Overview"],
-            ["Forms", detail.active_forms || sectorFormsInstalled ? "Ready" : "Install", Boolean(detail.active_forms || sectorFormsInstalled), "Forms & Metrics"],
-            ["Metrics", detail.indicator_count || sectorIndicatorsInstalled ? "Ready" : "Install", Boolean(detail.indicator_count || sectorIndicatorsInstalled), "Forms & Metrics"],
-            ["Reports", detail.reports.length || sectorReportsInstalled ? "Ready" : "Install", Boolean(detail.reports.length || sectorReportsInstalled), "Submissions & Reports"],
-            ["Teams", detail.teams.length || detail.active_assignments ? "Assigned" : "Assign", Boolean(detail.teams.length || detail.active_assignments), "Locations & Teams"],
-            ["Governance", approvalWorkflow !== "Not configured" ? "Ready" : "Configure", approvalWorkflow !== "Not configured", "Data Quality & Governance"],
-            ["Mobile", detail.active_assignments && detail.active_forms ? "Ready" : "Assign work", Boolean(detail.active_assignments && detail.active_forms), "Locations & Teams"],
+            ["Forms", detail.active_forms || sectorFormsInstalled ? "Ready" : "Install", Boolean(detail.active_forms || sectorFormsInstalled), "Linked work"],
+            ["Metrics", detail.indicator_count || sectorIndicatorsInstalled ? "Ready" : "Install", Boolean(detail.indicator_count || sectorIndicatorsInstalled), "Linked work"],
+            ["Reports", detail.reports.length || sectorReportsInstalled ? "Ready" : "Install", Boolean(detail.reports.length || sectorReportsInstalled), "Linked work"],
+            ["Teams", detail.teams.length || detail.active_assignments ? "Assigned" : "Assign", Boolean(detail.teams.length || detail.active_assignments), "Linked work"],
+            ["Governance", approvalWorkflow !== "Not configured" ? "Ready" : "Configure", approvalWorkflow !== "Not configured", "Settings & Governance"],
+            ["Mobile", detail.active_assignments && detail.active_forms ? "Ready" : "Assign work", Boolean(detail.active_assignments && detail.active_forms), "Linked work"],
           ].map(([label, value, ready, target]) => (
             <button
               className="rounded-xl border bg-panel p-3 text-left transition hover:border-primary hover:bg-primary/5"
@@ -2412,7 +2521,7 @@ function ProjectOverview({
           <h3 className="font-semibold">Coverage Map Preview</h3>
           <button
             className="mt-4 grid min-h-64 w-full place-items-center rounded-2xl border bg-[radial-gradient(circle_at_25%_25%,rgba(20,184,166,0.18),transparent_28%),linear-gradient(135deg,rgba(34,197,94,0.15),rgba(15,23,42,0.04))] p-5 text-center transition hover:border-primary"
-            onClick={() => onSelectTab("Locations & Teams")}
+            onClick={() => onSelectTab("Linked work")}
             type="button"
           >
             <div>
@@ -2444,7 +2553,7 @@ function ProjectOverview({
               ? `${sectorIndicatorTemplates.slice(0, 2).join(", ")} metrics`
               : "Custom metrics",
           ]}
-          onClick={() => onSelectTab("Forms & Metrics")}
+          onClick={() => onSelectTab("Linked work")}
         />
         <InfoPanel
           title="Entity Journey"
@@ -2457,7 +2566,7 @@ function ProjectOverview({
                   "Follow-up before reporting",
                 ]
           }
-          onClick={() => onSelectTab("Data Quality & Governance")}
+          onClick={() => onSelectTab("Settings & Governance")}
         />
         <InfoPanel
           title="Project Health Inputs"
@@ -2466,12 +2575,12 @@ function ProjectOverview({
             "Data quality and approvals",
             "Metric and assignment progress",
           ]}
-          onClick={() => onSelectTab("Data Quality & Governance")}
+          onClick={() => onSelectTab("Settings & Governance")}
         />
         <InfoPanel
           title="Source Tracking"
           lines={submissionSourceOptions}
-          onClick={() => onSelectTab("Submissions & Reports")}
+          onClick={() => onSelectTab("Linked work")}
         />
       </div>
     </div>
@@ -3090,9 +3199,38 @@ function EntityCategoryManager({
 }) {
   const queryClient = useQueryClient();
   const [customName, setCustomName] = useState("");
+  const [parentCategoryId, setParentCategoryId] = useState("");
   const [selectedPreset, setSelectedPreset] = useState("");
   const activeCategoryNames = new Set(categories.filter((category) => category.status !== "archived").map((category) => category.slug));
   const availablePresets = library.filter((category) => !activeCategoryNames.has(category.slug)).slice(0, 80);
+  const activeCategories = categories.filter((category) => category.status !== "archived");
+  const categoryById = useMemo(
+    () => new Map(categories.map((category) => [category.id, category])),
+    [categories],
+  );
+  const childCountById = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const category of categories) {
+      if (!category.parent_category_id) continue;
+      counts.set(category.parent_category_id, (counts.get(category.parent_category_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [categories]);
+  const categoryPath = useCallback((category: EntityCategoryRead): string => {
+    const path: string[] = [category.name];
+    const seen = new Set<string>([category.id]);
+    let current = category.parent_category_id ? categoryById.get(category.parent_category_id) : undefined;
+    while (current && !seen.has(current.id)) {
+      path.unshift(current.name);
+      seen.add(current.id);
+      current = current.parent_category_id ? categoryById.get(current.parent_category_id) : undefined;
+    }
+    return path.join(" -> ");
+  }, [categoryById]);
+  const activeCategoriesSorted = useMemo(
+    () => [...activeCategories].sort((left, right) => categoryPath(left).localeCompare(categoryPath(right))),
+    [activeCategories, categoryPath],
+  );
   const invalidate = async (): Promise<void> => {
     await queryClient.invalidateQueries({ queryKey: ["entity-categories", token, detail.id] });
   };
@@ -3101,7 +3239,7 @@ function EntityCategoryManager({
     onSuccess: () => void invalidate(),
   });
   const createMutation = useMutation({
-    mutationFn: (name: string) =>
+    mutationFn: ({ name, parentId }: { name: string; parentId: string }) =>
       createEntityCategory(token ?? "", {
         attributes: [
           { field_key: "name", field_type: "text", label: "Name", required: true },
@@ -3112,11 +3250,13 @@ function EntityCategoryManager({
         description: `Custom ${name} entity category for ${detail.name}.`,
         icon: "layers",
         name,
+        parent_category_id: parentId || null,
         project_id: detail.id,
         statuses_json: ["active", "inactive", "archived"],
       }),
     onSuccess: () => {
       setCustomName("");
+      setParentCategoryId("");
       void invalidate();
     },
   });
@@ -3139,16 +3279,22 @@ function EntityCategoryManager({
       </div>
       <div className="mt-3 grid gap-2">
         {isLoading ? <p className="text-xs text-muted-foreground">Loading entity categories...</p> : null}
-        {categories.slice(0, 6).map((category) => (
+        {activeCategoriesSorted.slice(0, 8).map((category) => (
           <div className="flex items-center justify-between gap-3 rounded-lg border bg-background/70 px-3 py-2" key={category.id}>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: category.color }} />
                 <p className="truncate text-sm font-medium">{category.name}</p>
                 <Badge tone={category.status === "archived" ? "neutral" : "success"}>{category.status}</Badge>
+                {childCountById.get(category.id) ? (
+                  <Badge tone="neutral">{childCountById.get(category.id)} child</Badge>
+                ) : null}
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
                 {category.attributes.length} field(s) · {category.sector ?? "custom"} · {category.statuses_json.join(", ") || "standard workflow"}
+              </p>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Category path: <span className="font-medium text-foreground">{categoryPath(category)}</span>
               </p>
               <p className="mt-1 text-[11px] text-muted-foreground">
                 New record code example: <span className="font-medium text-foreground">{beneficiaryCodePreview("", category.name)}</span>
@@ -3198,15 +3344,29 @@ function EntityCategoryManager({
           Activate preset
         </Button>
         <div className="grid gap-2 md:grid-cols-[1fr_auto]">
-          <Input
-            disabled={!canManage || createMutation.isPending}
-            onChange={(event) => setCustomName(event.target.value)}
-            placeholder="Create custom category, e.g. Innovation Hub"
-            value={customName}
-          />
+          <div className="grid gap-2">
+            <Input
+              disabled={!canManage || createMutation.isPending}
+              onChange={(event) => setCustomName(event.target.value)}
+              placeholder="Create custom category, e.g. Innovation Hub"
+              value={customName}
+            />
+            <Select
+              disabled={!canManage || createMutation.isPending}
+              onChange={(event) => setParentCategoryId(event.target.value)}
+              value={parentCategoryId}
+            >
+              <option value="">No parent category</option>
+              {activeCategoriesSorted.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {categoryPath(category)}
+                </option>
+              ))}
+            </Select>
+          </div>
           <Button
             disabled={!canManage || customName.trim().length < 2 || createMutation.isPending}
-            onClick={() => createMutation.mutate(customName.trim())}
+            onClick={() => createMutation.mutate({ name: customName.trim(), parentId: parentCategoryId })}
             size="sm"
             variant="primary"
           >
@@ -3399,7 +3559,7 @@ function ProjectWizard({
       <div className="grid max-h-[72vh] gap-5 overflow-y-auto p-5 product-scrollbar lg:grid-cols-[220px_1fr]">
         <aside className="space-y-2">
           {wizardSteps.map((label, index) => {
-            const stepChecks = readiness.checks.filter((check) => check.targetStep === index);
+            const stepChecks = readiness.checks.filter((check) => wizardStepForCheck(check.targetStep) === index);
             const stepStatus = stepChecks.some((check) => check.status === "failed")
               ? "failed"
               : stepChecks.some((check) => check.status === "warning")
@@ -3561,8 +3721,7 @@ function ProjectWizardStepContent({
 }) {
   const activeSectorPack = selectedSectorPack(draft, sectorPacks);
 
-  if (step === 0) {
-    return (
+  const basics = (
       <div className="grid gap-3">
         <div className="rounded-2xl border bg-background/50 p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -3721,10 +3880,8 @@ function ProjectWizardStepContent({
           />
         </div>
       </div>
-    );
-  }
-  if (step === 1) {
-    return (
+  );
+  const programDetails = (
       <div className="grid gap-3">
         <Textarea
           placeholder="Program objective"
@@ -3826,10 +3983,8 @@ function ProjectWizardStepContent({
           />
         </div>
       </div>
-    );
-  }
-  if (step === 2) {
-    return (
+  );
+  const geography = (
       <div className="grid gap-3">
         <div className="grid gap-3 md:grid-cols-2">
           <Select
@@ -3919,10 +4074,8 @@ function ProjectWizardStepContent({
           />
         </div>
       </div>
-    );
-  }
-  if (step === 3) {
-    return (
+  );
+  const entities = (
       <div className="grid gap-3">
         <div className="grid gap-3 md:grid-cols-2">
           <Select
@@ -4005,22 +4158,30 @@ function ProjectWizardStepContent({
           </div>
         </div>
       </div>
-    );
-  }
-  if (step === 4) {
-    return (
+  );
+  const indicatorSetupMode =
+    indicatorSetupModes.find(
+      (mode) => mode.value === settingText(draft, "indicators", "setupMode"),
+    ) ?? indicatorSetupModes[0];
+  const metrics = (
       <div className="grid gap-3 md:grid-cols-2">
-        <Select
-          value={settingText(draft, "indicators", "setupMode")}
-          onChange={(event) =>
-            updateSettings("indicators", { setupMode: event.target.value })
-          }
-        >
-          <option value="Configure later">Configure later</option>
-          <option value="Create now">Create metrics now</option>
-          <option value="Import indicators">Import metrics</option>
-          <option value="Use templates">Use metric templates</option>
-        </Select>
+        <div className="space-y-2 md:col-span-2">
+          <Select
+            value={settingText(draft, "indicators", "setupMode")}
+            onChange={(event) =>
+              updateSettings("indicators", { setupMode: event.target.value })
+            }
+          >
+            {indicatorSetupModes.map((mode) => (
+              <option key={mode.value} value={mode.value}>
+                {mode.label}
+              </option>
+            ))}
+          </Select>
+          <p className="text-sm text-muted-foreground">
+            {indicatorSetupMode.help}
+          </p>
+        </div>
         <Select
           value={settingText(draft, "indicators", "frequency")}
           onChange={(event) =>
@@ -4066,10 +4227,8 @@ function ProjectWizardStepContent({
           }
         />
       </div>
-    );
-  }
-  if (step === 5) {
-    return (
+  );
+  const forms = (
       <div className="grid gap-3">
         <Select
           value={settingText(draft, "forms", "starterPack")}
@@ -4110,10 +4269,8 @@ function ProjectWizardStepContent({
           </div>
         </div>
       </div>
-    );
-  }
-  if (step === 6) {
-    return (
+  );
+  const team = (
       <div className="grid gap-3 md:grid-cols-2">
         <Input
           placeholder="Project Manager"
@@ -4174,10 +4331,8 @@ function ProjectWizardStepContent({
           <option value="Project-wide access">Project-wide access</option>
         </Select>
       </div>
-    );
-  }
-  if (step === 7) {
-    return (
+  );
+  const governance = (
       <div className="grid gap-3 md:grid-cols-2">
         <Select
           value={settingText(draft, "governance", "approvalWorkflow")}
@@ -4245,12 +4400,11 @@ function ProjectWizardStepContent({
           Only approved submissions update entities, metrics, and reports
         </label>
       </div>
-    );
-  }
-  if (step === 8 || step === 9) {
-    return (
+  );
+  const review = (
       <div className="space-y-3">
-        {step === 9 ? (
+        <label className="grid gap-1.5 text-sm font-medium">
+          Project status
           <Select
             value={draft.status ?? "draft"}
             onChange={(event) =>
@@ -4263,7 +4417,7 @@ function ProjectWizardStepContent({
               </option>
             ))}
           </Select>
-        ) : null}
+        </label>
         <div className="grid gap-3 md:grid-cols-2">
           <Signal label="Project" value={draft.name || "Not named"} />
           <Signal
@@ -4310,20 +4464,82 @@ function ProjectWizardStepContent({
             tone={settingText(draft, "program", "targetBeneficiaries") ? "success" : "neutral"}
           />
         </div>
-        <ReadinessChecklist checks={readiness.checks} onSelectStep={setStep} />
-        {step === 9 && readiness.failedCritical ? (
+        <ReadinessChecklist
+          checks={readiness.checks}
+          onSelectStep={(targetStep) => setStep(wizardStepForCheck(targetStep))}
+        />
+        {draft.status === "active" && readiness.failedCritical ? (
           <p className="rounded-xl border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
             Activation is blocked until critical readiness checks pass. Save as
             draft or open the required section from the checklist.
           </p>
         ) : null}
       </div>
-    );
-  }
+  );
+
+  if (step === 0) return basics;
+  if (step === 2) return review;
   return (
-    <div className="rounded-2xl border border-dashed bg-muted/30 p-5 text-sm text-muted-foreground">
-      This project setup step is ready for future configuration.
+    <div className="space-y-3">
+      <p className="rounded-xl border border-dashed bg-muted/20 px-3 py-2.5 text-xs leading-5 text-muted-foreground">
+        The sections below are recommended for a complete, activation-ready
+        project. Required items are marked, and everything else can be added now
+        or later — your project is already saved as a draft.
+      </p>
+      <WizardSection defaultOpen tag="Required to activate" title="Geographic scope">
+        {geography}
+      </WizardSection>
+      <WizardSection defaultOpen tag="Required to activate" title="Entities">
+        {entities}
+      </WizardSection>
+      <WizardSection defaultOpen tag="Required to activate" title="Team & roles">
+        {team}
+      </WizardSection>
+      <WizardSection defaultOpen tag="Required to activate" title="Governance & review">
+        {governance}
+      </WizardSection>
+      <WizardSection tag="Optional" title="Program details">
+        {programDetails}
+      </WizardSection>
+      <WizardSection tag="Optional" title="Metrics plan">
+        {metrics}
+      </WizardSection>
+      <WizardSection tag="Optional" title="Forms plan">
+        {forms}
+      </WizardSection>
     </div>
+  );
+}
+
+function WizardSection({
+  children,
+  defaultOpen = false,
+  tag,
+  title,
+}: {
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+  tag: string;
+  title: string;
+}) {
+  return (
+    <details
+      className="group rounded-2xl border bg-background/50 [&_summary::-webkit-details-marker]:hidden"
+      open={defaultOpen}
+    >
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-4 py-3">
+        <span className="flex items-center gap-2">
+          <ChevronRight
+            aria-hidden="true"
+            className="text-muted-foreground transition-transform group-open:rotate-90"
+            size={16}
+          />
+          <span className="text-sm font-semibold">{title}</span>
+        </span>
+        <Badge tone={tag === "Optional" ? "neutral" : "warning"}>{tag}</Badge>
+      </summary>
+      <div className="border-t p-4">{children}</div>
+    </details>
   );
 }
 

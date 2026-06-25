@@ -1,10 +1,11 @@
-import type { DuplicateCheckInput, FrequencyRule, MobileAssignment, MobileEntity, MobileForm, MobileFormVersion, MobileSubmission } from "@/models/contracts";
+import type { DuplicateCheckInput, FrequencyRule, MobileAssignment, MobileEntity, MobileForm, MobileFormVersion, MobileQuestion, MobileSubmission } from "@/models/contracts";
+import { entityMatchesFormEntityScope, requiresEntitySelection } from "@/entities/entityCategoryUtils";
 import { MobilePermissionService } from "@/permissions/mobilePermissionService";
 import { AuditEventService } from "@/services/auditEventService";
 import { DuplicateCheckService } from "@/services/duplicateCheckService";
 import { FieldIntegrityService } from "@/services/fieldIntegrityService";
 import { FrequencyRuleService } from "@/services/frequencyRuleService";
-import { PrefillService } from "@/services/prefillService";
+import { PrefillService, type PrefillResult } from "@/services/prefillService";
 import { FormValidationIssue, FormValidationService } from "@/forms/formValidationService";
 import { LocalDatabase } from "@/storage/localDatabase";
 import { DraftSubmissionService } from "@/submissions/draftSubmissionService";
@@ -23,6 +24,12 @@ export type SubmitDraftResult = {
   draft: MobileSubmission;
   issues: FormValidationIssue[];
   queued: boolean;
+};
+
+type EntityWorkflowMessage = {
+  label: string;
+  missingSelectionHint: string;
+  missingSubmissionHint: string;
 };
 
 export class DataCollectionSessionService {
@@ -66,23 +73,34 @@ export class DataCollectionSessionService {
       throw new Error(permission.message ?? "You are not allowed to collect data for this form.");
     }
     const entity = entityLocalId ? this.database.entities.get(entityLocalId) : null;
-    const entityLabel = this.entityLabel(formVersion);
-    if (formVersion.entitySettings.requiresExistingEntity && !entity) {
-      throw new Error(`Select a ${entityLabel} before opening this form.`);
+    if (entity && assignment.entityIds.length > 0 && !assignment.entityIds.includes(entity.id)) {
+      throw new Error("This record is not assigned to you for this form. Sync again or ask your supervisor to update the assignment.");
     }
-    const prefilled = entity ? this.prefill.createPrefill(entity, formVersion).responses : [];
+    if (entity && !this.entityMatchesForm(entity, formVersion)) {
+      throw new Error(`This record does not match the ${this.entityLabel(formVersion)} category required for this form.`);
+    }
+    const entityWorkflow = this.entityWorkflowMessage(formVersion);
+    if (requiresEntitySelection(formVersion.entitySettings) && !entity) {
+      throw new Error(entityWorkflow.missingSelectionHint);
+    }
+    const prefillResult = entity ? this.prefill.createPrefill(entity, formVersion) : null;
+    const prefilled = prefillResult?.responses ?? [];
+    const adjustedFormVersion = prefillResult
+      ? this.applyPrefillRules(formVersion, prefillResult)
+      : formVersion;
     const draft = this.drafts.createDraft({
       projectId: assignment.projectId,
       assignmentId: assignment.id,
       formId: form.id,
       formVersionId: formVersion.id,
       entityId: entity?.id ?? null,
+      linkedEntityIds: entity ? [...new Set([...entity.parentEntityIds, ...entity.childEntityIds])] : [],
       entityType: entity?.entityType ?? formVersion.entitySettings.entityType,
       prefilledResponses: prefilled,
       frequencyPeriod: this.computeFrequencyPeriod(formVersion.entitySettings.frequencyRule, new Date()),
     });
     this.audit.queue("mobile.form_opened", { formId: form.id, assignmentId: assignment.id, entityId: entity?.id ?? null });
-    return { assignment, form, formVersion, entity, draft };
+    return { assignment, form, formVersion: adjustedFormVersion, entity, draft };
   }
 
   answerQuestion(draftLocalId: string, questionId: string, variableName: string, value: unknown): MobileSubmission {
@@ -141,6 +159,16 @@ export class DataCollectionSessionService {
   evaluateRiskIssues(draft: MobileSubmission, formVersion: MobileFormVersion): FormValidationIssue[] {
     const issues: FormValidationIssue[] = [];
     const entitySettings = formVersion.entitySettings;
+    const entityWorkflow = this.entityWorkflowMessage(formVersion);
+    if (requiresEntitySelection(entitySettings) && !draft.entityId) {
+      issues.push({
+        questionId: "_entity_link",
+        label: "Entity selection",
+        message: entityWorkflow.missingSubmissionHint,
+        fixHint: `Go back to entity selection, pick the right ${entityWorkflow.label.toLowerCase()}, then continue the form.`,
+        severity: "Error",
+      });
+    }
     if (draft.entityId) {
       const decision = this.frequencyRules.validate(
         entitySettings.frequencyRule,
@@ -161,7 +189,7 @@ export class DataCollectionSessionService {
     if (entitySettings.createsNewEntity && !draft.entityId) {
       const input = this.buildDuplicateCheckInput(draft, formVersion);
       if (input.phone || input.nationalId || input.householdId || (input.name && input.village)) {
-        const matches = this.duplicateCheck.check(input, this.database.entities.list(), entitySettings.duplicateThreshold);
+        const matches = this.duplicateCheck.check(input, this.entityCandidates(formVersion), entitySettings.duplicateThreshold);
         const topMatch = matches[0];
         if (topMatch) {
           issues.push({
@@ -224,6 +252,104 @@ export class DataCollectionSessionService {
     const categoryId = formVersion.entitySettings.entityCategoryId;
     const category = categoryId ? this.database.entityCategories.list().find((item) => item.id === categoryId) : null;
     return (category?.name ?? formVersion.entitySettings.entityType ?? "entity").toLowerCase();
+  }
+
+  private entityWorkflowMessage(formVersion: MobileFormVersion): EntityWorkflowMessage {
+    const label = this.entityLabel(formVersion);
+    const explicitMode = formVersion.entitySettings.respondentIdentityMode;
+    const createsNewEntity = formVersion.entitySettings.createsNewEntity;
+    const updatesExistingEntity = formVersion.entitySettings.updatesExistingEntity;
+    const requiresExistingEntity = formVersion.entitySettings.requiresExistingEntity;
+    const linkedToEntity = formVersion.entitySettings.linkedToEntity;
+    const mode =
+      explicitMode
+        ? explicitMode
+        : createsNewEntity && updatesExistingEntity
+          ? "existing_or_new"
+          : createsNewEntity
+            ? "new_registration"
+            : updatesExistingEntity || requiresExistingEntity
+              ? "existing_beneficiary"
+              : linkedToEntity
+                ? null
+                : "anonymous_allowed";
+    if (mode === "existing_beneficiary") {
+      return {
+        label,
+        missingSelectionHint: `Search for and select an existing ${label} before opening this follow-up form.`,
+        missingSubmissionHint: `Select an existing ${label} before submitting this follow-up record.`,
+      };
+    }
+    if (mode === "existing_or_new") {
+      return {
+        label,
+        missingSelectionHint: `Search for the right ${label} first. If it does not exist, continue without one to register a new ${label}.`,
+        missingSubmissionHint: `Choose the existing ${label} you are updating, or return to continue without one if this submission should register a new ${label}.`,
+      };
+    }
+    if (mode === "new_registration" || mode === "anonymous_allowed") {
+      return {
+        label,
+        missingSelectionHint: `You can continue without selecting a ${label} first for this workflow.`,
+        missingSubmissionHint: `This workflow can continue without linking an existing ${label} record first.`,
+      };
+    }
+    return {
+      label,
+      missingSelectionHint: `Select a ${label} before opening this form.`,
+      missingSubmissionHint: `Select a ${label} before submitting this record.`,
+    };
+  }
+
+  private entityCandidates(formVersion: MobileFormVersion): MobileEntity[] {
+    return this.database.entities.list().filter((entity) => this.entityMatchesForm(entity, formVersion));
+  }
+
+  private entityMatchesForm(entity: MobileEntity, formVersion: MobileFormVersion): boolean {
+    return entityMatchesFormEntityScope(entity, formVersion, this.database.entityCategories.list());
+  }
+
+  private applyPrefillRules(
+    formVersion: MobileFormVersion,
+    prefillResult: PrefillResult,
+  ): MobileFormVersion {
+    const locked = new Set(prefillResult.lockedQuestionIds);
+    const editableWithReason = new Set(prefillResult.editableWithReasonQuestionIds);
+    const valuesByQuestionId = new Map(
+      prefillResult.responses.map((response) => [response.questionId, response.value]),
+    );
+    const applyQuestion = (question: MobileQuestion): MobileQuestion => {
+      const prefilledValue = valuesByQuestionId.get(question.id);
+      const nextQuestion: MobileQuestion = {
+        ...question,
+        defaultValue: prefilledValue ?? question.defaultValue,
+      };
+      if (locked.has(question.id)) {
+        nextQuestion.readOnly = true;
+        nextQuestion.mobileControls = {
+          ...question.mobileControls,
+          blockedHelp: question.mobileControls?.blockedHelp ?? "This value is prefilled from the entity profile and locked for this form.",
+        };
+      } else if (editableWithReason.has(question.id)) {
+        nextQuestion.governanceControls = {
+          ...question.governanceControls,
+          changeReasonRequired: true,
+        };
+        nextQuestion.mobileControls = {
+          ...question.mobileControls,
+          blockedHelp: question.mobileControls?.blockedHelp ?? "If you change this prefilled value, record the reason before submitting.",
+        };
+      }
+      return nextQuestion;
+    };
+
+    return {
+      ...formVersion,
+      sections: formVersion.sections.map((section) => ({
+        ...section,
+        questions: section.questions.map(applyQuestion),
+      })),
+    };
   }
 
   private computeFrequencyPeriod(rule: FrequencyRule, now: Date): string | null {

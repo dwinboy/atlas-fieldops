@@ -1,13 +1,20 @@
 from datetime import date
 from uuid import uuid4
 
+import pytest
 from pydantic import ValidationError
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.permissions import Permission, permissions_for_roles
-from app.models.operations import MonitoringIndicator
+from app.models.audit import AuditLog
+from app.models.base import Base
+from app.models.collection import Project
+from app.models.identity import Organization, User
+from app.models.operations import Beneficiary, MonitoringIndicator
 from app.schemas.collection import FormEntityControlSettings
 from app.schemas.operations import BeneficiaryCreate, CaseCreate, DataRouteCreate, DonorReportCreate, ExportJobCreate, ImportJobCreate, ImportPreviewRequest, IndicatorCreate, MediaEvidenceCreate, PublicCollectionLinkCreate
-from app.schemas.operations import EcosystemEdge, EcosystemNode, OperationalEventCreate, ProjectBudgetLineRead
+from app.schemas.operations import EcosystemEdge, EcosystemNode, EntityCategoryCreate, EntityRelationshipCreate, OperationalEventCreate, ProjectBudgetLineRead
 from app.services.operations import (
     OperationsService,
     asset_values_from_import_row,
@@ -348,3 +355,138 @@ def test_ecosystem_graph_describes_the_operational_chain() -> None:
     assert nodes[0].label == "Programs & Projects"
     assert edge.source == "projects"
     assert edge.target == "beneficiaries"
+
+
+@pytest.mark.asyncio
+async def test_entity_hierarchy_supports_category_parents_and_beneficiary_links() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        actor_user_id = uuid4()
+        project_id = uuid4()
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Hierarchy Org", slug="hierarchy-org"),
+                User(id=actor_user_id, email="hierarchy@example.org", full_name="Hierarchy Manager", password_hash="x"),
+                Project(id=project_id, organization_id=organization_id, name="Hierarchy Project", slug="hierarchy-project"),
+            ]
+        )
+        await session.flush()
+
+        service = OperationsService(session)
+        household_category = await service.create_entity_category(
+            organization_id,
+            actor_user_id,
+            EntityCategoryCreate(name="Household", project_id=project_id),
+        )
+        farmer_category = await service.create_entity_category(
+            organization_id,
+            actor_user_id,
+            EntityCategoryCreate(
+                name="Farmer",
+                project_id=project_id,
+                parent_category_id=household_category.id,
+            ),
+        )
+        assert farmer_category.parent_category_id == household_category.id
+
+        household = Beneficiary(
+            organization_id=organization_id,
+            project_id=project_id,
+            beneficiary_uid="HH-2026-000001",
+            beneficiary_type="Household",
+            display_name="Amina Household",
+        )
+        farmer = Beneficiary(
+            organization_id=organization_id,
+            project_id=project_id,
+            beneficiary_uid="FRM-2026-000001",
+            beneficiary_type="Farmer",
+            display_name="Amina Bello",
+        )
+        session.add_all([household, farmer])
+        await session.flush()
+
+        relationship = await service.create_entity_relationship(
+            organization_id,
+            farmer.id,
+            EntityRelationshipCreate(
+                related_beneficiary_id=household.id,
+                related_role="parent",
+                relationship_type="member_of",
+            ),
+            actor_user_id,
+        )
+        assert relationship.direction == "parent"
+        assert relationship.related_beneficiary.id == household.id
+
+        hierarchy = await service.get_entity_hierarchy(organization_id, farmer.id)
+        assert len(hierarchy.parents) == 1
+        assert hierarchy.parents[0].related_beneficiary.id == household.id
+        assert hierarchy.parents[0].relationship_type == "member_of"
+
+        audit_actions = [
+            item.action
+            for item in (
+                await session.execute(select(AuditLog).where(AuditLog.organization_id == organization_id))
+            ).scalars()
+        ]
+        assert "entity_category.created" in audit_actions
+        assert "entity_relationship.created" in audit_actions
+
+
+@pytest.mark.asyncio
+async def test_entity_relationships_reject_cross_project_links() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        actor_user_id = uuid4()
+        project_a = Project(id=uuid4(), organization_id=organization_id, name="Project A", slug="project-a")
+        project_b = Project(id=uuid4(), organization_id=organization_id, name="Project B", slug="project-b")
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Cross Project Org", slug="cross-project-org"),
+                User(id=actor_user_id, email="cross-project@example.org", full_name="Cross Project Manager", password_hash="x"),
+                project_a,
+                project_b,
+            ]
+        )
+        await session.flush()
+
+        left = Beneficiary(
+            organization_id=organization_id,
+            project_id=project_a.id,
+            beneficiary_uid="ENT-LEFT",
+            beneficiary_type="Store",
+            display_name="Store Left",
+        )
+        right = Beneficiary(
+            organization_id=organization_id,
+            project_id=project_b.id,
+            beneficiary_uid="ENT-RIGHT",
+            beneficiary_type="Store",
+            display_name="Store Right",
+        )
+        session.add_all([left, right])
+        await session.flush()
+
+        service = OperationsService(session)
+        with pytest.raises(ValueError, match="same project"):
+            await service.create_entity_relationship(
+                organization_id,
+                left.id,
+                EntityRelationshipCreate(
+                    related_beneficiary_id=right.id,
+                    related_role="parent",
+                    relationship_type="managed_by",
+                ),
+                actor_user_id,
+            )

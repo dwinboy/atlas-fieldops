@@ -22,6 +22,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Button, Card, EmptyState } from "@/components/ui";
 import { QuestionRenderer } from "@/components/QuestionRenderer";
 import { useAppContext } from "@/context/AppContext";
+import { describeEntityHierarchy, describeFormEntityWorkflow } from "@/entities/entityCategoryUtils";
 import { DataCollectionSessionService } from "@/forms/dataCollectionSession";
 import { FormValidationService } from "@/forms/formValidationService";
 import { LogicEngine } from "@/forms/logicEngine";
@@ -92,10 +93,24 @@ export default function FormFillScreen() {
     [currentSection],
   );
 
-  const entityName = useMemo(() => {
+  const selectedEntity = useMemo(() => {
     if (!draft?.entityId) return null;
-    return localDatabase.entities.list().find((e) => e.id === draft.entityId)?.name ?? null;
-  }, [draft]);
+    return localDatabase.entities.list().find((e) => e.id === draft.entityId) ?? null;
+  }, [draft, refreshKey]);
+
+  const entityName = selectedEntity?.name ?? null;
+
+  const entityHierarchy = useMemo(
+    () => (selectedEntity ? describeEntityHierarchy(selectedEntity, localDatabase.entities.list()) : null),
+    [refreshKey, selectedEntity],
+  );
+  const entityWorkflow = useMemo(
+    () =>
+      formVersion
+        ? describeFormEntityWorkflow(formVersion.entitySettings, localDatabase.entityCategories.list())
+        : null,
+    [formVersion, refreshKey],
+  );
 
   const assignment = useMemo(
     () => (draft?.assignmentId ? localDatabase.assignments.list().find((item) => item.id === draft.assignmentId) ?? null : null),
@@ -317,7 +332,17 @@ export default function FormFillScreen() {
     currentQuestions.some((q) => q.id === i.questionId),
   );
   const integrity = integrityService.evaluate(draft, formVersion, assignment);
-  const reviewSummary = buildReviewSummary(draft, formVersion, progress, allIssues, entityName, integrity);
+  const reviewSummary = buildReviewSummary(
+    draft,
+    formVersion,
+    progress,
+    allIssues,
+    entityName,
+    entityWorkflow,
+    integrity,
+    draft.linkedEntityIds.length,
+    entityHierarchy?.summary ?? null,
+  );
 
   if (reviewMode) {
     return (
@@ -461,6 +486,16 @@ export default function FormFillScreen() {
             <Text style={styles.headerSubtitle}>{entityName}</Text>
           </View>
         ) : null}
+        {entityHierarchy?.summary ? (
+          <Text style={styles.headerSubtitle}>Linked context: {entityHierarchy.summary}</Text>
+        ) : null}
+        {entityWorkflow ? (
+          <Text style={styles.headerSubtitle}>
+            {draft.entityId
+              ? `Linked ${entityWorkflow.label.toLowerCase()} selected for this submission.`
+              : entityWorkflow.helperText}
+          </Text>
+        ) : null}
 
         <Text style={styles.headerSubtitle}>Saved on this device {formatRelativeSave(draft.updatedAt)}</Text>
 
@@ -565,7 +600,10 @@ function buildReviewSummary(
   progress: { answered: number; total: number; percent: number },
   issues: FormValidationIssue[],
   entityName: string | null,
+  entityWorkflow: ReturnType<typeof describeFormEntityWorkflow> | null,
   integrity: MobileCollectionIntegrity,
+  linkedEntityCount: number,
+  entityHierarchySummary: string | null,
 ) {
   const responses = new Map(draft.responses.map((response) => [response.questionId, response.value]));
   const questions = formVersion.sections.flatMap((section) => section.questions);
@@ -589,8 +627,30 @@ function buildReviewSummary(
       },
       {
         label: "Entity link",
-        value: entityName ?? (formVersion.entitySettings.requiresExistingEntity ? "Missing required entity" : "Not required"),
-        tone: formVersion.entitySettings.requiresExistingEntity && !entityName ? "bad" as const : "ok" as const,
+        value: entityName
+          ? entityName
+          : entityWorkflow?.needsEntityPicker && !entityWorkflow.allowsCreateWithoutSelection
+            ? `Missing required ${entityWorkflow.label.toLowerCase()}`
+            : entityWorkflow?.allowsCreateWithoutSelection
+              ? entityWorkflow.needsEntityPicker
+                ? `No existing ${entityWorkflow.label.toLowerCase()} selected — new record will be created`
+                : `New ${entityWorkflow.label.toLowerCase()} record will be created from this submission`
+              : "No tracked record required",
+        tone:
+          entityWorkflow?.needsEntityPicker && !entityWorkflow.allowsCreateWithoutSelection && !entityName
+            ? "bad" as const
+            : entityName
+              ? "ok" as const
+              : "neutral" as const,
+      },
+      {
+        label: "Linked context",
+        value: entityHierarchySummary
+          ? entityHierarchySummary
+          : linkedEntityCount > 0
+            ? `${linkedEntityCount} related record(s)`
+            : "None",
+        tone: "neutral" as const,
       },
       {
         label: "Completion",

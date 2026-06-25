@@ -578,6 +578,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [activeSection, setActiveSection] = useState<MappingSection>(() => sectionFromPath(pathname));
+  const [layerUploadRequestKey, setLayerUploadRequestKey] = useState(0);
   const [basemap, setBasemap] = useState<MapBasemap>("Light");
   const [selectedFeature, setSelectedFeature] = useState<MapFeatureRecord | null>(null);
   const [mapResult, setMapResult] = useState("");
@@ -1251,7 +1252,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
 
   return (
     <section className="space-y-3">
-      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="module-header rounded-xl p-3.5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
@@ -1271,7 +1272,13 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => setActiveSection("layers")} variant="primary">
+            <Button
+              onClick={() => {
+                setActiveSection("layers");
+                setLayerUploadRequestKey((current) => current + 1);
+              }}
+              variant="primary"
+            >
               <Upload aria-hidden="true" />
               Upload layer
             </Button>
@@ -1393,6 +1400,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
             selectedFeature={selectedFeature}
             setActiveSection={setActiveSection}
             spatialIssues={spatialIssues}
+            layerUploadRequestKey={layerUploadRequestKey}
           />
         </>
       ) : (
@@ -2320,6 +2328,7 @@ function SectionContent({
   selectedFeature,
   setActiveSection,
   spatialIssues,
+  layerUploadRequestKey,
 }: {
   activeSection: MappingSection;
   boundaries: BoundaryRecord[];
@@ -2342,8 +2351,19 @@ function SectionContent({
   selectedFeature: MapFeatureRecord | null;
   setActiveSection: (section: MappingSection) => void;
   spatialIssues: SpatialQualityIssue[];
+  layerUploadRequestKey: number;
 }) {
-  if (activeSection === "layers") return <LayersTable features={mapFeatures} layers={mapLayers} onFeatureSelect={onFeatureSelect} privacyVisibility={privacyVisibility} />;
+  if (activeSection === "layers") {
+    return (
+      <LayersTable
+        features={mapFeatures}
+        layers={mapLayers}
+        onFeatureSelect={onFeatureSelect}
+        privacyVisibility={privacyVisibility}
+        uploadRequestKey={layerUploadRequestKey}
+      />
+    );
+  }
   if (activeSection === "boundaries") {
     return (
       <BoundariesTable
@@ -2379,17 +2399,16 @@ function SectionContent({
 
   return (
     <section className="space-y-4">
-      <SectionHeader
-        action={
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={() => setActiveSection("layers")} variant="secondary"><Layers aria-hidden="true" /> Manage layers</Button>
-            <Button onClick={() => setActiveSection("boundaries")} variant="secondary"><Map aria-hidden="true" /> Boundaries</Button>
-          </div>
-        }
-        route={sectionInfo.route}
-        title={sectionInfo.label}
-        description={sectionInfo.description}
-      />
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button onClick={() => setActiveSection("layers")} variant="secondary">
+          <Layers aria-hidden="true" />
+          Manage layers
+        </Button>
+        <Button onClick={() => setActiveSection("boundaries")} variant="secondary">
+          <Map aria-hidden="true" />
+          Boundaries
+        </Button>
+      </div>
       {selectedFeature?.sensitive ? (
         <section className="rounded-2xl border border-warning/30 bg-warning/10 p-4">
           <p className="text-sm font-semibold">Privacy control applied</p>
@@ -2487,14 +2506,17 @@ function LayersTable({
   layers,
   onFeatureSelect,
   privacyVisibility,
+  uploadRequestKey,
 }: {
   features: MapFeatureRecord[];
   layers: MapLayerRecord[];
   onFeatureSelect: (feature: MapFeatureRecord) => void;
   privacyVisibility: LayerVisibility;
+  uploadRequestKey: number;
 }) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const lastUploadRequestRef = useRef(0);
   const [metadataLayer, setMetadataLayer] = useState<MapLayerRecord | null>(null);
   const [sourceLayer, setSourceLayer] = useState<MapLayerRecord | null>(null);
   const [uploadedLayers, setUploadedLayers] = useState<MapLayerRecord[]>([]);
@@ -2517,6 +2539,11 @@ function LayersTable({
     });
     event.target.value = "";
   }
+  useEffect(() => {
+    if (uploadRequestKey <= lastUploadRequestRef.current) return;
+    lastUploadRequestRef.current = uploadRequestKey;
+    uploadInputRef.current?.click();
+  }, [uploadRequestKey]);
   const columns: TableColumn<MapLayerRecord>[] = [
     { key: "name", header: "Layer", value: (row) => row.name, render: (row) => <span className="font-medium">{row.name}</span> },
     { key: "type", header: "Type", value: (row) => row.type, render: (row) => row.type },

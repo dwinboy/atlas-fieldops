@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
   ArrowLeft,
+  ArrowRight,
   BarChart3,
   CheckCircle2,
   ClipboardCheck,
@@ -11,13 +12,18 @@ import {
   Copy,
   Database,
   Download,
+  Eraser,
   FileStack,
   Gauge,
   GitBranch,
   History,
   Languages,
+  LayoutGrid,
   Link2,
+  List,
+  Maximize2,
   MapPinned,
+  Minimize2,
   Pencil,
   Plus,
   Save,
@@ -25,6 +31,8 @@ import {
   SlidersHorizontal,
   Smartphone,
   Table2,
+  Redo2,
+  Undo2,
   UploadCloud,
   Workflow,
   X,
@@ -33,6 +41,7 @@ import {
 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { KeyboardEvent, ReactNode, RefCallback } from "react";
+import { useContextualBack } from "@/hooks/useContextualBack";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
@@ -40,8 +49,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
 import type { BeneficiaryRead, CurrentPrincipal, DataFormSchemaRead, SubmissionRead } from "@/lib/api";
-import { ApiError, archiveForm, confirmImportedFormDataRows, getFormSchema, governExport, importFormDataRows, listBeneficiaries, listForms, listFormTemplates, listProjects, listSubmissions, restoreForm, returnImportedFormDataRows, updateForm, updateSubmissionResponses } from "@/lib/api";
+import { ApiError, archiveForm, bulkUpdateImportCleaningRows, confirmImportedFormDataRows, getFormSchema, governExport, importFormDataRows, listBeneficiaries, listForms, listFormTemplates, listProjects, listSubmissions, restoreForm, returnImportedFormDataRows, updateForm, updateSubmissionResponses } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { fieldOperationsAssignmentRoute } from "@/modules/field-operations/data";
 import { FormCreationWorkspace, readSpreadsheetRows } from "@/modules/forms/FormCreationWorkspace";
@@ -210,6 +220,47 @@ type FormGridQuestion = {
   section: string;
 };
 
+type CleaningRowDraft = {
+  cellNotes: Record<string, string>;
+  reason: string;
+  updatedAt: string;
+  values: Record<string, string>;
+};
+
+type CleaningDraftSnapshot = {
+  cellNotes: Record<string, string>;
+  reason: string;
+  values: Record<string, string>;
+};
+
+type PendingUploadReview = {
+  advancedMatchedQuestions: string[];
+  blankHeaderCount: number;
+  blockingProblems: string[];
+  dataRowCount: number;
+  duplicateHeaders: string[];
+  fileName: string;
+  headers: string[];
+  matchedColumns: Array<{ header: string; question: FormGridQuestion }>;
+  missingRequiredQuestions: FormGridQuestion[];
+  rowObjects: Record<string, string>[];
+  rowsWithIssues: number;
+  rowsWithInvalid: number;
+  rowsWithMissing: number;
+  sampleIssues: string[];
+  unmatchedColumns: string[];
+};
+
+type ImportConfirmationSummary = {
+  approvedRows: number;
+  createdEntities: number;
+  linkedEntities: number;
+  profileConflictRows: number;
+  reconciliationRows: number;
+  rowsNeedingFollowUp: number;
+  skippedRows: number;
+};
+
 const IMPORT_SOURCE_SYSTEMS = new Set([
   "form spreadsheet upload",
   "uploaded",
@@ -237,6 +288,120 @@ export function submissionSourceLabel(submission: SubmissionRead | SubmissionRec
   }
   if ((submission.source_system ?? "").toLowerCase() === "web entry") return "Web Entry";
   return "Field Submitted";
+}
+
+function normalizeImportHeader(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function asObjectRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function beneficiaryProcessingForSubmission(
+  submission: SubmissionRead | SubmissionRecord,
+): Record<string, unknown> | null {
+  return asObjectRecord(submission.payload_json?._beneficiary_processing);
+}
+
+function summarizeImportConfirmation(
+  submissions: (SubmissionRead | SubmissionRecord)[],
+  skippedRows: number,
+): ImportConfirmationSummary {
+  return submissions.reduce<ImportConfirmationSummary>(
+    (summary, submission) => {
+      const processing = beneficiaryProcessingForSubmission(submission);
+      summary.approvedRows += 1;
+      if (!processing) return summary;
+      if (String(processing.action ?? "") === "created") summary.createdEntities += 1;
+      if (String(processing.action ?? "") === "linked") summary.linkedEntities += 1;
+      if (String(processing.status ?? "") === "reconciliation_required") {
+        summary.reconciliationRows += 1;
+      }
+      if (Number(processing.profile_update_proposals ?? 0) > 0) {
+        summary.profileConflictRows += 1;
+      }
+      if (
+        String(processing.status ?? "") === "reconciliation_required" ||
+        Number(processing.profile_update_proposals ?? 0) > 0
+      ) {
+        summary.rowsNeedingFollowUp += 1;
+      }
+      return summary;
+    },
+    {
+      approvedRows: 0,
+      createdEntities: 0,
+      linkedEntities: 0,
+      profileConflictRows: 0,
+      reconciliationRows: 0,
+      rowsNeedingFollowUp: 0,
+      skippedRows,
+    },
+  );
+}
+
+function importConfirmationSummaryMessage(summary: ImportConfirmationSummary): string {
+  const parts = [`${summary.approvedRows} row(s) are now approved.`];
+  if (summary.createdEntities > 0) {
+    parts.push(`${summary.createdEntities} created new entity record(s).`);
+  }
+  if (summary.linkedEntities > 0) {
+    parts.push(`${summary.linkedEntities} matched existing entity record(s).`);
+  }
+  if (summary.profileConflictRows > 0) {
+    parts.push(
+      `${summary.profileConflictRows} approved row(s) proposed profile changes that still need manager review.`,
+    );
+  }
+  if (summary.reconciliationRows > 0) {
+    parts.push(
+      `${summary.reconciliationRows} approved row(s) still need reconciliation before entity records are fully trusted.`,
+    );
+  } else {
+    parts.push("The approved data is ready for dashboards, reports, and official analysis.");
+  }
+  if (summary.skippedRows > 0) {
+    parts.push(`${summary.skippedRows} row(s) still need cleaning.`);
+  }
+  return parts.join(" ");
+}
+
+function buildImportQuestionLookup(
+  questions: FormGridQuestion[],
+): Map<string, FormGridQuestion> {
+  const lookup = new Map<string, FormGridQuestion>();
+  for (const question of questions) {
+    const aliases = [question.key, question.label]
+      .map((value) => normalizeImportHeader(value))
+      .filter(Boolean);
+    for (const alias of aliases) {
+      if (!lookup.has(alias)) lookup.set(alias, question);
+    }
+  }
+  return lookup;
+}
+
+function isSpreadsheetAdvancedQuestionType(question: FormGridQuestion): boolean {
+  return [
+    "repeat_group",
+    "repeatable_group",
+    "matrix_single",
+    "matrix_multi",
+    "grid",
+    "gps",
+    "geopoint",
+    "location",
+    "signature",
+    "photo",
+    "file",
+  ].includes(question.type);
 }
 
 function submissionActorLabel(submission: SubmissionRead | SubmissionRecord): string {
@@ -278,6 +443,69 @@ function beneficiaryCodeMap(
   return map;
 }
 
+type BeneficiaryExplorerDetails = {
+  categoryTrail: string | null;
+  code: string;
+  location: string | null;
+  type: string | null;
+};
+
+function beneficiaryDetailsMap(
+  beneficiaries: BeneficiaryRead[] | null | undefined,
+  preview: boolean,
+): Map<string, BeneficiaryExplorerDetails> {
+  const map = new Map<string, BeneficiaryExplorerDetails>();
+  if (preview) {
+    for (const entity of previewEntities) {
+      const categoryTrail =
+        (typeof entity.profileJson?.entityCategoryPath === "string" && entity.profileJson.entityCategoryPath.trim()
+          ? entity.profileJson.entityCategoryPath
+          : null)
+        ?? (typeof entity.profileJson?.entityCategoryName === "string" && entity.profileJson.entityCategoryName.trim()
+          ? entity.profileJson.entityCategoryName
+          : null)
+        ?? entity.entityType;
+      const location = [entity.community, entity.district, entity.region]
+        .filter(Boolean)
+        .join(" · ");
+      map.set(entity.id, {
+        categoryTrail,
+        code: entity.entityId,
+        location: location || null,
+        type: entity.entityType,
+      });
+    }
+    return map;
+  }
+  for (const beneficiary of beneficiaries ?? []) {
+    const profile = beneficiary.profile_json ?? {};
+    const categoryTrail =
+      (typeof profile.entityCategoryPath === "string" && profile.entityCategoryPath.trim()
+        ? profile.entityCategoryPath
+        : null)
+      ?? (typeof profile.entity_category_path === "string" && profile.entity_category_path.trim()
+        ? profile.entity_category_path
+        : null)
+      ?? (typeof profile.entityCategoryName === "string" && profile.entityCategoryName.trim()
+        ? profile.entityCategoryName
+        : null)
+      ?? (typeof profile.entity_category_name === "string" && profile.entity_category_name.trim()
+        ? profile.entity_category_name
+        : null)
+      ?? beneficiary.beneficiary_type;
+    const location = [beneficiary.community, beneficiary.district, beneficiary.region]
+      .filter(Boolean)
+      .join(" · ");
+    map.set(beneficiary.id, {
+      categoryTrail,
+      code: beneficiary.beneficiary_uid,
+      location: location || null,
+      type: beneficiary.beneficiary_type,
+    });
+  }
+  return map;
+}
+
 function submissionEntityCode(
   submission: SubmissionRead | SubmissionRecord,
   beneficiaryCodes: Map<string, string>,
@@ -295,13 +523,62 @@ function submissionEntityCode(
   return beneficiaryCodes.get(submission.entity_id) ?? (processedCode || submission.entity_id);
 }
 
+function submissionEntityContext(
+  submission: SubmissionRead | SubmissionRecord,
+  beneficiaryDetails: Map<string, BeneficiaryExplorerDetails>,
+): string[] {
+  if (!submission.entity_id) {
+    return submission.entity_type ? [submission.entity_type] : [];
+  }
+  const detail = beneficiaryDetails.get(submission.entity_id);
+  return [
+    detail?.categoryTrail ?? submission.entity_type ?? detail?.type ?? null,
+    detail?.location ?? null,
+  ].filter((value): value is string => Boolean(value && value.trim()));
+}
+
+function humanizeEntityLinkType(value: string): string {
+  return value
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function linkedBeneficiaryDescriptor(
+  link: NonNullable<SubmissionRead["linked_beneficiaries"]>[number],
+  detail: "compact" | "full" = "compact",
+): string {
+  const role = humanizeEntityLinkType(link.link_type);
+  const codeAndName =
+    detail === "full"
+      ? `${link.beneficiary_uid} ${link.display_name}`.trim()
+      : `${link.beneficiary_uid} ${link.display_name}`.trim();
+  const sourceField =
+    detail === "full" && link.source_field
+      ? ` · from ${link.source_field}`
+      : "";
+  if (role.toLowerCase() === "participant") {
+    return `${codeAndName}${sourceField}`;
+  }
+  return `${role}: ${codeAndName}${sourceField}`;
+}
+
 function linkedBeneficiaryLabel(submission: SubmissionRead | SubmissionRecord): string {
   const links = submission.linked_beneficiaries ?? [];
   const participantLinks = links.filter((link) => link.link_type !== "primary");
   if (!participantLinks.length) return "None";
-  const shown = participantLinks.slice(0, 3).map((link) => link.beneficiary_uid);
+  const shown = participantLinks.slice(0, 2).map((link) => linkedBeneficiaryDescriptor(link));
   const remaining = participantLinks.length - shown.length;
   return remaining > 0 ? `${shown.join(", ")} +${remaining}` : shown.join(", ");
+}
+
+function linkedBeneficiaryTitle(submission: SubmissionRead | SubmissionRecord): string {
+  const links = submission.linked_beneficiaries ?? [];
+  const participantLinks = links.filter((link) => link.link_type !== "primary");
+  if (!participantLinks.length) return "No related records linked";
+  return participantLinks
+    .map((link) => linkedBeneficiaryDescriptor(link, "full"))
+    .join(", ");
 }
 
 function submissionAnswerMap(submission: SubmissionRead | SubmissionRecord): Record<string, unknown> {
@@ -901,6 +1178,32 @@ function stagedImportIssueBreakdown(
   return { invalidOption, missing };
 }
 
+function qualityFlagDetails(submission: SubmissionRead | SubmissionRecord): string[] {
+  const details = new Set<string>();
+  rowQualityWarnings(submission).forEach((warning) => {
+    if (warning.trim()) details.add(warning);
+  });
+  const validationIssues = submission.payload_json?._validation_issues;
+  if (Array.isArray(validationIssues)) {
+    validationIssues.forEach((issue) => {
+      const message = String(issue ?? "").trim();
+      if (message) details.add(message);
+    });
+  }
+  const importIssues = submission.payload_json?._import_issues;
+  if (Array.isArray(importIssues)) {
+    importIssues.forEach((issue) => {
+      if (!issue || typeof issue !== "object") return;
+      const message =
+        "message" in issue && typeof issue.message === "string"
+          ? issue.message.trim()
+          : "";
+      if (message) details.add(message);
+    });
+  }
+  return Array.from(details);
+}
+
 function stagedImportActionLabel(
   submission: SubmissionRead | SubmissionRecord,
 ): string {
@@ -1007,6 +1310,35 @@ function canCleanImportedSubmission(submission: SubmissionRead | SubmissionRecor
   return isImportedSubmission(submission) && ["import_staged", "under_review"].includes(submission.status);
 }
 
+function stagedRowState(
+  issueCount: number,
+  hasLocalDraft: boolean,
+): {
+  detail: string;
+  label: string;
+  tone: "accent" | "success" | "warning";
+} {
+  if (issueCount > 0) {
+    return {
+      detail: "Fix flagged cells before confirming.",
+      label: "Blocked",
+      tone: "warning",
+    };
+  }
+  if (hasLocalDraft) {
+    return {
+      detail: "Saved in browser only. Confirm when ready.",
+      label: "Saved locally",
+      tone: "accent",
+    };
+  }
+  return {
+    detail: "Clean and ready to move into approved data.",
+    label: "Ready",
+    tone: "success",
+  };
+}
+
 function nextStagedSubmissionId(
   stagedImportRows: (SubmissionRead | SubmissionRecord)[],
   currentSubmissionId: string,
@@ -1076,6 +1408,196 @@ function editingValuesForSubmission(
   );
 }
 
+function cleaningDraftStorageKey(formId: string): string {
+  return `atlas-fieldops-cleaning-drafts:${formId}`;
+}
+
+function buildCleaningDraft(
+  questions: FormGridQuestion[],
+  submission: SubmissionRead | SubmissionRecord,
+  existing?: Partial<CleaningRowDraft>,
+): CleaningRowDraft {
+  return {
+    cellNotes: existing?.cellNotes ?? {},
+    reason: existing?.reason ?? "",
+    updatedAt: existing?.updatedAt ?? new Date().toISOString(),
+    values: existing?.values ?? editingValuesForSubmission(questions, submission),
+  };
+}
+
+function parsedAnswersFromDraft(
+  questions: FormGridQuestion[],
+  submission: SubmissionRead | SubmissionRecord,
+  draft: CleaningRowDraft | null | undefined,
+): Record<string, unknown> {
+  const answers = submissionAnswerMap(submission);
+  if (!draft) return answers;
+  return Object.fromEntries(
+    questions.map((question) => [
+      question.key,
+      parseEditedQuestionValue(
+        question,
+        draft.values[question.key] ??
+          responseValueToEditorInput(answers[question.key]),
+      ),
+    ]),
+  );
+}
+
+function draftIssuesForSubmission(
+  questions: FormGridQuestion[],
+  submission: SubmissionRead | SubmissionRecord,
+  draft: CleaningRowDraft | null | undefined,
+): Record<string, unknown>[] {
+  if (!draft) {
+    const importIssues = submission.payload_json?._import_issues;
+    return Array.isArray(importIssues)
+      ? importIssues.filter(
+          (issue): issue is Record<string, unknown> =>
+            Boolean(issue) && typeof issue === "object",
+        )
+      : [];
+  }
+  return buildPreviewImportIssues(
+    questions,
+    parsedAnswersFromDraft(questions, submission, draft),
+  );
+}
+
+function issueBreakdownFromList(
+  issues: Record<string, unknown>[],
+): { invalidOption: number; missing: number } {
+  let missing = 0;
+  let invalidOption = 0;
+  issues.forEach((issue) => {
+    const issueType =
+      issue && typeof issue === "object" && "issue_type" in issue
+        ? String(issue.issue_type ?? "")
+        : "";
+    if (issueType === "missing_column" || issueType === "missing_value") {
+      missing += 1;
+    }
+    if (issueType === "invalid_option") {
+      invalidOption += 1;
+    }
+  });
+  return { invalidOption, missing };
+}
+
+function issuesForQuestionFromList(
+  issues: Record<string, unknown>[],
+  question: FormGridQuestion,
+): string[] {
+  const messages = new Set<string>();
+  issues.forEach((issue) => {
+    if (!issue || typeof issue !== "object") return;
+    const fieldName =
+      "field_name" in issue && typeof issue.field_name === "string"
+        ? issue.field_name
+        : "variable_name" in issue && typeof issue.variable_name === "string"
+          ? issue.variable_name
+          : null;
+    const questionLabel =
+      "question_label" in issue && typeof issue.question_label === "string"
+        ? issue.question_label
+        : null;
+    if (fieldName !== question.key && questionLabel !== question.label) return;
+    const message =
+      "message" in issue && typeof issue.message === "string"
+        ? issue.message
+        : `${question.label} needs attention.`;
+    const issueTypeLabel = importIssueTypeLabel(
+      "issue_type" in issue ? issue.issue_type : null,
+    );
+    messages.add(
+      issueTypeLabel === "Issue" ? message : `${issueTypeLabel}: ${message}`,
+    );
+  });
+  return Array.from(messages);
+}
+
+function issueFieldLabelsFromList(issues: Record<string, unknown>[]): string[] {
+  const labels = new Set<string>();
+  issues.forEach((issue) => {
+    if (!issue || typeof issue !== "object") return;
+    const label =
+      "question_label" in issue && typeof issue.question_label === "string"
+        ? issue.question_label
+        : "field_name" in issue && typeof issue.field_name === "string"
+          ? issue.field_name
+          : "variable_name" in issue && typeof issue.variable_name === "string"
+            ? issue.variable_name
+            : null;
+    if (label) labels.add(label);
+  });
+  return Array.from(labels);
+}
+
+function firstIssueFieldKeyFromIssues(
+  issues: Record<string, unknown>[],
+): string | null {
+  for (const issue of issues) {
+    if (!issue || typeof issue !== "object") continue;
+    const fieldKey =
+      "field_name" in issue && typeof issue.field_name === "string"
+        ? issue.field_name
+        : "variable_name" in issue && typeof issue.variable_name === "string"
+          ? issue.variable_name
+          : null;
+    if (fieldKey) return fieldKey;
+  }
+  return null;
+}
+
+function validationHintForQuestion(question: FormGridQuestion): string | null {
+  const options = parseQuestionOptions(question);
+  if (options.length) {
+    return `Allowed values: ${options
+      .slice(0, 4)
+      .map((option) => option.label)
+      .join(", ")}${options.length > 4 ? ` + ${options.length - 4} more` : ""}`;
+  }
+  if (question.type === "date") return "Expected format: YYYY-MM-DD";
+  if (["datetime", "date_time", "datetime_local"].includes(question.type)) {
+    return "Expected format: YYYY-MM-DDThh:mm";
+  }
+  if (question.type === "time") return "Expected format: hh:mm";
+  if (["number", "decimal", "currency", "rating", "nps", "integer", "percentage"].includes(question.type)) {
+    return "Expected format: numeric value only";
+  }
+  if (["checkbox", "boolean", "consent"].includes(question.type)) {
+    return "Expected values: Yes / True or No / False";
+  }
+  if (["multiselect", "multi_select", "ranking"].includes(question.type)) {
+    return "Use a comma-separated list or JSON array";
+  }
+  return null;
+}
+
+function changedFieldsForDraft(
+  questions: FormGridQuestion[],
+  submission: SubmissionRead | SubmissionRecord,
+  draft: CleaningRowDraft | null | undefined,
+): { from: string; key: string; label: string; to: string }[] {
+  if (!draft) return [];
+  const originalValues = editingValuesForSubmission(questions, submission);
+  return questions
+    .filter((question) => (draft.values[question.key] ?? originalValues[question.key]) !== originalValues[question.key])
+    .map((question) => ({
+      from: compactValuePreview(originalValues[question.key] ?? ""),
+      key: question.key,
+      label: question.label,
+      to: compactValuePreview(draft.values[question.key] ?? ""),
+    }));
+}
+
+function parseClipboardGrid(text: string): string[][] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.split("\t"))
+    .filter((row) => row.some((value) => value.trim().length > 0));
+}
+
 function previewSubmissionFormId(submission: SubmissionRecord): string {
   const formName = submission.form_name.toLowerCase();
   if (submission.form_id.includes("farmer") || formName.includes("farmer")) {
@@ -1100,6 +1622,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
   const [creationOpen, setCreationOpen] = useState(false);
   const [builderFormId, setBuilderFormId] = useState<string | null>(null);
   const [duplicateSourceFormId, setDuplicateSourceFormId] = useState<string | null>(null);
+  const [formsViewMode, setFormsViewMode] = useState<"grid" | "list">("grid");
   const localForms = useWorkspaceStore((state) => state.localForms);
   const localSubmissions = useWorkspaceStore((state) => state.localSubmissions);
   const setPendingTemplateId = useWorkspaceStore((state) => state.setPendingTemplateId);
@@ -1160,6 +1683,10 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
   );
   const linkedBeneficiaryCodes = useMemo(
     () => beneficiaryCodeMap(beneficiariesQuery.data, preview),
+    [beneficiariesQuery.data, preview],
+  );
+  const linkedBeneficiaryDetails = useMemo(
+    () => beneficiaryDetailsMap(beneficiariesQuery.data, preview),
     [beneficiariesQuery.data, preview],
   );
   const formStats = useMemo(() => buildFormStats(formSubmissions), [formSubmissions]);
@@ -1243,6 +1770,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
   const dataRouteMatch = pathname?.match(/^\/forms\/([^/]+)\/data\/?$/);
   const dataFormId = dataRouteMatch?.[1] ? decodeURIComponent(dataRouteMatch[1]) : null;
   const dataForm = dataFormId ? forms.find((form) => form.id === dataFormId) ?? null : null;
+  useContextualBack(Boolean(selectedFormId || creationOpen || dataFormId));
 
   useEffect(() => {
     if (!isCreateRoute) {
@@ -1443,6 +1971,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
       <FormDataGridWorkspace
         canExport={hasAnyPermission(principal, ["submissions.export", "reports.export", "forms.manage"])}
         beneficiaryCodes={linkedBeneficiaryCodes}
+        beneficiaryDetails={linkedBeneficiaryDetails}
         form={dataForm}
         formId={dataFormId}
         onBack={() => router.push("/forms/all")}
@@ -1455,7 +1984,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
 
   return (
     <section className="space-y-3">
-      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="module-header rounded-xl p-3.5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
@@ -1570,8 +2099,15 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
       {!selectedForm &&
       ["all", "draft", "published", "archived"].includes(activeSection) ? (
         <section className="space-y-4">
-          <FormFilters filters={formFilters} forms={visibleForms} onChange={setFormFilters} />
-          {activeSection === "all" ? (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 flex-1">
+              <FormFilters filters={formFilters} forms={visibleForms} onChange={setFormFilters} />
+            </div>
+            {activeSection !== "all" ? (
+              <FormsViewToggle mode={formsViewMode} onChange={setFormsViewMode} />
+            ) : null}
+          </div>
+          {activeSection === "all" || formsViewMode === "list" ? (
             <DataTable
               columns={columns}
               emptyAction={
@@ -1981,6 +2517,49 @@ function FormsGovernanceDashboard({
   );
 }
 
+function FormsViewToggle({
+  mode,
+  onChange,
+}: {
+  mode: "grid" | "list";
+  onChange: (mode: "grid" | "list") => void;
+}) {
+  const options: { id: "grid" | "list"; label: string; icon: LucideIcon }[] = [
+    { id: "grid", label: "Grid", icon: LayoutGrid },
+    { id: "list", label: "List", icon: List },
+  ];
+  return (
+    <div
+      aria-label="Choose form view"
+      className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border bg-muted/40 p-0.5"
+      role="group"
+    >
+      {options.map((option) => {
+        const Icon = option.icon;
+        const active = mode === option.id;
+        return (
+          <button
+            aria-pressed={active}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition",
+              active
+                ? "bg-panel text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+            key={option.id}
+            onClick={() => onChange(option.id)}
+            title={`${option.label} view`}
+            type="button"
+          >
+            <Icon aria-hidden="true" size={14} />
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function FormStatusCards({
   canAssignForms,
   canManageForms,
@@ -2369,6 +2948,7 @@ function DataDictionaryPanel({ onExport, questions }: { onExport: () => void; qu
 function FormDataGridWorkspace({
   canExport,
   beneficiaryCodes,
+  beneficiaryDetails,
   form,
   formId,
   onBack,
@@ -2378,6 +2958,7 @@ function FormDataGridWorkspace({
 }: {
   canExport: boolean;
   beneficiaryCodes: Map<string, string>;
+  beneficiaryDetails: Map<string, BeneficiaryExplorerDetails>;
   form: FormListItem | null;
   formId: string;
   onBack: () => void;
@@ -2391,8 +2972,12 @@ function FormDataGridWorkspace({
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status") ?? "all");
   const [sourceFilter, setSourceFilter] = useState(searchParams.get("source") ?? "all");
   const [stagedQueueFilter, setStagedQueueFilter] = useState<
-    "all" | "needs_cleaning" | "ready_to_confirm"
+    "all" | "needs_cleaning" | "ready_to_confirm" | "drafts"
   >("all");
+  const [pendingUploadReview, setPendingUploadReview] = useState<PendingUploadReview | null>(null);
+  const [importConfirmationSummary, setImportConfirmationSummary] =
+    useState<ImportConfirmationSummary | null>(null);
+  const [recentlyConfirmedSubmissionIds, setRecentlyConfirmedSubmissionIds] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [confirmingImports, setConfirmingImports] = useState(false);
   const [confirmingSubmissionId, setConfirmingSubmissionId] = useState<string | null>(null);
@@ -2403,6 +2988,28 @@ function FormDataGridWorkspace({
   const [pendingNextSubmissionId, setPendingNextSubmissionId] = useState<string | null>(null);
   const [editingReason, setEditingReason] = useState("");
   const [editingValues, setEditingValues] = useState<Record<string, string>>({});
+  const [editingCellNotes, setEditingCellNotes] = useState<Record<string, string>>({});
+  const [selectedSubmissionIds, setSelectedSubmissionIds] = useState<string[]>([]);
+  const [qualityFlagsSubmissionId, setQualityFlagsSubmissionId] = useState<string | null>(null);
+  const [replaceFindValue, setReplaceFindValue] = useState("");
+  const [replaceWithValue, setReplaceWithValue] = useState("");
+  const [cleaningFullscreen, setCleaningFullscreen] = useState(false);
+  const [cleaningLayout, setCleaningLayout] = useState<"spreadsheet" | "detail">("spreadsheet");
+  const [quickOpenPreset, setQuickOpenPreset] = useState<
+    "blocked" | "drafts" | "invalid" | "missing" | "notes" | "ready"
+  >("blocked");
+  const [selectionPreset, setSelectionPreset] = useState<
+    "blocked" | "drafts" | "invalid" | "issues" | "missing" | "notes" | "ready"
+  >("issues");
+  const [cleaningDrafts, setCleaningDrafts] = useState<Record<string, CleaningRowDraft>>({});
+  const [restoredCleaningDraftCount, setRestoredCleaningDraftCount] = useState(0);
+  const [undoStack, setUndoStack] = useState<CleaningDraftSnapshot[]>([]);
+  const [redoStack, setRedoStack] = useState<CleaningDraftSnapshot[]>([]);
+  const [bulkApplying, setBulkApplying] = useState(false);
+  const [pendingReopenCell, setPendingReopenCell] = useState<{
+    cellKey: string | null;
+    submissionId: string;
+  } | null>(null);
   const editingCellRefs = useRef<Record<string, HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const queryClient = useQueryClient();
@@ -2434,11 +3041,13 @@ function FormDataGridWorkspace({
       }),
     onSuccess: async (updatedSubmission, variables) => {
       await queryClient.invalidateQueries({ queryKey: ["forms-module", "submissions", token] });
+      clearDraftForSubmission(variables.submissionId);
       if (variables.keepEditing) {
         setPendingNextSubmissionId(null);
         openSubmissionForEditing(
           updatedSubmission,
           variables.preferredCellKey ?? undefined,
+          { ignoreStoredDraft: true },
         );
       } else {
         cancelRowEdit({ force: true, keepPendingNext: true });
@@ -2491,6 +3100,7 @@ function FormDataGridWorkspace({
         submission.status,
         entityCode,
         linkedBeneficiaryLabel(submission),
+        linkedBeneficiaryTitle(submission),
         ...Object.values(submissionAnswerMap(submission)).map(formatCell),
       ].join(" ").toLowerCase().includes(term);
     });
@@ -2500,19 +3110,39 @@ function FormDataGridWorkspace({
       baseFilteredSubmissions.filter((submission) => {
         if (stagedQueueFilter === "all") return true;
         if (!canCleanImportedSubmission(submission)) return true;
+        if (stagedQueueFilter === "drafts") {
+          return Boolean(cleaningDrafts[submission.id]);
+        }
         const hasIssues = importBlockingIssues(submission).length > 0;
         return stagedQueueFilter === "needs_cleaning" ? hasIssues : !hasIssues;
       }),
-    [baseFilteredSubmissions, stagedQueueFilter],
+    [baseFilteredSubmissions, cleaningDrafts, stagedQueueFilter],
   );
   const visibleStagedImportRows = baseFilteredSubmissions.filter(canCleanImportedSubmission);
   const stagedImportRows = filteredSubmissions.filter(canCleanImportedSubmission);
+  const draftedVisibleImportRows = visibleStagedImportRows.filter(
+    (submission) => Boolean(cleaningDrafts[submission.id]),
+  );
+  const notedVisibleImportRows = visibleStagedImportRows.filter((submission) =>
+    Object.values(cleaningDrafts[submission.id]?.cellNotes ?? {}).some(
+      (note) => note.trim().length > 0,
+    ),
+  );
+  const draftedVisibleImportRowCount = draftedVisibleImportRows.length;
+  const notedVisibleImportRowCount = notedVisibleImportRows.length;
   const confirmableImportRows = stagedImportRows.filter((submission) => !importBlockingIssues(submission).length);
   const stagedRowsNeedingCleaning = visibleStagedImportRows.filter(
     (submission) => importBlockingIssues(submission).length > 0,
   ).length;
   const stagedRowsReadyToConfirm =
     visibleStagedImportRows.length - stagedRowsNeedingCleaning;
+  const recentlyConfirmedSubmissionIdSet = useMemo(
+    () => new Set(recentlyConfirmedSubmissionIds),
+    [recentlyConfirmedSubmissionIds],
+  );
+  const recentlyConfirmedVisibleCount = filteredSubmissions.filter((submission) =>
+    recentlyConfirmedSubmissionIdSet.has(submission.id),
+  ).length;
   const stagedIssueCountTotal = visibleStagedImportRows.reduce(
     (total, submission) => total + stagedImportIssueCount(submission),
     0,
@@ -2530,28 +3160,130 @@ function FormDataGridWorkspace({
   const stagedQueueReadyPercent = visibleStagedImportRows.length
     ? Math.round((stagedRowsReadyToConfirm / visibleStagedImportRows.length) * 100)
     : 0;
+  const canUseSpreadsheetCleaningView =
+    filteredSubmissions.length > 0 &&
+    filteredSubmissions.every((submission) => canCleanImportedSubmission(submission));
+  const compactCleaningSheet =
+    visibleStagedImportRows.length > 0 &&
+    canUseSpreadsheetCleaningView &&
+    cleaningLayout === "spreadsheet";
+  const qualityFlagsSubmission =
+    qualityFlagsSubmissionId
+      ? filteredSubmissions.find((submission) => submission.id === qualityFlagsSubmissionId) ??
+        submissions.find((submission) => submission.id === qualityFlagsSubmissionId) ??
+        null
+      : null;
+  const qualityFlagItems = qualityFlagsSubmission
+    ? qualityFlagDetails(qualityFlagsSubmission)
+    : [];
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(cleaningDraftStorageKey(formId));
+      if (!raw) {
+        setRestoredCleaningDraftCount(0);
+        return;
+      }
+      const parsed = JSON.parse(raw) as Record<string, CleaningRowDraft>;
+      setCleaningDrafts(parsed);
+      const restoredCount = Object.keys(parsed).length;
+      setRestoredCleaningDraftCount(restoredCount);
+      if (restoredCount > 0) {
+        pushToast({
+          title: "Local cleaning drafts restored",
+          description: `${restoredCount} row draft${restoredCount === 1 ? "" : "s"} reopened from this browser.`,
+          tone: "success",
+        });
+      }
+    } catch {
+      setCleaningDrafts({});
+      setRestoredCleaningDraftCount(0);
+    }
+  }, [formId, pushToast]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!Object.keys(cleaningDrafts).length) {
+      window.localStorage.removeItem(cleaningDraftStorageKey(formId));
+      return;
+    }
+    window.localStorage.setItem(
+      cleaningDraftStorageKey(formId),
+      JSON.stringify(cleaningDrafts),
+    );
+  }, [cleaningDrafts, formId]);
+  useEffect(() => {
+    if (!visibleStagedImportRows.length) {
+      setCleaningFullscreen(false);
+    }
+  }, [visibleStagedImportRows.length]);
+  useEffect(() => {
+    if (!canUseSpreadsheetCleaningView && cleaningLayout === "spreadsheet") {
+      setCleaningLayout("detail");
+    }
+  }, [canUseSpreadsheetCleaningView, cleaningLayout]);
+  const selectedStagedRows = stagedImportRows.filter((submission) =>
+    selectedSubmissionIds.includes(submission.id),
+  );
+  const blockedQueueRows = useMemo(() => {
+    const queueRows = selectedStagedRows.length ? selectedStagedRows : stagedImportRows;
+    return queueRows.filter((submission) => importBlockingIssues(submission).length > 0);
+  }, [selectedStagedRows, stagedImportRows]);
+  const missingQueueRows = useMemo(() => {
+    const queueRows = selectedStagedRows.length ? selectedStagedRows : stagedImportRows;
+    return queueRows.filter(
+      (submission) => stagedImportIssueBreakdown(submission).missing > 0,
+    );
+  }, [selectedStagedRows, stagedImportRows]);
+  const invalidQueueRows = useMemo(() => {
+    const queueRows = selectedStagedRows.length ? selectedStagedRows : stagedImportRows;
+    return queueRows.filter(
+      (submission) => stagedImportIssueBreakdown(submission).invalidOption > 0,
+    );
+  }, [selectedStagedRows, stagedImportRows]);
+  const readyQueueRows = useMemo(() => {
+    const queueRows = selectedStagedRows.length ? selectedStagedRows : stagedImportRows;
+    return queueRows.filter((submission) => importBlockingIssues(submission).length === 0);
+  }, [selectedStagedRows, stagedImportRows]);
+  const notedQueueRows = useMemo(() => {
+    const queueRows = selectedStagedRows.length ? selectedStagedRows : stagedImportRows;
+    return queueRows.filter((submission) =>
+      Object.values(cleaningDrafts[submission.id]?.cellNotes ?? {}).some(
+        (note) => note.trim().length > 0,
+      ),
+    );
+  }, [cleaningDrafts, selectedStagedRows, stagedImportRows]);
+  const firstDraftedStagedRow = draftedVisibleImportRows[0] ?? null;
+  const firstBlockedStagedRow = blockedQueueRows[0] ?? null;
+  const firstMissingStagedRow = missingQueueRows[0] ?? null;
+  const firstInvalidStagedRow = invalidQueueRows[0] ?? null;
+  const firstReadyStagedRow = readyQueueRows[0] ?? null;
+  const firstNotedStagedRow = notedQueueRows[0] ?? null;
   const firstQueuedStagedRow = useMemo(() => {
-    if (!stagedImportRows.length) return null;
+    const queueRows = selectedStagedRows.length ? selectedStagedRows : stagedImportRows;
+    if (!queueRows.length) return null;
+    if (stagedQueueFilter === "drafts") {
+      return firstDraftedStagedRow ?? queueRows[0];
+    }
     if (stagedQueueFilter === "needs_cleaning") {
       return (
-        stagedImportRows.find(
+        queueRows.find(
           (submission) => importBlockingIssues(submission).length > 0,
-        ) ?? stagedImportRows[0]
+        ) ?? queueRows[0]
       );
     }
     if (stagedQueueFilter === "ready_to_confirm") {
       return (
-        stagedImportRows.find(
+        queueRows.find(
           (submission) => importBlockingIssues(submission).length === 0,
-        ) ?? stagedImportRows[0]
+        ) ?? queueRows[0]
       );
     }
     return (
-      stagedImportRows.find(
+      queueRows.find(
         (submission) => importBlockingIssues(submission).length > 0,
-      ) ?? stagedImportRows[0]
+      ) ?? queueRows[0]
     );
-  }, [stagedImportRows, stagedQueueFilter]);
+  }, [firstDraftedStagedRow, selectedStagedRows, stagedImportRows, stagedQueueFilter]);
   const queueFilteredEmpty =
     stagedQueueFilter !== "all" &&
     !stagedImportRows.length &&
@@ -2561,14 +3293,155 @@ function FormDataGridWorkspace({
   const currentEditingSubmission = editingSubmissionId
     ? filteredSubmissions.find((submission) => submission.id === editingSubmissionId) ?? null
     : null;
+  const submissionDraft = useCallback(
+    (submission: SubmissionRead | SubmissionRecord): CleaningRowDraft | null =>
+      cleaningDrafts[submission.id] ?? null,
+    [cleaningDrafts],
+  );
+  const submissionDisplayAnswers = useCallback(
+    (submission: SubmissionRead | SubmissionRecord): Record<string, unknown> =>
+      parsedAnswersFromDraft(questions, submission, submissionDraft(submission)),
+    [questions, submissionDraft],
+  );
+  const submissionDisplayIssues = useCallback(
+    (submission: SubmissionRead | SubmissionRecord): Record<string, unknown>[] =>
+      draftIssuesForSubmission(questions, submission, submissionDraft(submission)),
+    [questions, submissionDraft],
+  );
+  const rowQualityWarningsForDisplay = useCallback(
+    (submission: SubmissionRead | SubmissionRecord): string[] => {
+      const warnings = rowQualityWarnings(submission).filter(
+        (warning) =>
+          ![
+            "Needs cleaning",
+            "Ready to confirm",
+            "Validation issue",
+            "Import warning",
+          ].includes(warning) &&
+          !warning.startsWith("Missing:") &&
+          !warning.startsWith("Invalid option:"),
+      );
+      const displayIssues = submissionDisplayIssues(submission);
+      if (canCleanImportedSubmission(submission)) {
+        warnings.push(displayIssues.length ? "Needs cleaning" : "Ready to confirm");
+      }
+      const breakdown = issueBreakdownFromList(displayIssues);
+      if (breakdown.missing > 0) warnings.push(`Missing: ${breakdown.missing}`);
+      if (breakdown.invalidOption > 0) warnings.push(`Invalid option: ${breakdown.invalidOption}`);
+      if (displayIssues.length > 0 && !breakdown.missing && !breakdown.invalidOption) {
+        warnings.push("Validation issue");
+      }
+      return Array.from(new Set(warnings));
+    },
+    [submissionDisplayIssues],
+  );
+  const selectableDraftSubmissionIds = stagedImportRows
+    .filter((submission) => Boolean(cleaningDrafts[submission.id]))
+    .map((submission) => submission.id);
+  const selectableNotedSubmissionIds = stagedImportRows
+    .filter((submission) =>
+      Object.values(cleaningDrafts[submission.id]?.cellNotes ?? {}).some(
+        (note) => note.trim().length > 0,
+      ),
+    )
+    .map((submission) => submission.id);
+  const selectableIssueSubmissionIds = stagedImportRows
+    .filter((submission) => submissionDisplayIssues(submission).length > 0)
+    .map((submission) => submission.id);
+  const selectableMissingSubmissionIds = stagedImportRows
+    .filter(
+      (submission) => issueBreakdownFromList(submissionDisplayIssues(submission)).missing > 0,
+    )
+    .map((submission) => submission.id);
+  const selectableInvalidOptionSubmissionIds = stagedImportRows
+    .filter(
+      (submission) =>
+        issueBreakdownFromList(submissionDisplayIssues(submission)).invalidOption > 0,
+    )
+    .map((submission) => submission.id);
+  const selectableBlockedSubmissionIds = stagedImportRows
+    .filter((submission) => importBlockingIssues(submission).length > 0)
+    .map((submission) => submission.id);
+  const selectableReadySubmissionIds = confirmableImportRows.map(
+    (submission) => submission.id,
+  );
+  const currentEditingCellNote = editingCellKey
+    ? editingCellNotes[editingCellKey] ?? ""
+    : "";
+  const currentEditingChangedFields = currentEditingSubmission
+    ? changedFieldsForDraft(
+        questions,
+        currentEditingSubmission,
+        buildCleaningDraft(questions, currentEditingSubmission, {
+          cellNotes: editingCellNotes,
+          reason: editingReason,
+          values: editingValues,
+        }),
+      )
+    : [];
+  const selectedVisibleSubmissionIds = selectedSubmissionIds.filter((submissionId) =>
+    stagedImportRows.some((submission) => submission.id === submissionId),
+  );
+  const selectedQueueBreakdown = useMemo(() => {
+    let drafts = 0;
+    let issues = 0;
+    let invalid = 0;
+    let missing = 0;
+    let noted = 0;
+    let ready = 0;
+    selectedStagedRows.forEach((submission) => {
+      if (cleaningDrafts[submission.id]) {
+        drafts += 1;
+      }
+      if (
+        Object.values(cleaningDrafts[submission.id]?.cellNotes ?? {}).some(
+          (note) => note.trim().length > 0,
+        )
+      ) {
+        noted += 1;
+      }
+      const breakdown = issueBreakdownFromList(submissionDisplayIssues(submission));
+      issues += submissionDisplayIssues(submission).length;
+      if (breakdown.missing > 0) {
+        missing += 1;
+      }
+      if (breakdown.invalidOption > 0) {
+        invalid += 1;
+      }
+      if (breakdown.missing === 0 && breakdown.invalidOption === 0) {
+        ready += 1;
+      }
+    });
+    return { drafts, invalid, issues, missing, noted, ready };
+  }, [cleaningDrafts, selectedStagedRows, submissionDisplayIssues]);
+  const selectedConfirmableRows = selectedStagedRows.filter(
+    (submission) => !importBlockingIssues(submission).length,
+  );
+  const selectedBlockedRows = selectedStagedRows.filter(
+    (submission) => importBlockingIssues(submission).length > 0,
+  );
+  const selectedBlockedRowCount =
+    selectedStagedRows.length - selectedConfirmableRows.length;
+  const navigationRows =
+    selectedVisibleSubmissionIds.length > 0 &&
+    (!currentEditingSubmission ||
+      selectedVisibleSubmissionIds.includes(currentEditingSubmission.id))
+      ? selectedStagedRows
+      : stagedImportRows;
+  const isSelectionScopedNavigation =
+    navigationRows.length > 0 && navigationRows.length !== stagedImportRows.length;
   const emptyGridTitle = queueFilteredEmpty
     ? stagedQueueFilter === "needs_cleaning"
       ? "No staged rows still need cleaning"
+      : stagedQueueFilter === "drafts"
+        ? "No rows are saved in browser"
       : "No staged rows are ready to confirm"
     : "No data rows match this view";
   const emptyGridDescription = queueFilteredEmpty
     ? stagedQueueFilter === "needs_cleaning"
       ? "Everything in the staged queue is already clean. Switch to Ready to confirm or All staged."
+      : stagedQueueFilter === "drafts"
+        ? "Open a staged row, save your work in the browser, or switch back to All staged."
       : "There are no fully cleaned staged rows in this queue yet. Fix missing values or invalid options, or switch back to Needs cleaning."
     : "Upload historical data, sync mobile submissions, or clear the filters.";
   const currentEditingIssues = useMemo(
@@ -2668,40 +3541,39 @@ function FormDataGridWorkspace({
     );
   }, [currentEditingIssueTargets, editingCellKey]);
   const nextEditingIssueTarget = currentEditingIssueTargets[0] ?? null;
+  const isDraftQueue = stagedQueueFilter === "drafts";
   const currentEditingQueueMovementHint =
-    stagedQueueFilter === "needs_cleaning" && currentEditingIssueCount === 0
+    isDraftQueue
+      ? "Saving this row sends the browser-saved draft into the imported dataset and removes it from Saved in browser."
+      : stagedQueueFilter === "needs_cleaning" && currentEditingIssueCount === 0
       ? "Saving this row will move it into Ready to confirm."
       : stagedQueueFilter === "ready_to_confirm" && currentEditingIssueCount > 0
         ? "Saving this row will move it back into Needs cleaning until the row issues are fixed."
         : null;
   const currentEditingQueueLabel =
-    stagedQueueFilter === "needs_cleaning"
+    isDraftQueue
+      ? "Queue: Draft rows"
+      : stagedQueueFilter === "needs_cleaning"
       ? "Queue: Needs cleaning"
       : stagedQueueFilter === "ready_to_confirm"
         ? "Queue: Ready to confirm"
         : "Queue: All staged";
   const currentEditingRowStateLabel =
-    currentEditingIssueCount > 0
-      ? "Row state: Needs cleaning"
-      : "Row state: Ready to confirm";
+    currentEditingIssueCount > 0 ? "Needs cleaning" : "Ready to confirm";
   const currentEditingAfterSaveQueueLabel =
-    stagedQueueFilter === "needs_cleaning" && currentEditingIssueCount === 0
+    isDraftQueue
+      ? "After save: removed from Draft rows"
+      : stagedQueueFilter === "needs_cleaning" && currentEditingIssueCount === 0
       ? "After save: Ready to confirm"
       : stagedQueueFilter === "ready_to_confirm" && currentEditingIssueCount > 0
         ? "After save: Needs cleaning"
         : null;
-  const currentEditingSaveLabel =
-    stagedQueueFilter === "all"
-      ? "Save & keep editing"
-      : stagedQueueFilter === "needs_cleaning"
-        ? currentEditingIssueCount > 0
-          ? "Save & keep cleaning"
-          : "Save & move to ready"
-        : currentEditingIssueCount > 0
-          ? "Save & move to needs cleaning"
-          : "Save & keep ready";
   const currentEditingSaveShortcutHint =
-    stagedQueueFilter === "all"
+    isDraftQueue
+      ? "saves this row and moves to the next draft row when one is available."
+      : isSelectionScopedNavigation
+      ? "saves this row and keeps navigation inside the selected rows."
+      : stagedQueueFilter === "all"
       ? "saves and keeps this row open."
       : stagedQueueFilter === "needs_cleaning"
         ? currentEditingIssueCount > 0
@@ -2711,54 +3583,70 @@ function FormDataGridWorkspace({
           ? "saves and moves this row back into Needs cleaning."
           : "saves and keeps this row ready to confirm.";
   const currentEditingPreviousRowLabel =
-    stagedQueueFilter === "needs_cleaning"
+    isDraftQueue
+      ? "Previous draft row"
+      : isSelectionScopedNavigation
+      ? "Previous selected row"
+      : stagedQueueFilter === "needs_cleaning"
       ? "Previous issue row"
       : stagedQueueFilter === "ready_to_confirm"
         ? "Previous ready row"
         : "Previous row";
   const currentEditingNextRowLabel =
-    stagedQueueFilter === "needs_cleaning"
+    isDraftQueue
+      ? "Next draft row"
+      : isSelectionScopedNavigation
+      ? "Next selected row"
+      : stagedQueueFilter === "needs_cleaning"
       ? "Next issue row"
       : stagedQueueFilter === "ready_to_confirm"
         ? "Next ready row"
         : "Next row";
-  const currentEditingSaveNextLabel =
-    stagedQueueFilter === "needs_cleaning"
-      ? "Save & next issue row"
-      : stagedQueueFilter === "ready_to_confirm"
-        ? "Save & next ready row"
-        : "Save & next row";
   const currentEditingSaveNextShortcutHint =
-    stagedQueueFilter === "needs_cleaning"
+    isDraftQueue
+      ? "saves and opens the next draft row."
+      : isSelectionScopedNavigation
+      ? "saves and opens the next selected row."
+      : stagedQueueFilter === "needs_cleaning"
       ? "saves and opens the next row that still needs cleaning."
       : stagedQueueFilter === "ready_to_confirm"
         ? "saves and opens the next row that is still ready to confirm."
         : "saves and opens the next staged row.";
   const currentEditingConfirmNextLabel =
-    stagedQueueFilter === "needs_cleaning"
+    isDraftQueue
+      ? "Confirm & next draft row"
+      : isSelectionScopedNavigation
+      ? "Confirm & next selected row"
+      : stagedQueueFilter === "needs_cleaning"
       ? "Confirm & next issue row"
       : stagedQueueFilter === "ready_to_confirm"
         ? "Confirm & next ready row"
         : "Confirm & next row";
   const currentEditingConfirmShortcutHint =
-    stagedQueueFilter === "ready_to_confirm"
+    isDraftQueue
+      ? "confirms this drafted row."
+      : stagedQueueFilter === "ready_to_confirm"
       ? "confirms this ready row."
       : "confirms this row.";
   const currentEditingConfirmNextShortcutHint =
-    stagedQueueFilter === "needs_cleaning"
+    isDraftQueue
+      ? "confirms it and opens the next draft row."
+      : isSelectionScopedNavigation
+      ? "confirms it and opens the next selected row."
+      : stagedQueueFilter === "needs_cleaning"
       ? "confirms it and opens the next row that still needs cleaning."
       : stagedQueueFilter === "ready_to_confirm"
         ? "confirms it and opens the next row that is still ready to confirm."
         : "confirms it and opens the next staged row.";
   const currentEditingPreviousSubmissionId = currentEditingSubmission
-    ? previousStagedSubmissionId(stagedImportRows, currentEditingSubmission.id)
+    ? previousStagedSubmissionId(navigationRows, currentEditingSubmission.id)
     : null;
   const currentEditingNextSubmissionId = currentEditingSubmission
-    ? nextStagedSubmissionId(stagedImportRows, currentEditingSubmission.id)
+    ? nextStagedSubmissionId(navigationRows, currentEditingSubmission.id)
     : null;
   const currentEditingPreviousIssueSubmissionId = currentEditingSubmission
     ? adjacentStagedSubmissionId(
-        stagedImportRows,
+        navigationRows,
         currentEditingSubmission.id,
         -1,
         (submission) => importBlockingIssues(submission).length > 0,
@@ -2766,7 +3654,7 @@ function FormDataGridWorkspace({
     : null;
   const currentEditingNextIssueSubmissionId = currentEditingSubmission
     ? adjacentStagedSubmissionId(
-        stagedImportRows,
+        navigationRows,
         currentEditingSubmission.id,
         1,
         (submission) => importBlockingIssues(submission).length > 0,
@@ -2887,33 +3775,61 @@ function FormDataGridWorkspace({
   const isEditingDirty = useMemo(() => {
     if (!currentEditingSubmission) return false;
     if (editingReason.trim()) return true;
+    if (Object.values(editingCellNotes).some((note) => note.trim().length > 0)) return true;
     const currentAnswers = submissionAnswerMap(currentEditingSubmission);
     return questions.some((question) => {
       const originalValue = responseValueToEditorInput(currentAnswers[question.key]);
       const editedValue = editingValues[question.key] ?? originalValue;
       return editedValue !== originalValue;
     });
-  }, [currentEditingSubmission, editingReason, editingValues, questions]);
-  const currentEditingConfirmActionLabel = isEditingDirty
-    ? "Save & confirm row"
-    : "Confirm row";
-  const currentEditingConfirmNextActionLabel = isEditingDirty
-    ? stagedQueueFilter === "needs_cleaning"
-      ? "Save & confirm & next issue row"
-      : stagedQueueFilter === "ready_to_confirm"
-        ? "Save & confirm & next ready row"
-        : "Save & confirm & next row"
-    : currentEditingConfirmNextLabel;
+  }, [currentEditingSubmission, editingCellNotes, editingReason, editingValues, questions]);
+  const currentEditingDraftUpdatedAt = currentEditingSubmission
+    ? cleaningDrafts[currentEditingSubmission.id]?.updatedAt ?? null
+    : null;
+  const currentEditingHasLocalDraft = Boolean(currentEditingDraftUpdatedAt);
+  const latestCleaningDraftUpdatedAt = useMemo(() => {
+    const timestamps = Object.values(cleaningDrafts)
+      .map((draft) => draft.updatedAt)
+      .filter(Boolean)
+      .sort((left, right) => new Date(right).getTime() - new Date(left).getTime());
+    return timestamps[0] ?? null;
+  }, [cleaningDrafts]);
+  const currentEditingSaveStateTone = isEditingDirty
+    ? "warning"
+    : currentEditingHasLocalDraft
+      ? "accent"
+      : "neutral";
+  const currentEditingState = stagedRowState(
+    currentEditingIssueCount,
+    currentEditingHasLocalDraft && !isEditingDirty,
+  );
+  const currentEditingSaveStateLabel = isEditingDirty
+    ? "Unsaved changes"
+    : currentEditingHasLocalDraft
+      ? "Saved in browser only"
+      : "No local edits yet";
   const currentEditingConfirmActionHint = isEditingDirty
     ? "saves your clean edits and confirms this row."
     : currentEditingConfirmShortcutHint;
   const currentEditingConfirmNextActionHint = isEditingDirty
-    ? stagedQueueFilter === "needs_cleaning"
+    ? isDraftQueue
+      ? "saves your clean edits, confirms this row, and opens the next draft row when one is available."
+      : isSelectionScopedNavigation
+      ? "saves your clean edits, confirms this row, and opens the next selected row when one is available."
+      : stagedQueueFilter === "needs_cleaning"
       ? "saves your clean edits, confirms this row, and opens the next row that still needs cleaning."
       : stagedQueueFilter === "ready_to_confirm"
         ? "saves your clean edits, confirms this row, and opens the next row that is still ready to confirm."
         : "saves your clean edits, confirms this row, and opens the next staged row."
     : currentEditingConfirmNextShortcutHint;
+
+  useEffect(() => {
+    setSelectedSubmissionIds((current) =>
+      current.filter((submissionId) =>
+        stagedImportRows.some((submission) => submission.id === submissionId),
+      ),
+    );
+  }, [stagedImportRows]);
 
   useEffect(() => {
     if (!editingSubmissionId) return;
@@ -2922,6 +3838,9 @@ function FormDataGridWorkspace({
     setEditingCellKey(null);
     setEditingReason("");
     setEditingValues({});
+    setEditingCellNotes({});
+    setUndoStack([]);
+    setRedoStack([]);
   }, [editingSubmissionId, filteredSubmissions]);
 
   useEffect(() => {
@@ -2929,7 +3848,10 @@ function FormDataGridWorkspace({
     const nextTarget = editingCellRefs.current[editingCellKey];
     if (!nextTarget) return;
     const focusTimer = window.setTimeout(() => {
-      const cellElement = nextTarget.closest("td");
+      const gridCell = document.getElementById(
+        `import-grid-cell-${editingSubmissionId}-${editingCellKey}`,
+      );
+      const cellElement = gridCell ?? nextTarget.closest("td");
       if (cellElement instanceof HTMLElement) {
         cellElement.scrollIntoView({
           block: "nearest",
@@ -2955,17 +3877,109 @@ function FormDataGridWorkspace({
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [isEditingDirty]);
 
+  function isMeaningfulDraftForSubmission(
+    submission: SubmissionRead | SubmissionRecord,
+    snapshot: CleaningDraftSnapshot,
+  ): boolean {
+    const originalValues = editingValuesForSubmission(questions, submission);
+    if (snapshot.reason.trim()) return true;
+    if (Object.values(snapshot.cellNotes).some((note) => note.trim().length > 0)) return true;
+    return questions.some(
+      (question) =>
+        (snapshot.values[question.key] ?? originalValues[question.key]) !==
+        originalValues[question.key],
+    );
+  }
+
+  function setDraftForSubmission(
+    submission: SubmissionRead | SubmissionRecord,
+    snapshot: CleaningDraftSnapshot,
+  ): void {
+    setCleaningDrafts((current) => {
+      if (!isMeaningfulDraftForSubmission(submission, snapshot)) {
+        if (!(submission.id in current)) return current;
+        const next = { ...current };
+        delete next[submission.id];
+        return next;
+      }
+      return {
+        ...current,
+        [submission.id]: {
+          cellNotes: { ...snapshot.cellNotes },
+          reason: snapshot.reason,
+          updatedAt: new Date().toISOString(),
+          values: { ...snapshot.values },
+        },
+      };
+    });
+  }
+
+  function clearDraftForSubmission(submissionId: string): void {
+    setCleaningDrafts((current) => {
+      if (!(submissionId in current)) return current;
+      const next = { ...current };
+      delete next[submissionId];
+      return next;
+    });
+  }
+
+  function currentEditingSnapshot(): CleaningDraftSnapshot {
+    return {
+      cellNotes: { ...editingCellNotes },
+      reason: editingReason,
+      values: { ...editingValues },
+    };
+  }
+
+  function applyEditingSnapshot(snapshot: CleaningDraftSnapshot): void {
+    setEditingValues(snapshot.values);
+    setEditingReason(snapshot.reason);
+    setEditingCellNotes(snapshot.cellNotes);
+  }
+
+  function pushUndoSnapshot(): void {
+    setUndoStack((current) => [...current, currentEditingSnapshot()]);
+    setRedoStack([]);
+  }
+
+  function undoEditingDraft(): void {
+    if (!undoStack.length || !currentEditingSubmission) return;
+    const previous = undoStack[undoStack.length - 1];
+    const snapshot = currentEditingSnapshot();
+    setUndoStack((current) => current.slice(0, -1));
+    setRedoStack((current) => [...current, snapshot]);
+    applyEditingSnapshot(previous);
+    setDraftForSubmission(currentEditingSubmission, previous);
+  }
+
+  function redoEditingDraft(): void {
+    if (!redoStack.length || !currentEditingSubmission) return;
+    const next = redoStack[redoStack.length - 1];
+    const snapshot = currentEditingSnapshot();
+    setRedoStack((current) => current.slice(0, -1));
+    setUndoStack((current) => [...current, snapshot]);
+    applyEditingSnapshot(next);
+    setDraftForSubmission(currentEditingSubmission, next);
+  }
+
   const openSubmissionForEditing = useCallback((
     submission: SubmissionRead | SubmissionRecord,
     preferredCellKey?: string,
+    options?: { ignoreStoredDraft?: boolean },
   ): void => {
-    const answers = submissionAnswerMap(submission);
+    const draft = options?.ignoreStoredDraft
+      ? buildCleaningDraft(questions, submission)
+      : buildCleaningDraft(questions, submission, cleaningDrafts[submission.id]);
+    const answers = parsedAnswersFromDraft(questions, submission, draft);
     const firstIssueKey = firstIssueFieldKey(questions, answers);
     setEditingSubmissionId(submission.id);
     setEditingCellKey(preferredCellKey ?? firstIssueKey ?? questions[0]?.key ?? null);
-    setEditingReason("");
-    setEditingValues(editingValuesForSubmission(questions, submission));
-  }, [questions]);
+    setEditingReason(draft.reason);
+    setEditingValues(draft.values);
+    setEditingCellNotes(draft.cellNotes);
+    setUndoStack([]);
+    setRedoStack([]);
+  }, [cleaningDrafts, questions]);
 
   const startRowEdit = useCallback((
     submission: SubmissionRead | SubmissionRecord,
@@ -2995,20 +4009,86 @@ function FormDataGridWorkspace({
     startRowEdit(nextSubmission);
   }, [editingSubmissionId, filteredSubmissions, pendingNextSubmissionId, startRowEdit]);
 
+  useEffect(() => {
+    if (!pendingReopenCell) return;
+    const nextSubmission = filteredSubmissions.find(
+      (submission) =>
+        submission.id === pendingReopenCell.submissionId &&
+        canCleanImportedSubmission(submission),
+    );
+    if (!nextSubmission) {
+      setPendingReopenCell(null);
+      return;
+    }
+    openSubmissionForEditing(
+      nextSubmission,
+      pendingReopenCell.cellKey ?? undefined,
+      { ignoreStoredDraft: true },
+    );
+    setPendingReopenCell(null);
+  }, [filteredSubmissions, openSubmissionForEditing, pendingReopenCell]);
+
   function cancelRowEdit(options?: { force?: boolean; keepPendingNext?: boolean }): void {
     if (!options?.force && isEditingDirty) {
       const confirmed = window.confirm("Discard the unsaved edits for this imported row?");
       if (!confirmed) return;
     }
+    if (currentEditingSubmission) {
+      clearDraftForSubmission(currentEditingSubmission.id);
+    }
     setEditingSubmissionId(null);
     setEditingCellKey(null);
     setEditingReason("");
     setEditingValues({});
+    setEditingCellNotes({});
+    setUndoStack([]);
+    setRedoStack([]);
     if (!options?.keepPendingNext) setPendingNextSubmissionId(null);
   }
 
   function updateEditingCell(questionKey: string, value: string): void {
-    setEditingValues((current) => ({ ...current, [questionKey]: value }));
+    if (!currentEditingSubmission) return;
+    const nextValues = { ...editingValues, [questionKey]: value };
+    const currentValue = editingValues[questionKey] ?? "";
+    if (currentValue === value) return;
+    pushUndoSnapshot();
+    setEditingValues(nextValues);
+    setDraftForSubmission(currentEditingSubmission, {
+      cellNotes: editingCellNotes,
+      reason: editingReason,
+      values: nextValues,
+    });
+  }
+
+  function updateEditingReason(value: string): void {
+    if (!currentEditingSubmission) {
+      setEditingReason(value);
+      return;
+    }
+    if (editingReason === value) return;
+    pushUndoSnapshot();
+    setEditingReason(value);
+    setDraftForSubmission(currentEditingSubmission, {
+      cellNotes: editingCellNotes,
+      reason: value,
+      values: editingValues,
+    });
+  }
+
+  function updateEditingCellNote(value: string): void {
+    if (!currentEditingSubmission || !editingCellKey) return;
+    if ((editingCellNotes[editingCellKey] ?? "") === value) return;
+    pushUndoSnapshot();
+    const nextNotes = {
+      ...editingCellNotes,
+      [editingCellKey]: value,
+    };
+    setEditingCellNotes(nextNotes);
+    setDraftForSubmission(currentEditingSubmission, {
+      cellNotes: nextNotes,
+      reason: editingReason,
+      values: editingValues,
+    });
   }
 
   function buildEditedRowDraft(submission: SubmissionRead | SubmissionRecord): {
@@ -3057,7 +4137,10 @@ function FormDataGridWorkspace({
       );
       if (!confirmed) return;
     }
-    openSubmissionForEditing(currentEditingSubmission);
+    clearDraftForSubmission(currentEditingSubmission.id);
+    openSubmissionForEditing(currentEditingSubmission, editingCellKey ?? undefined, {
+      ignoreStoredDraft: true,
+    });
   }
 
   function resetEditingCell(): void {
@@ -3085,8 +4168,9 @@ function FormDataGridWorkspace({
         "Discard the unsaved edits for this row and open another staged row?",
       );
       if (!confirmed) return;
+      clearDraftForSubmission(currentEditingSubmission.id);
     }
-    const targetSubmission = stagedImportRows.find(
+    const targetSubmission = navigationRows.find(
       (submission) => submission.id === targetSubmissionId,
     );
     if (!targetSubmission) return;
@@ -3106,8 +4190,9 @@ function FormDataGridWorkspace({
         "Discard the unsaved edits for this row and open another row that still needs cleaning?",
       );
       if (!confirmed) return;
+      clearDraftForSubmission(currentEditingSubmission.id);
     }
-    const targetSubmission = stagedImportRows.find(
+    const targetSubmission = navigationRows.find(
       (submission) => submission.id === targetSubmissionId,
     );
     if (!targetSubmission) return;
@@ -3136,6 +4221,107 @@ function FormDataGridWorkspace({
     startRowEdit(targetSubmission);
   }
 
+  function openFirstDraftedRow(): void {
+    if (!firstDraftedStagedRow) return;
+    startRowEdit(firstDraftedStagedRow);
+  }
+
+  function openFirstBlockedRow(): void {
+    if (!firstBlockedStagedRow) return;
+    startRowEdit(firstBlockedStagedRow);
+  }
+
+  function openFirstMissingRow(): void {
+    if (!firstMissingStagedRow) return;
+    startRowEdit(firstMissingStagedRow);
+  }
+
+  function openFirstInvalidRow(): void {
+    if (!firstInvalidStagedRow) return;
+    startRowEdit(firstInvalidStagedRow);
+  }
+
+  function openFirstReadyRow(): void {
+    if (!firstReadyStagedRow) return;
+    startRowEdit(firstReadyStagedRow);
+  }
+
+  function openFirstNotedRow(): void {
+    if (!firstNotedStagedRow) return;
+    startRowEdit(firstNotedStagedRow);
+  }
+
+  function openQuickQueueRow(): void {
+    switch (quickOpenPreset) {
+      case "drafts":
+        openFirstDraftedRow();
+        return;
+      case "missing":
+        openFirstMissingRow();
+        return;
+      case "invalid":
+        openFirstInvalidRow();
+        return;
+      case "ready":
+        openFirstReadyRow();
+        return;
+      case "notes":
+        openFirstNotedRow();
+        return;
+      case "blocked":
+      default:
+        openFirstBlockedRow();
+    }
+  }
+
+  function applySelectionPreset(): void {
+    switch (selectionPreset) {
+      case "drafts":
+        toggleDraftRowSelections();
+        return;
+      case "notes":
+        toggleNotedRowSelections();
+        return;
+      case "missing":
+        toggleMissingRowSelections();
+        return;
+      case "invalid":
+        toggleInvalidOptionRowSelections();
+        return;
+      case "blocked":
+        toggleBlockedRowSelections();
+        return;
+      case "ready":
+        toggleReadyRowSelections();
+        return;
+      case "issues":
+      default:
+        toggleIssueRowSelections();
+    }
+  }
+
+  function clearAllCleaningDrafts(): void {
+    if (!Object.keys(cleaningDrafts).length) return;
+    const confirmed = window.confirm(
+      "Clear all local cleaning drafts for this form from this browser?",
+    );
+    if (!confirmed) return;
+    setCleaningDrafts({});
+    setEditingSubmissionId(null);
+    setEditingCellKey(null);
+    setEditingReason("");
+    setEditingValues({});
+    setEditingCellNotes({});
+    setUndoStack([]);
+    setRedoStack([]);
+    setPendingNextSubmissionId(null);
+    pushToast({
+      title: "Local cleaning drafts cleared",
+      description: "Saved browser drafts were removed for this form.",
+      tone: "success",
+    });
+  }
+
   function registerEditingCellRef(
     questionKey: string,
     element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null,
@@ -3154,6 +4340,20 @@ function FormDataGridWorkspace({
     event: KeyboardEvent<HTMLElement>,
     question: FormGridQuestion,
   ): void {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+      event.preventDefault();
+      if (event.shiftKey) {
+        redoEditingDraft();
+      } else {
+        undoEditingDraft();
+      }
+      return;
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "y") {
+      event.preventDefault();
+      redoEditingDraft();
+      return;
+    }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
       event.preventDefault();
       if (!currentEditingSubmission) return;
@@ -3172,6 +4372,7 @@ function FormDataGridWorkspace({
     }
     const target = event.currentTarget;
     if (event.key === "Enter") {
+      if (target instanceof HTMLTextAreaElement) return;
       event.preventDefault();
       moveEditingCell(question.key, event.shiftKey ? -1 : 1);
       return;
@@ -3182,12 +4383,14 @@ function FormDataGridWorkspace({
       return;
     }
     if (event.key === "ArrowUp") {
+      if (target instanceof HTMLTextAreaElement) return;
       if (target instanceof HTMLSelectElement) return;
       event.preventDefault();
       moveEditingCell(question.key, -1);
       return;
     }
     if (event.key === "ArrowDown") {
+      if (target instanceof HTMLTextAreaElement) return;
       if (target instanceof HTMLSelectElement) return;
       event.preventDefault();
       moveEditingCell(question.key, 1);
@@ -3241,22 +4444,26 @@ function FormDataGridWorkspace({
     const willRemainInCurrentQueue =
       stagedQueueFilter === "all"
         ? true
+        : stagedQueueFilter === "drafts"
+          ? false
         : stagedQueueFilter === "needs_cleaning"
           ? importIssues.length > 0
           : importIssues.length === 0;
     const keepEditing = !options?.advanceToNext && willRemainInCurrentQueue;
     const nextSubmissionId = options?.advanceToNext
-      ? nextStagedSubmissionId(stagedImportRows, submission.id)
+      ? nextStagedSubmissionId(navigationRows, submission.id)
+      : stagedQueueFilter === "drafts"
+        ? nextStagedSubmissionId(navigationRows, submission.id)
       : stagedQueueFilter === "needs_cleaning" && importIssues.length === 0
         ? adjacentStagedSubmissionId(
-            stagedImportRows,
+            navigationRows,
             submission.id,
             1,
             (candidate) => importBlockingIssues(candidate).length > 0,
           )
         : stagedQueueFilter === "ready_to_confirm" && importIssues.length > 0
           ? adjacentStagedSubmissionId(
-              stagedImportRows,
+              navigationRows,
               submission.id,
               1,
               (candidate) => importBlockingIssues(candidate).length === 0,
@@ -3336,6 +4543,7 @@ function FormDataGridWorkspace({
             server_sequence: submissionRecord.server_sequence + 1,
           },
           editingCellKey ?? undefined,
+          { ignoreStoredDraft: true },
         );
       } else {
         cancelRowEdit({ force: true, keepPendingNext: true });
@@ -3353,6 +4561,12 @@ function FormDataGridWorkspace({
           : "The cleaned row was saved in the local preview grid.",
         tone: "success",
       });
+      setCleaningDrafts((current) => {
+        if (!(submission.id in current)) return current;
+        const next = { ...current };
+        delete next[submission.id];
+        return next;
+      });
       return;
     }
     updateImportedRowMutation.mutate({
@@ -3362,6 +4576,404 @@ function FormDataGridWorkspace({
       responses: nextResponses,
       submissionId: submission.id,
     });
+  }
+
+  function editorValuesForSubmission(
+    submission: SubmissionRead | SubmissionRecord,
+  ): Record<string, string> {
+    return submissionDraft(submission)?.values ?? editingValuesForSubmission(questions, submission);
+  }
+
+  function toggleSubmissionSelection(submissionId: string): void {
+    setSelectedSubmissionIds((current) =>
+      current.includes(submissionId)
+        ? current.filter((id) => id !== submissionId)
+        : [...current, submissionId],
+    );
+  }
+
+  function toggleAllVisibleSelections(): void {
+    if (selectedVisibleSubmissionIds.length === stagedImportRows.length) {
+      setSelectedSubmissionIds([]);
+      return;
+    }
+    setSelectedSubmissionIds(stagedImportRows.map((submission) => submission.id));
+  }
+
+  function togglePresetSelection(submissionIds: string[]): void {
+    if (!submissionIds.length) return;
+    const allSelected =
+      selectedVisibleSubmissionIds.length === submissionIds.length &&
+      submissionIds.every((submissionId) =>
+        selectedVisibleSubmissionIds.includes(submissionId),
+      );
+    setSelectedSubmissionIds(allSelected ? [] : submissionIds);
+  }
+
+  function toggleDraftRowSelections(): void {
+    togglePresetSelection(selectableDraftSubmissionIds);
+  }
+
+  function toggleNotedRowSelections(): void {
+    togglePresetSelection(selectableNotedSubmissionIds);
+  }
+
+  function toggleIssueRowSelections(): void {
+    togglePresetSelection(selectableIssueSubmissionIds);
+  }
+
+  function toggleMissingRowSelections(): void {
+    togglePresetSelection(selectableMissingSubmissionIds);
+  }
+
+  function toggleInvalidOptionRowSelections(): void {
+    togglePresetSelection(selectableInvalidOptionSubmissionIds);
+  }
+
+  function toggleBlockedRowSelections(): void {
+    togglePresetSelection(selectableBlockedSubmissionIds);
+  }
+
+  function toggleReadyRowSelections(): void {
+    togglePresetSelection(selectableReadySubmissionIds);
+  }
+
+  function clearSelectedRows(): void {
+    if (!selectedVisibleSubmissionIds.length) return;
+    setSelectedSubmissionIds([]);
+  }
+
+  const quickOpenPresetCount =
+    quickOpenPreset === "drafts"
+      ? draftedVisibleImportRowCount
+      : quickOpenPreset === "missing"
+        ? missingQueueRows.length
+        : quickOpenPreset === "invalid"
+          ? invalidQueueRows.length
+          : quickOpenPreset === "ready"
+            ? readyQueueRows.length
+            : quickOpenPreset === "notes"
+              ? notedQueueRows.length
+              : blockedQueueRows.length;
+  const selectionPresetCount =
+    selectionPreset === "drafts"
+      ? selectableDraftSubmissionIds.length
+      : selectionPreset === "notes"
+        ? selectableNotedSubmissionIds.length
+        : selectionPreset === "missing"
+          ? selectableMissingSubmissionIds.length
+          : selectionPreset === "invalid"
+            ? selectableInvalidOptionSubmissionIds.length
+            : selectionPreset === "blocked"
+              ? selectableBlockedSubmissionIds.length
+              : selectionPreset === "ready"
+                ? selectableReadySubmissionIds.length
+                : selectableIssueSubmissionIds.length;
+
+  async function applyBulkResponseUpdates(
+    updates: { submission: SubmissionRead | SubmissionRecord; values: Record<string, string> }[],
+    reason: string,
+  ): Promise<void> {
+    if (!updates.length) return;
+    const reopenCurrentCell =
+      currentEditingSubmission &&
+      updates.some((update) => update.submission.id === currentEditingSubmission.id)
+        ? (() => {
+            const currentUpdate = updates.find(
+              (update) => update.submission.id === currentEditingSubmission.id,
+            );
+            if (!currentUpdate) return null;
+            const nextResponses = Object.fromEntries(
+              questions.map((question) => [
+                question.key,
+                parseEditedQuestionValue(
+                  question,
+                  currentUpdate.values[question.key] ??
+                    responseValueToEditorInput(
+                      submissionDisplayAnswers(currentEditingSubmission)[question.key],
+                    ),
+                ),
+              ]),
+            );
+            const nextIssues = buildPreviewImportIssues(questions, nextResponses);
+            const remainsInQueue =
+              stagedQueueFilter === "all"
+                ? true
+                : stagedQueueFilter === "drafts"
+                  ? false
+                  : stagedQueueFilter === "needs_cleaning"
+                    ? nextIssues.length > 0
+                    : nextIssues.length === 0;
+            return remainsInQueue
+              ? {
+                  cellKey: editingCellKey,
+                  submissionId: currentEditingSubmission.id,
+                }
+              : null;
+          })()
+        : null;
+    setBulkApplying(true);
+    try {
+      if (preview) {
+        updates.forEach(({ submission, values }) => {
+          const submissionRecord = submission as SubmissionRecord;
+          const preservedMetadata = Object.fromEntries(
+            Object.entries(submissionRecord.payload_json).filter(
+              ([key]) =>
+                key.startsWith("_") &&
+                !["_import_issues", "_validation_issues", "_quality_status", "_review_required"].includes(key),
+            ),
+          );
+          const nextResponses = Object.fromEntries(
+            questions.map((question) => [
+              question.key,
+              parseEditedQuestionValue(
+                question,
+                values[question.key] ??
+                  responseValueToEditorInput(
+                    submissionDisplayAnswers(submission)[question.key],
+                  ),
+              ),
+            ]),
+          );
+          const importIssues = buildPreviewImportIssues(questions, nextResponses);
+          upsertLocalSubmission({
+            ...submissionRecord,
+            audit_events: [
+              ...submissionRecord.audit_events,
+              {
+                action: "Imported Row Cleaned",
+                actor: "Current user",
+                created_at: new Date().toISOString(),
+                reason,
+              },
+            ],
+            history: [
+              ...submissionRecord.history,
+              {
+                action: "Imported Row Cleaned",
+                actor: "Current user",
+                comment: reason,
+                created_at: new Date().toISOString(),
+              },
+            ],
+            payload_json: {
+              ...nextResponses,
+              ...preservedMetadata,
+              _import_issues: importIssues,
+              _validation_issues: importIssues.map((issue) => String(issue.message ?? "")).filter(Boolean),
+              _quality_status: importIssues.length ? "needs_review" : "cleaned_ready_for_confirmation",
+              _review_required: Boolean(importIssues.length),
+            },
+            server_sequence: submissionRecord.server_sequence + 1,
+          });
+        });
+      } else if (token) {
+        await bulkUpdateImportCleaningRows(token, {
+          reason,
+          rows: updates.map(({ submission, values }) => ({
+            responses: Object.fromEntries(
+              questions.map((question) => [
+                question.key,
+                parseEditedQuestionValue(
+                  question,
+                  values[question.key] ??
+                    responseValueToEditorInput(
+                      submissionDisplayAnswers(submission)[question.key],
+                    ),
+                ),
+              ]),
+            ),
+            submission_id: submission.id,
+          })),
+        });
+        await queryClient.invalidateQueries({ queryKey: ["forms-module", "submissions", token] });
+      }
+      setCleaningDrafts((current) => {
+        if (!Object.keys(current).length) return current;
+        const next = { ...current };
+        updates.forEach(({ submission }) => {
+          delete next[submission.id];
+        });
+        return next;
+      });
+      if (
+        currentEditingSubmission &&
+        updates.some((update) => update.submission.id === currentEditingSubmission.id)
+      ) {
+        if (reopenCurrentCell) {
+          setPendingReopenCell(reopenCurrentCell);
+        }
+        cancelRowEdit({ force: true, keepPendingNext: true });
+      }
+      setSelectedSubmissionIds([]);
+      pushToast({
+        title: "Spreadsheet changes applied",
+        description: `${updates.length} row(s) were updated from the cleaning workspace.`,
+        tone: "success",
+      });
+    } catch {
+      pushToast({
+        title: "Could not apply spreadsheet changes",
+        description: "Try the bulk action again or save the current row manually.",
+        tone: "danger",
+      });
+    } finally {
+      setBulkApplying(false);
+    }
+  }
+
+  async function fillCurrentValueDown(): Promise<void> {
+    if (!activeEditingQuestion || !currentEditingSubmission) return;
+    const targets =
+      selectedVisibleSubmissionIds.length > 0
+        ? stagedImportRows.filter((submission) => selectedVisibleSubmissionIds.includes(submission.id))
+        : stagedImportRows.slice(currentEditingRowIndex >= 0 ? currentEditingRowIndex : 0);
+    if (!targets.length) return;
+    await applyBulkResponseUpdates(
+      targets.map((submission) => ({
+        submission,
+        values: {
+          ...editorValuesForSubmission(submission),
+          [activeEditingQuestion.key]: activeEditingCurrentValue,
+        },
+      })),
+      `Filled down ${activeEditingQuestion.label} from the cleaning workspace.`,
+    );
+  }
+
+  async function applyCurrentValueToSelectedRows(): Promise<void> {
+    if (!activeEditingQuestion || !selectedVisibleSubmissionIds.length) {
+      pushToast({
+        title: "Select rows first",
+        description: "Choose the rows that should receive this current field value.",
+        tone: "warning",
+      });
+      return;
+    }
+    const targets = stagedImportRows.filter((submission) =>
+      selectedVisibleSubmissionIds.includes(submission.id),
+    );
+    if (!targets.length) return;
+    await applyBulkResponseUpdates(
+      targets.map((submission) => ({
+        submission,
+        values: {
+          ...editorValuesForSubmission(submission),
+          [activeEditingQuestion.key]: activeEditingCurrentValue,
+        },
+      })),
+      `Applied the current ${activeEditingQuestion.label} value to selected rows from the cleaning workspace.`,
+    );
+  }
+
+  async function clearCurrentFieldAcrossSelectedRows(): Promise<void> {
+    if (!activeEditingQuestion || !selectedVisibleSubmissionIds.length) {
+      pushToast({
+        title: "Select rows first",
+        description: "Choose the rows where this field should be cleared.",
+        tone: "warning",
+      });
+      return;
+    }
+    const targets = stagedImportRows.filter((submission) =>
+      selectedVisibleSubmissionIds.includes(submission.id),
+    );
+    if (!targets.length) return;
+    await applyBulkResponseUpdates(
+      targets.map((submission) => ({
+        submission,
+        values: {
+          ...editorValuesForSubmission(submission),
+          [activeEditingQuestion.key]: "",
+        },
+      })),
+      `Cleared ${activeEditingQuestion.label} across selected rows from the cleaning workspace.`,
+    );
+  }
+
+  async function replaceCurrentFieldAcrossRows(): Promise<void> {
+    if (!activeEditingQuestion || !replaceFindValue.trim()) {
+      pushToast({
+        title: "Add text to find first",
+        description: "Enter the text to replace in the current field.",
+        tone: "warning",
+      });
+      return;
+    }
+    const targets =
+      selectedVisibleSubmissionIds.length > 0
+        ? stagedImportRows.filter((submission) => selectedVisibleSubmissionIds.includes(submission.id))
+        : stagedImportRows;
+    const updates = targets
+      .map((submission) => {
+        const currentValue = editorValuesForSubmission(submission)[activeEditingQuestion.key] ?? "";
+        if (!currentValue.includes(replaceFindValue)) return null;
+        return {
+          submission,
+          values: {
+            ...editorValuesForSubmission(submission),
+            [activeEditingQuestion.key]: currentValue.split(replaceFindValue).join(replaceWithValue),
+          },
+        };
+      })
+      .filter(
+        (
+          update,
+        ): update is { submission: SubmissionRead | SubmissionRecord; values: Record<string, string> } =>
+          update !== null,
+      );
+    if (!updates.length) {
+      pushToast({
+        title: "No matching values found",
+        description: "Nothing in the current field matched the replace text.",
+        tone: "warning",
+      });
+      return;
+    }
+    await applyBulkResponseUpdates(
+      updates,
+      `Replaced "${replaceFindValue}" in ${activeEditingQuestion.label} from the cleaning workspace.`,
+    );
+  }
+
+  async function pasteClipboardGridIntoSheet(): Promise<void> {
+    if (!activeEditingQuestion || currentEditingRowIndex < 0 || activeEditingQuestionIndex < 0) return;
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+      const matrix = parseClipboardGrid(clipboardText);
+      if (!matrix.length) {
+        pushToast({
+          title: "Clipboard is empty",
+          description: "Copy cells from Excel or Sheets first, then paste them here.",
+          tone: "warning",
+        });
+        return;
+      }
+      const updates: { submission: SubmissionRead | SubmissionRecord; values: Record<string, string> }[] = [];
+      matrix.forEach((rowValues, rowOffset) => {
+        const submission = stagedImportRows[currentEditingRowIndex + rowOffset];
+        if (!submission) return;
+        const nextValues = { ...editorValuesForSubmission(submission) };
+        rowValues.forEach((value, columnOffset) => {
+          const question = questions[activeEditingQuestionIndex + columnOffset];
+          if (!question) return;
+          nextValues[question.key] = value;
+        });
+        updates.push({ submission, values: nextValues });
+      });
+      if (!updates.length) return;
+      await applyBulkResponseUpdates(
+        updates,
+        `Pasted ${matrix.length} row(s) from the clipboard into the cleaning workspace.`,
+      );
+    } catch {
+      pushToast({
+        title: "Clipboard paste failed",
+        description: "Allow clipboard access in the browser, then try the paste action again.",
+        tone: "danger",
+      });
+    }
   }
 
   async function exportGrid(): Promise<void> {
@@ -3393,7 +5005,7 @@ function FormDataGridWorkspace({
         approved_by: approvalActorLabel(submission),
         approved_at: submission.approved_at ? formatDateTime(submission.approved_at) : "",
         entity_code: submissionEntityCode(submission, beneficiaryCodes),
-        linked_participants: linkedBeneficiaryLabel(submission),
+        related_records: linkedBeneficiaryTitle(submission),
         project: form?.project_name ?? submission.project_id ?? "",
         form_version: submission.server_sequence,
         gps_evidence: formatSubmissionGpsEvidence(submission),
@@ -3428,11 +5040,7 @@ function FormDataGridWorkspace({
   }
 
   function downloadTemplate(): void {
-    const headers = [
-      "entity_code",
-      "submitted_at",
-      ...questions.map((question) => question.key),
-    ];
+    const headers = questions.map((question) => question.key);
     downloadCsv(
       `${form?.slug ?? formId}-upload-template.csv`,
       [
@@ -3445,13 +5053,306 @@ function FormDataGridWorkspace({
     pushToast({
       title: "Form template downloaded",
       description:
-        "Fill the CSV in Excel, keep the column headers unchanged, then upload it back to this form.",
+        "Fill the CSV in Excel using only the form question columns, keep the headers unchanged, then upload it back to this form.",
       tone: "success",
+    });
+  }
+
+  function buildPendingUploadReview(
+    file: File,
+    rows: string[][],
+  ): PendingUploadReview {
+    const headers = rows[0]?.map((header) => header.trim()) ?? [];
+    const dataRows = rows.slice(1).filter((row) =>
+      row.some((value) => value.trim().length > 0),
+    );
+    if (!headers.length || !dataRows.length) {
+      throw new Error("The uploaded file must include headers and at least one data row.");
+    }
+    const normalizedHeaders = headers.map((header) => normalizeImportHeader(header));
+    const blankHeaderCount = normalizedHeaders.filter((header) => !header).length;
+    const duplicateHeaders = Array.from(
+      normalizedHeaders.reduce<Map<string, number>>((counts, header) => {
+        if (!header) return counts;
+        counts.set(header, (counts.get(header) ?? 0) + 1);
+        return counts;
+      }, new Map<string, number>()),
+    )
+      .filter(([, count]) => count > 1)
+      .map(([header]) => header);
+    const questionLookup = buildImportQuestionLookup(questions);
+    const matchedColumns = headers
+      .map((header) => {
+        const question = questionLookup.get(normalizeImportHeader(header));
+        return question ? { header, question } : null;
+      })
+      .filter(
+        (value): value is { header: string; question: FormGridQuestion } => value !== null,
+      );
+    const matchedQuestionKeys = new Set(matchedColumns.map((match) => match.question.key));
+    const unmatchedColumns = headers.filter(
+      (header) => !questionLookup.has(normalizeImportHeader(header)),
+    );
+    const missingRequiredQuestions = questions.filter(
+      (question) => question.required && !matchedQuestionKeys.has(question.key),
+    );
+    const rowObjects = dataRows.map((row) =>
+      Object.fromEntries(
+        headers.map((header, columnIndex) => [header, row[columnIndex]?.trim() ?? ""]),
+      ),
+    );
+    let rowsWithIssues = 0;
+    let rowsWithMissing = 0;
+    let rowsWithInvalid = 0;
+    const sampleIssues: string[] = [];
+    rowObjects.forEach((rowObject, rowIndex) => {
+      const payload: Record<string, unknown> = {};
+      matchedColumns.forEach(({ header, question }) => {
+        const value = String(rowObject[header] ?? "").trim();
+        if (!value) return;
+        payload[question.key] = value;
+      });
+      const issues = buildPreviewImportIssues(questions, payload);
+      if (!issues.length) return;
+      rowsWithIssues += 1;
+      if (issues.some((issue) => issue.issue_type === "missing_value")) rowsWithMissing += 1;
+      if (issues.some((issue) => issue.issue_type === "invalid_option")) rowsWithInvalid += 1;
+      issues.slice(0, Math.max(0, 4 - sampleIssues.length)).forEach((issue) => {
+        sampleIssues.push(
+          `${issue.question_label ?? issue.field_name ?? "Field"} · row ${rowIndex + 1}`,
+        );
+      });
+    });
+    const advancedMatchedQuestions = Array.from(
+      new Set(
+        matchedColumns
+          .map((match) => match.question)
+          .filter(isSpreadsheetAdvancedQuestionType)
+          .map((question) => question.label),
+      ),
+    );
+    const blockingProblems: string[] = [];
+    if (!matchedColumns.length) {
+      blockingProblems.push("No spreadsheet columns match this form yet.");
+    }
+    if (blankHeaderCount > 0) {
+      blockingProblems.push(
+        `${blankHeaderCount} header${blankHeaderCount === 1 ? "" : "s"} ${blankHeaderCount === 1 ? "is" : "are"} blank.`,
+      );
+    }
+    if (duplicateHeaders.length > 0) {
+      blockingProblems.push(`Duplicate columns found: ${duplicateHeaders.join(", ")}.`);
+    }
+    return {
+      advancedMatchedQuestions,
+      blankHeaderCount,
+      blockingProblems,
+      dataRowCount: dataRows.length,
+      duplicateHeaders,
+      fileName: file.name,
+      headers,
+      matchedColumns,
+      missingRequiredQuestions,
+      rowObjects,
+      rowsWithIssues,
+      rowsWithInvalid,
+      rowsWithMissing,
+      sampleIssues,
+      unmatchedColumns,
+    };
+  }
+
+  async function stageUploadedRows(review: PendingUploadReview): Promise<void> {
+    setRecentlyConfirmedSubmissionIds([]);
+    if (token && token !== "preview-token") {
+      const response = await importFormDataRows(token, formId, {
+        import_reason: `Form-level upload for ${form?.name ?? formId}`,
+        rows: review.rowObjects,
+        source_name: review.fileName,
+        source_system: "Form spreadsheet upload",
+      });
+      await queryClient.invalidateQueries({ queryKey: ["forms-module", "submissions", token] });
+      setSourceFilter("uploaded");
+      const blockingIssues = response.issues.filter((issue) => issue.severity !== "info");
+      const sampleIssues = blockingIssues
+        .slice(0, 3)
+        .map(
+          (issue) =>
+            `${importIssueTypeLabel(issue.issue_type)}: ${
+              issue.question_label ?? issue.field_name ?? "Field"
+            } on row ${issue.row_number}`,
+        )
+        .join("; ");
+      pushToast({
+        title: "Form data imported",
+        description: sampleIssues
+          ? `${response.imported_rows} row(s) staged for cleaning. Form issues found: ${sampleIssues}${blockingIssues.length > 3 ? "..." : ""}`
+          : `${response.imported_rows} row(s) staged for cleaning with no blocking form issues detected. Confirm them when ready.`,
+        tone: response.error_count ? "danger" : response.warning_count ? "warning" : "success",
+      });
+      return;
+    }
+
+    const matchedLookup = new Map(
+      review.matchedColumns.map((match) => [match.header, match.question] as const),
+    );
+    const now = new Date().toISOString();
+    let importedCount = 0;
+    review.rowObjects.forEach((rowObject, rowIndex) => {
+      const payload: Record<string, unknown> = {};
+      const importIssues: Record<string, unknown>[] = [];
+      review.headers.forEach((header) => {
+        const question = matchedLookup.get(header);
+        const value = String(rowObject[header] ?? "").trim();
+        if (!question) return;
+        if (!value) {
+          importIssues.push({
+            field_name: question.key,
+            issue_type: "missing_value",
+            message: `${question.label} (${question.key}) is missing for this imported row.`,
+            question_label: question.label,
+            row_number: rowIndex + 1,
+            severity: "warning",
+            suggested_fix: "Add the value if it exists. The row was still imported for review.",
+          });
+          return;
+        }
+        payload[question.key] = value;
+      });
+      buildPreviewImportIssues(questions, payload).forEach((issue) => {
+        const alreadyExists = importIssues.some(
+          (existingIssue) =>
+            existingIssue.field_name === issue.field_name &&
+            existingIssue.issue_type === issue.issue_type,
+        );
+        if (alreadyExists) return;
+        importIssues.push({
+          ...issue,
+          row_number: rowIndex + 1,
+        });
+      });
+      for (const question of questions) {
+        if (Object.prototype.hasOwnProperty.call(payload, question.key)) continue;
+        const alreadyTrackedForField = importIssues.some(
+          (issue) => issue.field_name === question.key,
+        );
+        if (alreadyTrackedForField) continue;
+        importIssues.push({
+          field_name: question.key,
+          issue_type: "missing_column",
+          message: `${question.label} (${question.key}) is missing for this imported row.`,
+          question_label: question.label,
+          row_number: rowIndex + 1,
+          severity: "info",
+          suggested_fix: "Add a matching column if the data exists. The row was still imported for review.",
+        });
+      }
+      importedCount += 1;
+      const submittedAt = String(rowObject.submitted_at || now);
+      const entityCode = rowObject.entity_code || null;
+      const localId = `upload-${formId}-${Date.now()}-${rowIndex}`;
+      const record: SubmissionRecord = {
+        accuracy: null,
+        approval_rate_hint: 0,
+        archived_at: null,
+        attachments: [],
+        audit_events: [
+          {
+            action: "Uploaded to form",
+            actor: "Current user",
+            created_at: now,
+            new_value: review.fileName,
+            reason: "Form-level spreadsheet upload",
+          },
+        ],
+        captured_at: submittedAt,
+        client_submission_id: `UPL-${new Date().getFullYear()}-${String(rowIndex + 1).padStart(4, "0")}`,
+        device_id: "web-form-upload",
+        duplicate_risk: "none",
+        entity_id: entityCode,
+        field_officer_id: "Uploaded file",
+        form_id: formId,
+        form_name: form?.name ?? "Uploaded form",
+        form_version: form?.version ?? 1,
+        gps_status: "missing",
+        history: [
+          {
+            action: "Uploaded",
+            actor: "Current user",
+            comment: review.fileName,
+            created_at: now,
+          },
+        ],
+        id: localId,
+        import_batch_id: `local-${Date.now()}`,
+        imported_at: now,
+        imported_by_user_id: "Current user",
+        is_imported: true,
+        latitude: 0,
+        location_name: "Not captured",
+        longitude: 0,
+        offline_created: false,
+        payload_json: {
+          ...payload,
+          _import_issues: importIssues,
+          _validation_issues: importIssues
+            .filter((issue) => issue.severity !== "info")
+            .map((issue) => issue.message),
+          _quality_status: importIssues.some((issue) => issue.severity !== "info")
+            ? "needs_review"
+            : "ready_for_review",
+          _review_required: true,
+        },
+        project_id: form?.project_id ?? null,
+        project_name: form?.project_name ?? "Project not attached",
+        quality_flags: [],
+        quality_score: 80,
+        review_stage: "Pending Review",
+        reviewer: "Data reviewer",
+        server_sequence: form?.version ?? 1,
+        sla_due_at: now,
+        source_form_id: formId,
+        source_record_id: String(rowIndex + 2),
+        source_system: "Form spreadsheet upload",
+        status: "import_staged",
+        submitted_at: submittedAt,
+        supervisor: "Data reviewer",
+        survey_id: null,
+        sync_received_at: now,
+        workflow: [
+          {
+            action_date: now,
+            reviewer: "System",
+            sla_status: "On Time",
+            stage: "Submitted",
+          },
+          {
+            reviewer: "Data reviewer",
+            sla_status: "On Time",
+            stage: "Pending Review",
+          },
+        ],
+      };
+      upsertLocalSubmission(record);
+    });
+    if (!importedCount) {
+      throw new Error("No uploaded columns matched this form's variable names.");
+    }
+    setSourceFilter("uploaded");
+    pushToast({
+      title: "Form data uploaded",
+      description:
+        review.rowsWithIssues > 0
+          ? `${importedCount} row(s) were staged for cleaning. ${review.rowsWithIssues} row(s) still need attention.`
+          : `${importedCount} row(s) were staged and look ready to confirm.`,
+      tone: review.rowsWithIssues > 0 ? "warning" : "success",
     });
   }
 
   async function handleFormDataUpload(file: File | null): Promise<void> {
     if (!file) return;
+    setImportConfirmationSummary(null);
+    setRecentlyConfirmedSubmissionIds([]);
     if (!canUploadData) {
       pushToast({
         title: "Publish the form first",
@@ -3463,198 +5364,10 @@ function FormDataGridWorkspace({
     setUploading(true);
     try {
       const rows = await readFormUploadRows(file);
-      const headers = rows[0]?.map((header) => header.trim()) ?? [];
-      const dataRows = rows.slice(1).filter((row) =>
-        row.some((value) => value.trim().length > 0),
-      );
-      if (!headers.length || !dataRows.length) {
-        throw new Error("The uploaded file must include headers and at least one data row.");
-      }
-      const rowObjects = dataRows.map((row) =>
-        Object.fromEntries(headers.map((header, columnIndex) => [header, row[columnIndex]?.trim() ?? ""])),
-      );
-      const questionLookup = new Map<string, FormGridQuestion>();
-      for (const question of questions) {
-        questionLookup.set(question.key.toLowerCase(), question);
-        questionLookup.set(question.label.toLowerCase(), question);
-      }
-      if (token && token !== "preview-token") {
-        const response = await importFormDataRows(token, formId, {
-          import_reason: `Form-level upload for ${form?.name ?? formId}`,
-          rows: rowObjects,
-          source_name: file.name,
-          source_system: "Form spreadsheet upload",
-        });
-        await queryClient.invalidateQueries({ queryKey: ["forms-module", "submissions", token] });
-        setSourceFilter("uploaded");
-        const blockingIssues = response.issues.filter((issue) => issue.severity !== "info");
-        const sampleIssues = blockingIssues
-          .slice(0, 3)
-          .map(
-            (issue) =>
-              `${importIssueTypeLabel(issue.issue_type)}: ${
-                issue.question_label ?? issue.field_name ?? "Field"
-              } on row ${issue.row_number}`,
-          )
-          .join("; ");
-        pushToast({
-          title: "Form data imported",
-          description: sampleIssues
-            ? `${response.imported_rows} row(s) staged for cleaning. Form issues found: ${sampleIssues}${blockingIssues.length > 3 ? "..." : ""}`
-            : `${response.imported_rows} row(s) staged for cleaning with no blocking form issues detected. Confirm them when ready.`,
-          tone: response.error_count ? "danger" : response.warning_count ? "warning" : "success",
-        });
-        return;
-      }
-      const now = new Date().toISOString();
-      let importedCount = 0;
-      dataRows.forEach((row, rowIndex) => {
-        const payload: Record<string, unknown> = {};
-        const importIssues: Record<string, unknown>[] = [];
-        headers.forEach((header, columnIndex) => {
-          const normalizedHeader = header.toLowerCase();
-          const question = questionLookup.get(normalizedHeader);
-          const value = row[columnIndex]?.trim() ?? "";
-          if (!question) return;
-          if (!value) {
-            importIssues.push({
-              field_name: question.key,
-              issue_type: "missing_value",
-              message: `${question.label} (${question.key}) is missing for this imported row.`,
-              question_label: question.label,
-              row_number: rowIndex + 1,
-              severity: "warning",
-              suggested_fix: "Add the value if it exists. The row was still imported for review.",
-            });
-            return;
-          }
-          payload[question.key] = value;
-        });
-        buildPreviewImportIssues(questions, payload).forEach((issue) => {
-          const alreadyExists = importIssues.some(
-            (existingIssue) =>
-              existingIssue.field_name === issue.field_name &&
-              existingIssue.issue_type === issue.issue_type,
-          );
-          if (alreadyExists) return;
-          importIssues.push({
-            ...issue,
-            row_number: rowIndex + 1,
-          });
-        });
-        for (const question of questions) {
-          if (Object.prototype.hasOwnProperty.call(payload, question.key)) continue;
-          const alreadyTrackedForField = importIssues.some(
-            (issue) => issue.field_name === question.key,
-          );
-          if (alreadyTrackedForField) continue;
-          importIssues.push({
-            field_name: question.key,
-            issue_type: "missing_column",
-            message: `${question.label} (${question.key}) is missing for this imported row.`,
-            question_label: question.label,
-            row_number: rowIndex + 1,
-            severity: "info",
-            suggested_fix: "Add a matching column if the data exists. The row was still imported for review.",
-          });
-        }
-        importedCount += 1;
-        const submittedAt =
-          row[headers.findIndex((header) => header.toLowerCase() === "submitted_at")] ||
-          now;
-        const entityCode =
-          row[headers.findIndex((header) => header.toLowerCase() === "entity_code")] ||
-          null;
-        const localId = `upload-${formId}-${Date.now()}-${rowIndex}`;
-        const record: SubmissionRecord = {
-          accuracy: null,
-          approval_rate_hint: 0,
-          archived_at: null,
-          attachments: [],
-          audit_events: [
-            {
-              action: "Uploaded to form",
-              actor: "Current user",
-              created_at: now,
-              new_value: file.name,
-              reason: "Form-level spreadsheet upload",
-            },
-          ],
-          captured_at: submittedAt,
-          client_submission_id: `UPL-${new Date().getFullYear()}-${String(rowIndex + 1).padStart(4, "0")}`,
-          device_id: "web-form-upload",
-          duplicate_risk: "none",
-          entity_id: entityCode,
-          field_officer_id: "Uploaded file",
-          form_id: formId,
-          form_name: form?.name ?? "Uploaded form",
-          form_version: form?.version ?? 1,
-          gps_status: "missing",
-          history: [
-            {
-              action: "Uploaded",
-              actor: "Current user",
-              comment: file.name,
-              created_at: now,
-            },
-          ],
-          id: localId,
-          import_batch_id: `local-${Date.now()}`,
-          imported_at: now,
-          imported_by_user_id: "Current user",
-          is_imported: true,
-          latitude: 0,
-          location_name: "Not captured",
-          longitude: 0,
-          offline_created: false,
-          payload_json: {
-            ...payload,
-            _import_issues: importIssues,
-            _validation_issues: importIssues
-              .filter((issue) => issue.severity !== "info")
-              .map((issue) => issue.message),
-            _quality_status: importIssues.some((issue) => issue.severity !== "info") ? "needs_review" : "ready_for_review",
-            _review_required: true,
-          },
-          project_id: form?.project_id ?? null,
-          project_name: form?.project_name ?? "Project not attached",
-          quality_flags: [],
-          quality_score: 80,
-          review_stage: "Pending Review",
-          reviewer: "Data reviewer",
-          server_sequence: form?.version ?? 1,
-          sla_due_at: now,
-          source_form_id: formId,
-          source_record_id: String(rowIndex + 2),
-          source_system: "Form spreadsheet upload",
-          status: "import_staged",
-          submitted_at: submittedAt,
-          supervisor: "Data reviewer",
-          survey_id: null,
-          sync_received_at: now,
-          workflow: [
-            {
-              action_date: now,
-              reviewer: "System",
-              sla_status: "On Time",
-              stage: "Submitted",
-            },
-            {
-              reviewer: "Data reviewer",
-              sla_status: "On Time",
-              stage: "Pending Review",
-            },
-          ],
-        };
-        upsertLocalSubmission(record);
-      });
-      if (!importedCount) {
-        throw new Error("No uploaded columns matched this form's variable names.");
-      }
-      setSourceFilter("uploaded");
+      setPendingUploadReview(buildPendingUploadReview(file, rows));
       pushToast({
-        title: "Form data uploaded",
-        description: `${importedCount} row(s) were matched to this form and added to the data grid for review. Resolve any staged form issues before confirming them.`,
+        title: "Upload ready for review",
+        description: "Check the matched columns and missing fields below, then stage the rows when you are ready.",
         tone: "success",
       });
     } catch (error) {
@@ -3673,6 +5386,26 @@ function FormDataGridWorkspace({
     }
   }
 
+  async function confirmPendingUpload(): Promise<void> {
+    if (!pendingUploadReview) return;
+    setUploading(true);
+    try {
+      await stageUploadedRows(pendingUploadReview);
+      setPendingUploadReview(null);
+    } catch (error) {
+      pushToast({
+        title: "Upload could not be staged",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Check the upload review and try again.",
+        tone: "danger",
+      });
+    } finally {
+      setUploading(false);
+    }
+  }
+
   async function confirmCleanedImportedRows(): Promise<void> {
     await confirmImportedRows(confirmableImportRows, {
       comment: "Cleaned uploaded form data confirmed for platform use.",
@@ -3684,12 +5417,31 @@ function FormDataGridWorkspace({
     });
   }
 
+  async function confirmSelectedImportedRows(): Promise<void> {
+    const targetRows = selectedConfirmableRows;
+    const blockedRows = selectedBlockedRowCount;
+    const confirmed = await confirmImportedRows(targetRows, {
+      comment: "Selected cleaned uploaded rows confirmed for platform use.",
+      emptyDescription:
+        "Select rows that are already clean, or fix their issues before confirming them.",
+      successDescription: (confirmedRows, skippedRows) =>
+        `${confirmedRows} selected row(s) are now approved.${blockedRows ? ` ${blockedRows} selected row(s) still need cleaning.` : skippedRows ? ` ${skippedRows} selected row(s) still need cleaning.` : ""}`,
+      successTitle: "Selected rows confirmed",
+    });
+    if (confirmed) {
+      const confirmedRowIds = new Set(targetRows.map((submission) => submission.id));
+      setSelectedSubmissionIds((current) =>
+        current.filter((submissionId) => !confirmedRowIds.has(submissionId)),
+      );
+    }
+  }
+
   async function confirmSingleImportedRow(
     submission: SubmissionRead | SubmissionRecord,
     options?: { advanceToNext?: boolean },
   ): Promise<void> {
     const nextSubmissionId = options?.advanceToNext
-      ? nextStagedSubmissionId(stagedImportRows, submission.id)
+      ? nextStagedSubmissionId(navigationRows, submission.id)
       : null;
     setPendingNextSubmissionId(nextSubmissionId);
     setConfirmingSubmissionId(submission.id);
@@ -3757,9 +5509,9 @@ function FormDataGridWorkspace({
         return false;
       }
       const now = new Date().toISOString();
-      targetRows.forEach((submission) => {
+      const confirmedPreviewRows = targetRows.map((submission) => {
         const submissionRecord = submission as SubmissionRecord;
-        upsertLocalSubmission({
+        const nextSubmission: SubmissionRecord = {
           ...submissionRecord,
           approved_at: now,
           approved_by_name: "Current user",
@@ -3800,13 +5552,20 @@ function FormDataGridWorkspace({
               stage: "Approved",
             },
           ],
-        });
+        };
+        upsertLocalSubmission(nextSubmission);
+        return nextSubmission;
       });
+      const summary = summarizeImportConfirmation(confirmedPreviewRows, 0);
+      setRecentlyConfirmedSubmissionIds(
+        confirmedPreviewRows.map((confirmedSubmission) => confirmedSubmission.id),
+      );
+      setImportConfirmationSummary(summary);
       setStatusFilter("approved");
       setSourceFilter("uploaded");
       pushToast({
         title: options.successTitle,
-        description: options.successDescription(targetRows.length, 0),
+        description: importConfirmationSummaryMessage(summary),
         tone: "success",
       });
       return true;
@@ -3828,13 +5587,21 @@ function FormDataGridWorkspace({
         comment: options.comment,
         submission_ids: cleanRows.map((submission) => submission.id),
       });
+      const summary = summarizeImportConfirmation(
+        response.submissions,
+        response.skipped_rows,
+      );
+      setRecentlyConfirmedSubmissionIds(
+        response.submissions.map((confirmedSubmission) => confirmedSubmission.id),
+      );
+      setImportConfirmationSummary(summary);
       await queryClient.invalidateQueries({ queryKey: ["forms-module", "submissions", token] });
       setStatusFilter("approved");
       setSourceFilter("uploaded");
       pushToast({
         title: options.successTitle,
-        description: options.successDescription(response.confirmed_rows, response.skipped_rows),
-        tone: response.skipped_rows ? "warning" : "success",
+        description: importConfirmationSummaryMessage(summary),
+        tone: summary.reconciliationRows || summary.skippedRows ? "warning" : "success",
       });
       return response.confirmed_rows > 0;
     } catch (error) {
@@ -3849,46 +5616,85 @@ function FormDataGridWorkspace({
     }
   }
 
-  async function returnStagedRowsToSource(): Promise<void> {
+  async function returnUploadedRowsToSource(
+    targetRows: (SubmissionRead | SubmissionRecord)[],
+    options: {
+      emptyDescription: string;
+      successTitle: string;
+    },
+  ): Promise<boolean> {
     if (!token || token === "preview-token") {
       pushToast({
         title: "Preview rows stay local",
         description: "Sign in to return uploaded rows to source for correction.",
         tone: "warning",
       });
-      return;
+      return false;
     }
-    if (!stagedImportRows.length) {
+    if (!targetRows.length) {
       pushToast({
         title: "No staged rows to return",
-        description: "There are no staged uploaded rows to return to source.",
+        description: options.emptyDescription,
         tone: "warning",
       });
-      return;
+      return false;
     }
     setReturningImports(true);
     try {
       const response = await returnImportedFormDataRows(token, formId, {
         comment: returnComment.trim() || "Returned to source for correction and re-upload.",
-        submission_ids: stagedImportRows.map((submission) => submission.id),
+        submission_ids: targetRows.map((submission) => submission.id),
       });
       await queryClient.invalidateQueries({ queryKey: ["forms-module", "submissions", token] });
       setReturnComment("");
+      setRecentlyConfirmedSubmissionIds([]);
       setStatusFilter("returned");
       setSourceFilter("uploaded");
+      const returnedRowIds = new Set(targetRows.map((submission) => submission.id));
+      setSelectedSubmissionIds((current) =>
+        current.filter((submissionId) => !returnedRowIds.has(submissionId)),
+      );
       pushToast({
-        title: "Rows returned to source",
+        title: options.successTitle,
         description: `${response.returned_rows} uploaded row(s) returned for correction.${response.skipped_rows ? ` ${response.skipped_rows} row(s) were skipped.` : ""}`,
         tone: "success",
       });
+      return response.returned_rows > 0;
     } catch (error) {
       pushToast({
         title: "Could not return rows",
         description: error instanceof Error ? error.message : "Try again.",
         tone: "danger",
       });
+      return false;
     } finally {
       setReturningImports(false);
+    }
+  }
+
+  async function returnStagedRowsToSource(): Promise<void> {
+    await returnUploadedRowsToSource(stagedImportRows, {
+      emptyDescription: "There are no staged uploaded rows to return to source.",
+      successTitle: "Rows returned to source",
+    });
+  }
+
+  async function returnSelectedRowsToSource(): Promise<void> {
+    await returnUploadedRowsToSource(selectedBlockedRows, {
+      emptyDescription:
+        "Select rows that still have cleaning issues before returning them to source.",
+      successTitle: "Blocked rows returned",
+    });
+  }
+
+  async function returnCurrentEditingRowToSource(): Promise<void> {
+    if (!currentEditingSubmission) return;
+    const returned = await returnUploadedRowsToSource([currentEditingSubmission], {
+      emptyDescription: "Open a staged row first, then return it to source if needed.",
+      successTitle: "Row returned to source",
+    });
+    if (returned) {
+      cancelRowEdit({ force: true, keepPendingNext: false });
     }
   }
 
@@ -3914,7 +5720,9 @@ function FormDataGridWorkspace({
             {statusFilter === "approved" ? (
               <p className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-success/35 bg-success/10 px-2.5 py-1 text-xs text-success">
                 <CheckCircle2 aria-hidden="true" size={13} />
-                Clean dataset: approved field submissions and confirmed (cleaned) uploads. Use the status filter to inspect pending or returned rows.
+                {recentlyConfirmedVisibleCount
+                  ? `${recentlyConfirmedVisibleCount} highlighted uploaded row${recentlyConfirmedVisibleCount === 1 ? "" : "s"} were just cleaned and confirmed here. They are now live in approved data for reporting, dashboards, and entity updates.`
+                  : "Clean dataset: approved field submissions and confirmed (cleaned) uploads. Use the status filter to inspect pending or returned rows."}
               </p>
             ) : null}
             {form && !canUploadData ? (
@@ -3927,17 +5735,22 @@ function FormDataGridWorkspace({
             ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={onBack} variant="secondary">
+            <Button onClick={onBack} variant="ghost">
               <ArrowLeft aria-hidden="true" />
               Back to forms
             </Button>
             {canUploadData ? (
               <>
-                <Button onClick={downloadTemplate} variant="secondary">
+                <Button
+                  className="border-border/80 bg-background text-muted-foreground hover:border-primary/25 hover:bg-panel hover:text-foreground"
+                  onClick={downloadTemplate}
+                  variant="secondary"
+                >
                   <Download aria-hidden="true" />
                   Download sample
                 </Button>
                 <Button
+                  className="border-accent/30 bg-accent/10 text-accent hover:border-accent/45 hover:bg-accent/15 hover:text-accent"
                   disabled={uploading}
                   onClick={() => fileInputRef.current?.click()}
                   variant="secondary"
@@ -3946,6 +5759,7 @@ function FormDataGridWorkspace({
                   {uploading ? "Uploading" : "Upload data"}
                 </Button>
                 <Button
+                  className="border-success bg-success text-white shadow-sm shadow-success/25 hover:bg-success/92"
                   disabled={confirmingImports || !confirmableImportRows.length || Boolean(editingSubmissionId)}
                   onClick={() => void confirmCleanedImportedRows()}
                   variant="primary"
@@ -3962,9 +5776,10 @@ function FormDataGridWorkspace({
                       value={returnComment}
                     />
                     <Button
+                      className="shadow-sm shadow-danger/15"
                       disabled={returningImports || !stagedImportRows.length}
                       onClick={() => void returnStagedRowsToSource()}
-                      variant="secondary"
+                      variant="danger"
                     >
                       <ArrowLeft aria-hidden="true" />
                       {returningImports ? "Returning" : `Return ${stagedImportRows.length} to source`}
@@ -3982,11 +5797,16 @@ function FormDataGridWorkspace({
                 />
               </>
             ) : null}
-            <Button disabled={!canExport || !filteredSubmissions.length} onClick={exportGrid} variant="secondary">
+            <Button
+              className="border-border/80 bg-background text-muted-foreground hover:border-primary/25 hover:bg-panel hover:text-foreground"
+              disabled={!canExport || !filteredSubmissions.length}
+              onClick={exportGrid}
+              variant="secondary"
+            >
               <Download aria-hidden="true" />
               Export grid
             </Button>
-            <Button onClick={() => setShowDictionary((value) => !value)} variant="secondary">
+            <Button onClick={() => setShowDictionary((value) => !value)} variant="ghost">
               <Database aria-hidden="true" />
               Data dictionary
             </Button>
@@ -4021,6 +5841,262 @@ function FormDataGridWorkspace({
         </div>
       </div>
 
+      {pendingUploadReview ? (
+        <div className="rounded-xl border border-primary/25 bg-panel p-3.5 shadow-line">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone="accent">Upload review</Badge>
+                <Badge tone="neutral">{pendingUploadReview.fileName}</Badge>
+                <Badge tone="neutral">{pendingUploadReview.dataRowCount} rows</Badge>
+                <Badge tone={pendingUploadReview.blockingProblems.length ? "danger" : "success"}>
+                  {pendingUploadReview.blockingProblems.length ? "Needs fixes before staging" : "Ready to stage"}
+                </Badge>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                One quick review before import. The system matches headers using question variable names and question titles, then stages the rows for cleaning instead of publishing them directly.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                className="border-accent/35 bg-accent/12 text-accent hover:border-accent/50 hover:bg-accent/18 hover:text-accent"
+                disabled={uploading || pendingUploadReview.blockingProblems.length > 0}
+                onClick={() => void confirmPendingUpload()}
+                variant="primary"
+              >
+                <UploadCloud aria-hidden="true" />
+                {uploading ? "Staging rows" : `Stage ${pendingUploadReview.dataRowCount} rows`}
+              </Button>
+              <Button
+                onClick={() => setPendingUploadReview(null)}
+                variant="secondary"
+              >
+                <X aria-hidden="true" />
+                Cancel
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <MiniStat label="Matched columns" onClick={() => undefined} value={pendingUploadReview.matchedColumns.length} />
+            <MiniStat label="Ignored columns" onClick={() => undefined} value={pendingUploadReview.unmatchedColumns.length} />
+            <MiniStat label="Missing required" onClick={() => undefined} value={pendingUploadReview.missingRequiredQuestions.length} />
+            <MiniStat label="Rows needing cleaning" onClick={() => undefined} value={pendingUploadReview.rowsWithIssues} />
+          </div>
+
+          <div className="mt-4 grid gap-3 xl:grid-cols-2">
+            <div className="rounded-lg border bg-background p-3">
+              <p className="text-sm font-medium text-foreground">What matches well</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {pendingUploadReview.matchedColumns.slice(0, 10).map((match) => (
+                  <span
+                    className="rounded-full border border-border/80 bg-panel px-2 py-1 text-[11px] text-muted-foreground"
+                    key={`${match.header}-${match.question.key}`}
+                    title={`${match.header} -> ${match.question.label}`}
+                  >
+                    <span className="font-medium text-foreground">{match.header}</span>
+                    {" -> "}
+                    {match.question.key}
+                  </span>
+                ))}
+                {pendingUploadReview.matchedColumns.length > 10 ? (
+                  <span className="rounded-full border border-border/80 bg-panel px-2 py-1 text-[11px] text-muted-foreground">
+                    + {pendingUploadReview.matchedColumns.length - 10} more
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="rounded-lg border bg-background p-3">
+              <p className="text-sm font-medium text-foreground">What needs attention</p>
+              <div className="mt-2 space-y-2 text-sm text-muted-foreground">
+                {pendingUploadReview.blockingProblems.length > 0 ? (
+                  <div className="space-y-1">
+                    {pendingUploadReview.blockingProblems.map((problem) => (
+                      <p className="text-danger" key={problem}>{problem}</p>
+                    ))}
+                  </div>
+                ) : null}
+                {pendingUploadReview.missingRequiredQuestions.length > 0 ? (
+                  <p>
+                    Required columns missing:{" "}
+                    <span className="font-medium text-foreground">
+                      {pendingUploadReview.missingRequiredQuestions
+                        .slice(0, 5)
+                        .map((question) => question.key)
+                        .join(", ")}
+                    </span>
+                    {pendingUploadReview.missingRequiredQuestions.length > 5
+                      ? ` + ${pendingUploadReview.missingRequiredQuestions.length - 5} more`
+                      : ""}
+                  </p>
+                ) : null}
+                {pendingUploadReview.unmatchedColumns.length > 0 ? (
+                  <p>
+                    Ignored columns:{" "}
+                    <span className="font-medium text-foreground">
+                      {pendingUploadReview.unmatchedColumns.slice(0, 5).join(", ")}
+                    </span>
+                    {pendingUploadReview.unmatchedColumns.length > 5
+                      ? ` + ${pendingUploadReview.unmatchedColumns.length - 5} more`
+                      : ""}
+                  </p>
+                ) : null}
+                {pendingUploadReview.rowsWithIssues > 0 ? (
+                  <p>
+                    {pendingUploadReview.rowsWithIssues} row(s) are likely to need cleaning before confirm
+                    {pendingUploadReview.rowsWithMissing > 0
+                      ? ` · ${pendingUploadReview.rowsWithMissing} with missing values`
+                      : ""}
+                    {pendingUploadReview.rowsWithInvalid > 0
+                      ? ` · ${pendingUploadReview.rowsWithInvalid} with invalid options`
+                      : ""}
+                  </p>
+                ) : (
+                  <p className="text-success">
+                    No obvious column or value issues were detected in this quick review.
+                  </p>
+                )}
+                {pendingUploadReview.advancedMatchedQuestions.length > 0 ? (
+                  <p>
+                    Advanced fields detected:{" "}
+                    <span className="font-medium text-foreground">
+                      {pendingUploadReview.advancedMatchedQuestions.slice(0, 4).join(", ")}
+                    </span>
+                    . These may need special formatting in spreadsheets.
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          {pendingUploadReview.sampleIssues.length > 0 ? (
+            <div className="mt-3 rounded-lg border bg-background p-3">
+              <p className="text-sm font-medium text-foreground">Quick sample of likely cleaning issues</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {pendingUploadReview.sampleIssues.map((issue) => (
+                  <span
+                    className="rounded-full border border-warning/35 bg-warning/10 px-2 py-1 text-[11px] text-warning"
+                    key={issue}
+                  >
+                    {issue}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {importConfirmationSummary ? (
+        <div className="rounded-xl border border-success/25 bg-success/5 p-3.5 shadow-line">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={importConfirmationSummary.reconciliationRows ? "warning" : "success"}>
+                  {importConfirmationSummary.reconciliationRows
+                    ? "Approved with follow-up"
+                    : "Approved and ready"}
+                </Badge>
+                <Badge tone="neutral">
+                  {importConfirmationSummary.approvedRows} approved
+                </Badge>
+                {importConfirmationSummary.reconciliationRows ? (
+                  <Badge tone="warning">
+                    {importConfirmationSummary.reconciliationRows} need reconciliation
+                  </Badge>
+                ) : null}
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  Cleaned data has been processed
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {importConfirmationSummaryMessage(importConfirmationSummary)}
+                </p>
+              </div>
+            </div>
+            <Button
+              onClick={() => setImportConfirmationSummary(null)}
+              variant="secondary"
+            >
+              <X aria-hidden="true" />
+              Close
+            </Button>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <MiniStat
+              label="Approved rows"
+              onClick={() => {
+                setStatusFilter("approved");
+                setSourceFilter("uploaded");
+              }}
+              value={importConfirmationSummary.approvedRows}
+            />
+            <MiniStat
+              label="New records created"
+              onClick={() => router.push("/beneficiaries")}
+              value={importConfirmationSummary.createdEntities}
+            />
+            <MiniStat
+              label="Existing records matched"
+              onClick={() => router.push("/beneficiaries")}
+              value={importConfirmationSummary.linkedEntities}
+            />
+            <MiniStat
+              label="Need follow-up"
+              onClick={() => router.push("/data-quality/reconciliation")}
+              value={importConfirmationSummary.rowsNeedingFollowUp}
+            />
+          </div>
+
+          {importConfirmationSummary.rowsNeedingFollowUp ? (
+            <div className="mt-3 rounded-lg border border-warning/35 bg-warning/10 p-3 text-sm text-warning">
+              <p className="font-medium">
+                Some approved rows still need follow-up before entity records are fully trusted.
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                Open the reconciliation queue for duplicate checks, missing links, or profile-change review. The uploaded rows are saved, but these follow-up decisions should be completed before relying on them for official entity management.
+              </p>
+            </div>
+          ) : null}
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              onClick={() => {
+                setStatusFilter("approved");
+                setSourceFilter("uploaded");
+              }}
+              className="border-success bg-success text-white shadow-sm shadow-success/25 hover:bg-success/92"
+              variant="primary"
+            >
+              <ClipboardCheck aria-hidden="true" />
+              View approved rows
+            </Button>
+            <Button
+              onClick={() => router.push("/beneficiaries")}
+              variant="secondary"
+            >
+              <Link2 aria-hidden="true" />
+              View entities
+            </Button>
+            <Button
+              className="border-warning/30 bg-warning/8 text-warning hover:border-warning/45 hover:bg-warning/12 hover:text-warning"
+              onClick={() => router.push("/data-quality/reconciliation")}
+              variant="secondary"
+            >
+              <ShieldCheck aria-hidden="true" />
+              Open reconciliation
+            </Button>
+            <Button onClick={() => router.push("/reports")} variant="secondary">
+              <BarChart3 aria-hidden="true" />
+              Open reports
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       {visibleStagedImportRows.length ? (
         <div className="rounded-xl border border-warning/30 bg-warning/8 p-3 text-sm">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -4029,20 +6105,29 @@ function FormDataGridWorkspace({
                 {visibleStagedImportRows.length} uploaded row(s) are staged for cleaning.
               </p>
               <p className="text-muted-foreground">
-                Clean rows with missing values or invalid options, then confirm cleaned rows before they feed dashboards, reports, metrics, or entity profiles.
+                Keep everything in one screen: click a staged cell, edit the value above the sheet or inline, save the row, then confirm it when the warning is cleared.
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Click any staged response cell to load it into the editor bar above the sheet. Keep the sheet for scanning; keep the warnings and editing at the top.
+                Shortcuts: <span className="font-medium text-foreground">Tab / Enter</span> moves across cells, long text keeps <span className="font-medium text-foreground">Enter</span> for new lines, <span className="font-medium text-foreground">Ctrl/Cmd + Z</span> undo, <span className="font-medium text-foreground">Ctrl/Cmd + Shift + Z</span> redo, <span className="font-medium text-foreground">Ctrl/Cmd + S</span> saves, and <span className="font-medium text-foreground">Ctrl/Cmd + Enter</span> confirms a clean row.
               </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Shortcuts: <span className="font-medium text-foreground">Enter</span> or <span className="font-medium text-foreground">Tab</span> moves across cells, <span className="font-medium text-foreground">arrow keys</span> move between selected cells, and <span className="font-medium text-foreground">Esc</span> cancels the row.
-              </p>
-	              <p className="mt-1 text-xs text-muted-foreground">
-	                Save shortcuts: <span className="font-medium text-foreground">Ctrl/Cmd + S</span> saves the current row, and <span className="font-medium text-foreground">Ctrl/Cmd + Shift + S</span> saves and opens the next staged row.
-	              </p>
-	              <p className="mt-1 text-xs text-muted-foreground">
-	                Confirm shortcuts: <span className="font-medium text-foreground">Ctrl/Cmd + Enter</span> confirms a clean row, and <span className="font-medium text-foreground">Ctrl/Cmd + Shift + Enter</span> confirms it and opens the next staged row.
-	              </p>
+              <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-lg border border-warning/30 bg-background/80 px-2.5 py-2 text-[11px]">
+                  <p className="font-medium text-warning">Blocked</p>
+                  <p className="mt-0.5 text-muted-foreground">Blocked until flagged cells are fixed.</p>
+                </div>
+                <div className="rounded-lg border border-accent/30 bg-background/80 px-2.5 py-2 text-[11px]">
+                  <p className="font-medium text-accent">Saved locally</p>
+                  <p className="mt-0.5 text-muted-foreground">Your edits are stored locally, not live yet.</p>
+                </div>
+                <div className="rounded-lg border border-success/30 bg-background/80 px-2.5 py-2 text-[11px]">
+                  <p className="font-medium text-success">Ready</p>
+                  <p className="mt-0.5 text-muted-foreground">The row is clean but still waiting for confirmation.</p>
+                </div>
+                <div className="rounded-lg border border-success/30 bg-success/5 px-2.5 py-2 text-[11px]">
+                  <p className="font-medium text-success">Live</p>
+                  <p className="mt-0.5 text-muted-foreground">Approved rows leave this queue and move into live data.</p>
+                </div>
+              </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <Button
                   onClick={() => {
@@ -4051,7 +6136,12 @@ function FormDataGridWorkspace({
                     setStagedQueueFilter("all");
                   }}
                   size="sm"
-                  variant={stagedQueueFilter === "all" ? "primary" : "ghost"}
+                  variant={stagedQueueFilter === "all" ? "secondary" : "ghost"}
+                  className={
+                    stagedQueueFilter === "all"
+                      ? "border-primary/25 bg-primary/8 text-primary hover:bg-primary/12 hover:text-primary"
+                      : undefined
+                  }
                 >
                   All staged ({visibleStagedImportRows.length})
                 </Button>
@@ -4062,9 +6152,14 @@ function FormDataGridWorkspace({
                     setStagedQueueFilter("needs_cleaning");
                   }}
                   size="sm"
-                  variant={stagedQueueFilter === "needs_cleaning" ? "primary" : "ghost"}
+                  variant={stagedQueueFilter === "needs_cleaning" ? "secondary" : "ghost"}
+                  className={
+                    stagedQueueFilter === "needs_cleaning"
+                      ? "border-warning/40 bg-warning/12 text-warning hover:bg-warning/16 hover:text-warning"
+                      : undefined
+                  }
                 >
-                  Needs cleaning ({stagedRowsNeedingCleaning})
+                  Blocked ({stagedRowsNeedingCleaning})
                 </Button>
                 <Button
                   onClick={() => {
@@ -4073,9 +6168,30 @@ function FormDataGridWorkspace({
                     setStagedQueueFilter("ready_to_confirm");
                   }}
                   size="sm"
-                  variant={stagedQueueFilter === "ready_to_confirm" ? "primary" : "ghost"}
+                  variant={stagedQueueFilter === "ready_to_confirm" ? "secondary" : "ghost"}
+                  className={
+                    stagedQueueFilter === "ready_to_confirm"
+                      ? "border-success/40 bg-success/12 text-success hover:bg-success/16 hover:text-success"
+                      : undefined
+                  }
                 >
-                  Ready to confirm ({stagedRowsReadyToConfirm})
+                  Ready ({stagedRowsReadyToConfirm})
+                </Button>
+                <Button
+                  onClick={() => {
+                    setSourceFilter("uploaded");
+                    setStatusFilter("import_staged");
+                    setStagedQueueFilter("drafts");
+                  }}
+                  size="sm"
+                  variant={stagedQueueFilter === "drafts" ? "secondary" : "ghost"}
+                  className={
+                    stagedQueueFilter === "drafts"
+                      ? "border-accent/40 bg-accent/12 text-accent hover:bg-accent/18 hover:text-accent"
+                      : undefined
+                  }
+                >
+                  Saved locally ({draftedVisibleImportRowCount})
                 </Button>
               </div>
               <div className="mt-2 max-w-xl space-y-1">
@@ -4112,6 +6228,22 @@ function FormDataGridWorkspace({
                     </span>{" "}
                     total issue{stagedIssueCountTotal === 1 ? "" : "s"} remaining
                   </span>
+                  {draftedVisibleImportRowCount > 0 ? (
+                    <span>
+                      <span className="font-medium text-foreground">
+                        {draftedVisibleImportRowCount}
+                      </span>{" "}
+                      saved browser row{draftedVisibleImportRowCount === 1 ? "" : "s"}
+                    </span>
+                  ) : null}
+                  {notedVisibleImportRowCount > 0 ? (
+                    <span>
+                      <span className="font-medium text-foreground">
+                        {notedVisibleImportRowCount}
+                      </span>{" "}
+                      noted row{notedVisibleImportRowCount === 1 ? "" : "s"}
+                    </span>
+                  ) : null}
                   {stagedIssueBreakdownTotal.missing > 0 ? (
                     <span>
                       <span className="font-medium text-foreground">
@@ -4135,36 +6267,14 @@ function FormDataGridWorkspace({
                   Showing {stagedImportRows.length} row(s) in the{" "}
                   <span className="font-medium text-foreground">
                     {stagedQueueFilter === "needs_cleaning"
-                      ? "Needs cleaning"
-                      : "Ready to confirm"}
+                      ? "Blocked"
+                      : stagedQueueFilter === "drafts"
+                        ? "Saved locally"
+                        : "Ready"}
                   </span>{" "}
                   queue.
                 </p>
               ) : null}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                disabled={!stagedImportRows.length || Boolean(editingSubmissionId)}
-                onClick={openFirstQueuedStagedRow}
-                size="sm"
-                variant="secondary"
-              >
-                <Pencil aria-hidden="true" />
-                {stagedQueueFilter === "needs_cleaning"
-                  ? `Open first issue row (${stagedImportRows.length})`
-                  : stagedQueueFilter === "ready_to_confirm"
-                    ? `Open first ready row (${stagedImportRows.length})`
-                    : `Open first priority row (${stagedImportRows.length})`}
-              </Button>
-              <Button
-                disabled={confirmingImports || !confirmableImportRows.length || Boolean(editingSubmissionId)}
-                onClick={() => void confirmCleanedImportedRows()}
-                size="sm"
-                variant="primary"
-              >
-                <CheckCircle2 aria-hidden="true" />
-                Confirm {confirmableImportRows.length} cleaned
-              </Button>
             </div>
           </div>
         </div>
@@ -4177,105 +6287,206 @@ function FormDataGridWorkspace({
         />
       ) : null}
 
-      {currentEditingSubmission && canCleanImportedSubmission(currentEditingSubmission) ? (
-        <div className="rounded-xl border bg-panel p-3 shadow-line">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-            <div className="space-y-2">
+      <div
+        className={cn(
+          "space-y-3",
+          cleaningFullscreen &&
+            visibleStagedImportRows.length &&
+            "fixed inset-3 z-50 flex flex-col rounded-2xl border bg-background p-3 shadow-2xl",
+        )}
+      >
+      {visibleStagedImportRows.length ? (
+        <div
+          className={cn(
+            "rounded-xl border bg-panel p-2.5 shadow-line",
+            cleaningFullscreen ? "shrink-0" : "sticky top-3 z-30",
+          )}
+        >
+          <div className="flex flex-col gap-2 xl:flex-row xl:items-start xl:justify-between">
+            <div className="space-y-1.5">
               <div>
-                <p className="text-sm font-semibold">Spreadsheet editor</p>
+                <p className="text-sm font-semibold">Excel-style data cleaning workspace</p>
                 <p className="text-xs text-muted-foreground">
-                  Warnings stay here. Click any cell in the active staged row to load it into this editor.
+                  Click a cell, edit in the fx bar, save, then confirm.
                 </p>
               </div>
-              <div className="flex flex-wrap gap-1.5 text-[10px]">
-                {currentEditingCellReference ? (
-                  <Badge tone="accent">Cell {currentEditingCellReference}</Badge>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                <span>Blocked {stagedRowsNeedingCleaning}</span>
+                <span>Saved locally {draftedVisibleImportRowCount}</span>
+                <span>Ready {stagedRowsReadyToConfirm}</span>
+                {stagedIssueCountTotal > 0 ? (
+                  <span>Issues {stagedIssueCountTotal}</span>
                 ) : null}
-                {currentEditingRowIndex >= 0 ? (
-                  <Badge tone="neutral">
-                    Row {currentEditingRowIndex + 1} of {stagedImportRows.length}
-                  </Badge>
+                {currentEditingSubmission ? (
+                  <span>
+                    {currentEditingCellReference ?? "--"} · {currentEditingSaveStateLabel} · {currentEditingState.label}
+                  </span>
                 ) : null}
-                {activeEditingQuestion ? (
-                  <Badge tone="neutral">Field: {activeEditingQuestion.label}</Badge>
-                ) : null}
-                {activeEditingQuestion ? (
-                  <Badge tone="neutral">Variable: {activeEditingQuestion.key}</Badge>
-                ) : null}
-                {activeEditingQuestion ? (
-                  <Badge tone="neutral">
-                    Type: {questionTypeLabel(activeEditingQuestion.type)}
-                  </Badge>
-                ) : null}
-                {activeEditingQuestion ? (
-                  <Badge tone={activeEditingQuestion.required ? "warning" : "neutral"}>
-                    {activeEditingQuestion.required ? "Required" : "Optional"}
-                  </Badge>
-                ) : null}
-                <Badge tone={isEditingDirty ? "warning" : "success"}>
-                  {isEditingDirty ? "Unsaved changes" : "Saved locally"}
-                </Badge>
-                <Badge tone={currentEditingIssueCount > 0 ? "warning" : "success"}>
-                  {currentEditingRowStateLabel}
-                </Badge>
               </div>
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              <Button
-                disabled={!currentEditingPreviousSubmissionId}
-                onClick={() => openAdjacentEditingRow(-1)}
-                size="sm"
-                variant="ghost"
-              >
-                {currentEditingPreviousRowLabel}
-              </Button>
-              <Button
-                disabled={!currentEditingIssueCount}
-                onClick={() => jumpToEditingIssue(-1)}
-                size="sm"
-                variant="ghost"
-              >
-                Previous issue
-              </Button>
-              <Button
-                disabled={!currentEditingIssueCount}
-                onClick={() => jumpToEditingIssue(1)}
-                size="sm"
-                variant="ghost"
-              >
-                Next issue
-              </Button>
-              <Button
-                disabled={!currentEditingNextSubmissionId}
-                onClick={() => openAdjacentEditingRow(1)}
-                size="sm"
-                variant="ghost"
-              >
-                {currentEditingNextRowLabel}
-              </Button>
-              <Button
-                disabled={updateImportedRowMutation.isPending}
-                onClick={() => void saveEditedRow(currentEditingSubmission)}
-                size="sm"
-                variant="secondary"
-              >
-                <Save aria-hidden="true" />
-                {updateImportedRowMutation.isPending ? "Saving" : currentEditingSaveLabel}
-              </Button>
-              <Button
-                disabled={updateImportedRowMutation.isPending || !currentEditingNextSubmissionId}
-                onClick={() =>
-                  void saveEditedRow(currentEditingSubmission, { advanceToNext: true })
-                }
-                size="sm"
-                variant="secondary"
-              >
-                {currentEditingSaveNextLabel}
-              </Button>
-              {!currentEditingIssueCount ? (
-                <>
+          </div>
+
+          <details className="mt-2 rounded-lg border bg-background/70 px-2.5 py-2">
+            <summary className="cursor-pointer text-xs font-medium text-foreground">
+              More cleaning tools
+            </summary>
+            <div className="mt-2 flex flex-wrap gap-2 overflow-x-auto pb-1 product-scrollbar">
+              <div className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border bg-background p-0.5">
+                <Select
+                  className="h-8 min-w-[9rem]"
+                  onChange={(event) =>
+                    setQuickOpenPreset(
+                      event.target.value as
+                        | "blocked"
+                        | "drafts"
+                        | "invalid"
+                        | "missing"
+                        | "notes"
+                        | "ready",
+                    )
+                  }
+                  value={quickOpenPreset}
+                >
+                  <option value="blocked">Blocked rows</option>
+                  <option value="drafts">Saved locally</option>
+                  <option value="missing">Missing values</option>
+                  <option value="invalid">Invalid options</option>
+                  <option value="ready">Ready rows</option>
+                  <option value="notes">Rows with notes</option>
+                </Select>
+                <Button
+                  disabled={!quickOpenPresetCount || Boolean(editingSubmissionId)}
+                  onClick={openQuickQueueRow}
+                  size="sm"
+                  variant="ghost"
+                >
+                  Open ({quickOpenPresetCount})
+                </Button>
+                <Button
+                  disabled={!canUseSpreadsheetCleaningView}
+                  onClick={() =>
+                    setCleaningLayout((value) =>
+                      value === "spreadsheet" ? "detail" : "spreadsheet",
+                    )
+                  }
+                  size="sm"
+                  variant="ghost"
+                >
+                  {cleaningLayout === "spreadsheet" ? "Detailed row view" : "Spreadsheet view"}
+                </Button>
+                <Button
+                  disabled={!Object.keys(cleaningDrafts).length}
+                  onClick={clearAllCleaningDrafts}
+                  size="sm"
+                  variant="ghost"
+                >
+                  Clear saved ({Object.keys(cleaningDrafts).length})
+                </Button>
+              </div>
+
+              {currentEditingSubmission ? (
+                <div className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border bg-background p-0.5">
+                  <Button
+                    disabled={!currentEditingPreviousSubmissionId}
+                    onClick={() => openAdjacentEditingRow(-1)}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Prev row
+                  </Button>
+                  <Button
+                    disabled={!currentEditingNextSubmissionId}
+                    onClick={() => openAdjacentEditingRow(1)}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Next row
+                  </Button>
+                  <Button
+                    onClick={() =>
+                      router.push(`/submissions/all?submissionId=${currentEditingSubmission.id}&tab=Responses`)
+                    }
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Open review
+                  </Button>
+                  <Button
+                    disabled={!currentEditingIssueCount}
+                    onClick={() => jumpToEditingIssue(-1)}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Prev issue
+                  </Button>
+                  <Button
+                    disabled={!currentEditingIssueCount}
+                    onClick={() => jumpToEditingIssue(1)}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Next issue
+                  </Button>
+                  <Button
+                    disabled={!activeEditingQuestion || activeEditingCurrentValue === ""}
+                    onClick={() =>
+                      activeEditingQuestion
+                        ? updateEditingCell(activeEditingQuestion.key, "")
+                        : undefined
+                    }
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Clear cell
+                  </Button>
+                  <Button
+                    disabled={!activeEditingCellDirty}
+                    onClick={resetEditingCell}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Reset cell
+                  </Button>
+                  <Button
+                    disabled={!undoStack.length}
+                    onClick={() => undoEditingDraft()}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Undo
+                  </Button>
+                  <Button
+                    disabled={!redoStack.length}
+                    onClick={() => redoEditingDraft()}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Redo
+                  </Button>
+                  <Button
+                    disabled={!isEditingDirty}
+                    onClick={resetEditingRow}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Reset row
+                  </Button>
                   <Button
                     disabled={
+                      updateImportedRowMutation.isPending ||
+                      !currentEditingNextSubmissionId
+                    }
+                    onClick={() =>
+                      void saveEditedRow(currentEditingSubmission, { advanceToNext: true })
+                    }
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Save + next
+                  </Button>
+                  <Button
+                    disabled={
+                      currentEditingIssueCount > 0 ||
                       confirmingImports ||
                       confirmingSubmissionId === currentEditingSubmission.id ||
                       updateImportedRowMutation.isPending ||
@@ -4287,41 +6498,94 @@ function FormDataGridWorkspace({
                       })
                     }
                     size="sm"
-                    variant="secondary"
+                    variant="ghost"
                   >
-                    <CheckCircle2 aria-hidden="true" />
-                    {currentEditingConfirmNextActionLabel}
+                    Confirm + next
                   </Button>
                   <Button
-                    disabled={
-                      confirmingImports ||
-                      confirmingSubmissionId === currentEditingSubmission.id ||
-                      updateImportedRowMutation.isPending
-                    }
-                    onClick={() => void confirmSingleImportedRow(currentEditingSubmission)}
+                    onClick={() => cancelRowEdit()}
                     size="sm"
-                    variant="primary"
+                    variant="ghost"
                   >
-                    <CheckCircle2 aria-hidden="true" />
-                    {confirmingSubmissionId === currentEditingSubmission.id
-                      ? "Confirming"
-                      : currentEditingConfirmActionLabel}
+                    Close row
                   </Button>
-                </>
+                </div>
               ) : null}
-              <Button onClick={() => cancelRowEdit()} size="sm" variant="secondary">
-                <X aria-hidden="true" />
-                Close editor
-              </Button>
-            </div>
-          </div>
 
-          <div className="mt-3 rounded-lg border border-warning/30 bg-warning/8 p-3">
-            {currentEditingIssueCount ? (
-              <div className="space-y-1">
-                <p className="text-[11px] font-medium text-warning">
-                  {currentEditingIssueCount} cell
-                  {currentEditingIssueCount === 1 ? "" : "s"} still need attention in this row.
+              {compactCleaningSheet ? (
+                <div className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border bg-background p-0.5">
+                  <Button onClick={() => toggleAllVisibleSelections()} size="sm" variant="ghost">
+                    {selectedVisibleSubmissionIds.length === stagedImportRows.length
+                      ? "Clear row selection"
+                      : "Select visible"}
+                  </Button>
+                </div>
+              ) : null}
+
+              {compactCleaningSheet && activeEditingQuestion ? (
+                <div className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border bg-background p-0.5">
+                  <Button
+                    disabled={!currentEditingSubmission || bulkApplying}
+                    onClick={() => void pasteClipboardGridIntoSheet()}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Paste range
+                  </Button>
+                  <Button
+                    disabled={!currentEditingSubmission || bulkApplying}
+                    onClick={() => void fillCurrentValueDown()}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Fill down
+                  </Button>
+                  <Button
+                    disabled={!selectedVisibleSubmissionIds.length || bulkApplying}
+                    onClick={() => void applyCurrentValueToSelectedRows()}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Apply to selected
+                  </Button>
+                  <Button
+                    disabled={!selectedVisibleSubmissionIds.length || bulkApplying}
+                    onClick={() => void clearCurrentFieldAcrossSelectedRows()}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Clear selected field
+                  </Button>
+                </div>
+              ) : null}
+              {currentEditingSubmission ? (
+                <div className="flex shrink-0 items-center gap-1 rounded-lg border bg-background p-0.5">
+                  <Input
+                    className="h-8 min-w-[12rem]"
+                    onChange={(event) => updateEditingReason(event.target.value)}
+                    placeholder="Cleaning note"
+                    value={editingReason}
+                  />
+                  <Input
+                    className="h-8 min-w-[12rem]"
+                    onChange={(event) => updateEditingCellNote(event.target.value)}
+                    placeholder="Cell note"
+                    value={currentEditingCellNote}
+                  />
+                </div>
+              ) : null}
+            </div>
+          </details>
+
+          <div className="mt-2 rounded-md border border-warning/30 bg-warning/8 px-2.5 py-2">
+            {!currentEditingSubmission ? (
+              <p className="text-[10px] text-muted-foreground">
+                Click a cell to edit it in the fx bar.
+              </p>
+            ) : currentEditingIssueCount ? (
+              <div className="space-y-0.5">
+                <p className="text-[10px] font-medium text-warning">
+                  Blocked · {currentEditingIssueCount} issue{currentEditingIssueCount === 1 ? "" : "s"}
                 </p>
                 {currentEditingIssueSummary ? (
                   <p className="text-[10px] text-muted-foreground">
@@ -4329,20 +6593,26 @@ function FormDataGridWorkspace({
                   </p>
                 ) : null}
               </div>
-            ) : (
+            ) : currentEditingSubmission && isEditingDirty ? (
               <p className="text-[11px] text-success">
-                {isEditingDirty
-                  ? "This row is clean. Confirm row will save your edits and approve it."
-                  : "This row is clean and ready to confirm."}
+                Ready after save.
               </p>
-            )}
-            {currentEditingQueueMovementHint ? (
-              <p className="mt-1 text-[10px] text-muted-foreground">
+            ) : currentEditingHasLocalDraft ? (
+              <p className="text-[11px] text-success">
+                Saved locally.
+              </p>
+            ) : currentEditingSubmission ? (
+              <p className="text-[11px] text-success">
+                Ready to confirm.
+              </p>
+            ) : null}
+            {currentEditingSubmission && currentEditingQueueMovementHint ? (
+              <p className="mt-0.5 text-[10px] text-muted-foreground">
                 {currentEditingQueueMovementHint}
               </p>
             ) : null}
-            {activeEditingIssueTarget?.message ? (
-              <p className="mt-1 text-[10px] text-warning">
+            {currentEditingSubmission && activeEditingIssueTarget?.message ? (
+              <p className="mt-0.5 text-[10px] text-warning">
                 <span className="font-medium">Selected cell warning:</span>{" "}
                 {activeEditingIssueTarget.issueTypeLabel === "Issue"
                   ? activeEditingIssueTarget.label
@@ -4352,7 +6622,7 @@ function FormDataGridWorkspace({
                   : ""}
               </p>
             ) : nextEditingIssueTarget?.message ? (
-              <p className="mt-1 text-[10px] text-warning">
+              <p className="mt-0.5 text-[10px] text-warning">
                 <span className="font-medium">Next warning:</span>{" "}
                 {nextEditingIssueTarget.issueTypeLabel === "Issue"
                   ? nextEditingIssueTarget.label
@@ -4364,200 +6634,391 @@ function FormDataGridWorkspace({
             ) : null}
           </div>
 
-          <div className="mt-3 grid gap-3 xl:grid-cols-[260px_minmax(0,1fr)]">
-            <div className="space-y-3">
-              <Input
-                className="h-8"
-                onChange={(event) => setEditingReason(event.target.value)}
-                placeholder="Cleaning note (optional)"
-                value={editingReason}
-              />
-              {currentEditingRequiredProgress.total ? (
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between gap-2 text-[10px]">
-                    <span className="text-muted-foreground">Required fields ready</span>
-                    <span className="font-medium text-foreground">
-                      {currentEditingRequiredProgress.completed}/
-                      {currentEditingRequiredProgress.total}
-                    </span>
-                  </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={cn(
-                        "h-full rounded-full transition-all",
-                        currentEditingRequiredProgress.percent === 100
-                          ? "bg-success"
-                          : "bg-warning",
-                      )}
-                      style={{ width: `${currentEditingRequiredProgress.percent}%` }}
-                    />
-                  </div>
+          <div className="mt-2 space-y-2">
+            <div className="rounded-lg border bg-background p-2">
+              <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-1 product-scrollbar">
+                <div className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border bg-background/70 p-0.5">
+                  <Button
+                    disabled={!undoStack.length}
+                    onClick={() => undoEditingDraft()}
+                    size="icon"
+                    title="Undo"
+                    variant="ghost"
+                  >
+                    <Undo2 aria-hidden="true" />
+                  </Button>
+                  <Button
+                    disabled={!redoStack.length}
+                    onClick={() => redoEditingDraft()}
+                    size="icon"
+                    title="Redo"
+                    variant="ghost"
+                  >
+                    <Redo2 aria-hidden="true" />
+                  </Button>
                 </div>
-              ) : null}
-              {activeEditingOptionsPreview ? (
-                <p className="text-[10px] text-muted-foreground">
-                  <span className="font-medium text-foreground">Allowed values:</span>{" "}
-                  {activeEditingOptionsPreview}
-                </p>
-              ) : null}
-              {activeEditingEditedValuePreview ? (
-                <div className="space-y-1 text-[10px] text-muted-foreground">
-                  {activeEditingCellDirty && activeEditingOriginalValuePreview ? (
-                    <p>
-                      <span className="font-medium text-foreground">Original:</span>{" "}
-                      {activeEditingOriginalValuePreview}
-                    </p>
-                  ) : null}
-                  <p>
-                    <span className="font-medium text-foreground">
-                      {activeEditingCellDirty ? "Edited:" : "Current value:"}
-                    </span>{" "}
-                    {activeEditingEditedValuePreview}
-                  </p>
+                <div className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border bg-background/70 p-0.5">
+                  <Button
+                    disabled={!currentEditingSubmission || updateImportedRowMutation.isPending}
+                    onClick={() =>
+                      currentEditingSubmission
+                        ? void saveEditedRow(currentEditingSubmission)
+                        : undefined
+                    }
+                    size="sm"
+                    title="Save this row"
+                    variant="secondary"
+                    className="border-accent/30 bg-accent/10 text-accent hover:border-accent/45 hover:bg-accent/15 hover:text-accent"
+                  >
+                    <Save aria-hidden="true" />
+                    {updateImportedRowMutation.isPending ? "Saving" : "Save"}
+                  </Button>
+                  <Button
+                    disabled={
+                      currentEditingSubmission
+                        ? confirmingImports ||
+                          confirmingSubmissionId === currentEditingSubmission.id ||
+                          updateImportedRowMutation.isPending ||
+                          currentEditingIssueCount > 0
+                        : confirmingImports || (!selectedConfirmableRows.length && !confirmableImportRows.length)
+                    }
+                    onClick={() => {
+                      if (currentEditingSubmission) {
+                        void confirmSingleImportedRow(currentEditingSubmission);
+                        return;
+                      }
+                      if (selectedConfirmableRows.length) {
+                        void confirmSelectedImportedRows();
+                        return;
+                      }
+                      void confirmCleanedImportedRows();
+                    }}
+                    size="sm"
+                    title="Confirm clean rows"
+                    variant="primary"
+                    className="border-success bg-success text-white shadow-sm shadow-success/25 hover:bg-success/92"
+                  >
+                    <CheckCircle2 aria-hidden="true" />
+                    {currentEditingSubmission
+                      ? confirmingSubmissionId === currentEditingSubmission.id
+                        ? "Confirming"
+                        : "Confirm"
+                      : selectedConfirmableRows.length
+                        ? `Confirm (${selectedConfirmableRows.length})`
+                        : `Confirm (${confirmableImportRows.length})`}
+                  </Button>
+                  <Button
+                    disabled={
+                      returningImports ||
+                      (!currentEditingSubmission && !selectedBlockedRows.length)
+                    }
+                    onClick={() => {
+                      if (currentEditingSubmission) {
+                        void returnCurrentEditingRowToSource();
+                        return;
+                      }
+                      void returnSelectedRowsToSource();
+                    }}
+                    size="sm"
+                    title="Return rows to source"
+                    variant="danger"
+                    className="shadow-sm shadow-danger/15"
+                  >
+                    <ArrowLeft aria-hidden="true" />
+                    {currentEditingSubmission
+                      ? "Return"
+                      : `Return (${selectedBlockedRows.length})`}
+                  </Button>
                 </div>
-              ) : null}
-              <div className="flex flex-wrap gap-1.5">
-                <Button
-                  disabled={!activeEditingQuestion || activeEditingCurrentValue === ""}
-                  onClick={() =>
-                    activeEditingQuestion
-                      ? updateEditingCell(activeEditingQuestion.key, "")
-                      : undefined
-                  }
-                  size="sm"
-                  variant="ghost"
-                >
-                  Clear cell
-                </Button>
-                <Button
-                  disabled={!activeEditingCellDirty}
-                  onClick={resetEditingCell}
-                  size="sm"
-                  variant="ghost"
-                >
-                  Reset cell
-                </Button>
-                <Button
-                  disabled={!isEditingDirty}
-                  onClick={resetEditingRow}
-                  size="sm"
-                  variant="ghost"
-                >
-                  Reset row
-                </Button>
-              </div>
-            </div>
-            <div className="space-y-3">
-              <div className="rounded-lg border bg-background p-2.5">
                 {activeEditingQuestion ? (
-                  <InlineGridCellEditor
-                    active
-                    issues={currentEditingCellIssues}
-                    onChange={(value) => updateEditingCell(activeEditingQuestion.key, value)}
-                    onFocus={() => setEditingCellKey(activeEditingQuestion.key)}
-                    onKeyDown={(event) =>
-                      handleEditingCellKeyDown(event, activeEditingQuestion)
-                    }
-                    question={activeEditingQuestion}
-                    registerRef={(element) =>
-                      registerEditingCellRef(activeEditingQuestion.key, element)
-                    }
-                    value={activeEditingCurrentValue}
-                  />
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    Select a cell in the staged row to edit it here.
-                  </p>
-                )}
-              </div>
-              {currentEditingIssueTargets.length ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {currentEditingIssueTargets.map((issue) => (
-                    <button
-                      className={cn(
-                        "rounded-full border px-2 py-1 text-[10px] transition",
-                        editingCellKey === issue.fieldKey
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-warning/40 bg-warning/10 text-warning hover:border-warning hover:bg-warning/15",
-                      )}
-                      key={`${issue.fieldKey}-${issue.label}`}
-                      onClick={() => setEditingCellKey(issue.fieldKey)}
-                      title={issue.message ?? issue.label}
-                      type="button"
+                  <div className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border bg-background/70 p-0.5">
+                    <Input
+                      className="h-8 w-24"
+                      onChange={(event) => setReplaceFindValue(event.target.value)}
+                      placeholder="Find"
+                      value={replaceFindValue}
+                    />
+                    <Input
+                      className="h-8 w-24"
+                      onChange={(event) => setReplaceWithValue(event.target.value)}
+                      placeholder="Replace"
+                      value={replaceWithValue}
+                    />
+                    <Button
+                      disabled={!replaceFindValue.trim() || bulkApplying}
+                      onClick={() => void replaceCurrentFieldAcrossRows()}
+                      size="sm"
+                      variant="ghost"
                     >
-                      {issue.issueTypeLabel}: {issue.label}
-                    </button>
-                  ))}
+                      Replace
+                    </Button>
+                  </div>
+                ) : null}
+                <div className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border bg-background/70 p-0.5">
+                  <Button
+                    onClick={() => setCleaningFullscreen((value) => !value)}
+                    size="icon"
+                    title={cleaningFullscreen ? "Exit full screen" : "Open full screen"}
+                    variant="ghost"
+                  >
+                    {cleaningFullscreen ? (
+                      <Minimize2 aria-hidden="true" />
+                    ) : (
+                      <Maximize2 aria-hidden="true" />
+                    )}
+                  </Button>
                 </div>
-              ) : null}
-              <div className="text-[10px] text-muted-foreground">
-                <span className="font-medium text-foreground">Ctrl/Cmd+S</span>{" "}
-                {currentEditingSaveShortcutHint}
-                {currentEditingNextSubmissionId ? (
-                  <>
-                    {" "}
-                    <span className="font-medium text-foreground">
-                      Ctrl/Cmd+Shift+S
-                    </span>{" "}
-                    {currentEditingSaveNextShortcutHint}
-                  </>
-                ) : null}
-                {!currentEditingIssueCount ? (
-                  <>
-                    {" "}
-                    <span className="font-medium text-foreground">
-                      Ctrl/Cmd+Enter
-                    </span>{" "}
-                    {currentEditingConfirmActionHint}
-                    {currentEditingNextSubmissionId ? (
-                      <>
-                        {" "}
-                        <span className="font-medium text-foreground">
-                          Ctrl/Cmd+Shift+Enter
-                        </span>{" "}
-                        {currentEditingConfirmNextActionHint}
-                      </>
-                    ) : null}
-                  </>
-                ) : null}
               </div>
+              {activeEditingQuestion ? (
+                <div className="space-y-2">
+                  <div
+                    className={cn(
+                      "flex flex-wrap items-start gap-2",
+                      compactCleaningSheet && "items-center",
+                    )}
+                  >
+                    <div className="flex h-9 min-w-[5.5rem] items-center justify-center rounded-md border bg-muted px-2 font-mono text-[11px] font-semibold text-foreground">
+                      {currentEditingCellReference ?? "--"}
+                    </div>
+                    {compactCleaningSheet ? (
+                      <div className="min-w-[14rem] flex-1 text-[11px]">
+                        <p className="font-medium text-foreground">
+                          {activeEditingQuestion.label}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {activeEditingQuestion.key} · {activeEditingQuestion.type}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="min-w-[14rem] rounded-md border bg-panel px-2 py-1.5 text-[11px]">
+                        <p className="font-medium text-foreground">
+                          {activeEditingQuestion.label}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {activeEditingQuestion.key} · {activeEditingQuestion.type}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 rounded-md border bg-panel px-2 py-1.5">
+                    <span className="rounded border border-border/80 bg-background px-2 py-1 font-mono text-[10px] font-semibold text-muted-foreground">
+                      fx
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <InlineGridCellEditor
+                        active
+                        issues={currentEditingCellIssues}
+                        onChange={(value) => updateEditingCell(activeEditingQuestion.key, value)}
+                        onFocus={() => setEditingCellKey(activeEditingQuestion.key)}
+                        onKeyDown={(event) =>
+                          handleEditingCellKeyDown(event, activeEditingQuestion)
+                        }
+                        question={activeEditingQuestion}
+                        registerRef={(element) =>
+                          registerEditingCellRef(activeEditingQuestion.key, element)
+                        }
+                        value={activeEditingCurrentValue}
+                      />
+                    </div>
+                  </div>
+                  {validationHintForQuestion(activeEditingQuestion) ? (
+                    <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+                      <span className="font-medium text-foreground">Expected:</span>{" "}
+                      {validationHintForQuestion(activeEditingQuestion)}
+                    </div>
+                  ) : null}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {currentEditingRequiredProgress.total ? (
+                      <Badge
+                        tone={
+                          currentEditingMissingRequiredCount > 0 ? "warning" : "success"
+                        }
+                      >
+                        Required {currentEditingRequiredProgress.completed}/
+                        {currentEditingRequiredProgress.total}
+                      </Badge>
+                    ) : null}
+                    {activeEditingOriginalValuePreview ? (
+                      <span className="text-[10px] text-muted-foreground">
+                        <span className="font-medium text-foreground">Original:</span>{" "}
+                        {activeEditingOriginalValuePreview}
+                      </span>
+                    ) : null}
+                    {activeEditingEditedValuePreview ? (
+                      <span className="text-[10px] text-muted-foreground">
+                        <span className="font-medium text-foreground">
+                          {activeEditingCellDirty ? "Edited:" : "Value:"}
+                        </span>{" "}
+                        {activeEditingEditedValuePreview}
+                      </span>
+                    ) : null}
+                    {activeEditingOptionsPreview ? (
+                      <span className="text-[10px] text-muted-foreground">
+                        <span className="font-medium text-foreground">Allowed:</span>{" "}
+                        {activeEditingOptionsPreview}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex h-9 min-w-[5.5rem] items-center justify-center rounded-md border bg-muted px-2 font-mono text-[11px] font-semibold text-muted-foreground">
+                    --
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Select a staged cell in the sheet below to edit it here.
+                  </p>
+                </div>
+              )}
             </div>
+            {currentEditingChangedFields.length ? (
+              <div className="text-[10px] text-muted-foreground">
+                Changed fields{" "}
+                <span className="font-medium text-foreground">
+                  {currentEditingChangedFields.length}
+                </span>
+              </div>
+            ) : null}
+            {currentEditingIssueTargets.length ? (
+              <div
+                className={cn(
+                  compactCleaningSheet
+                    ? "flex gap-1.5 overflow-x-auto pb-1 product-scrollbar"
+                    : "flex flex-wrap gap-1.5",
+                )}
+              >
+                {currentEditingIssueTargets.map((issue) => (
+                  <button
+                    className={cn(
+                      "rounded-full border px-2 py-1 text-[10px] transition",
+                      compactCleaningSheet && "shrink-0 whitespace-nowrap",
+                      editingCellKey === issue.fieldKey
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-warning/40 bg-warning/10 text-warning hover:border-warning hover:bg-warning/15",
+                    )}
+                    key={`${issue.fieldKey}-${issue.label}`}
+                    onClick={() => setEditingCellKey(issue.fieldKey)}
+                    title={issue.message ?? issue.label}
+                    type="button"
+                  >
+                    {issue.issueTypeLabel}: {issue.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {!compactCleaningSheet ? (
+            <div className="text-[10px] text-muted-foreground">
+              <span className="font-medium text-foreground">Ctrl/Cmd+S</span>{" "}
+              {currentEditingSaveShortcutHint}
+              {currentEditingNextSubmissionId ? (
+                <>
+                  {" "}
+                  <span className="font-medium text-foreground">
+                    Ctrl/Cmd+Shift+S
+                  </span>{" "}
+                  {currentEditingSaveNextShortcutHint}
+                </>
+              ) : null}
+              {!currentEditingIssueCount ? (
+                <>
+                  {" "}
+                  <span className="font-medium text-foreground">
+                    Ctrl/Cmd+Enter
+                  </span>{" "}
+                  {currentEditingConfirmActionHint}
+                  {currentEditingNextSubmissionId ? (
+                    <>
+                      {" "}
+                      <span className="font-medium text-foreground">
+                        Ctrl/Cmd+Shift+Enter
+                      </span>{" "}
+                      {currentEditingConfirmNextActionHint}
+                    </>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+            ) : null}
           </div>
         </div>
       ) : null}
 
-      <div className="rounded-xl border bg-panel shadow-line">
-        <div className="max-h-[72vh] overflow-auto product-scrollbar">
-          <table className="min-w-[1180px] border-separate border-spacing-0 text-[11px]">
+      <div
+        className={cn(
+          "rounded-xl border bg-panel shadow-line",
+          cleaningFullscreen && visibleStagedImportRows.length && "flex min-h-0 flex-1 flex-col",
+        )}
+      >
+        <div
+          className={cn(
+            "overflow-auto overscroll-contain product-scrollbar",
+            cleaningFullscreen && visibleStagedImportRows.length
+              ? "min-h-0 flex-1"
+              : "max-h-[76vh]",
+          )}
+        >
+          <table
+            className={cn(
+              "border-separate border-spacing-0 text-[10px]",
+              compactCleaningSheet ? "min-w-[700px]" : "min-w-[1080px]",
+            )}
+          >
             <thead>
               <tr className="bg-muted/70 text-left text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
-                {["Submission ID", "Source", "Quality Flags", "Submitted / Uploaded By", "Submitted / Uploaded At", "Status", "Approval", "Primary Entity", "Participants", "GPS Evidence", "Device", "Project", "Version", "Actions"].map((header, index) => (
-                  <th
-                    className={cn(
-                      "sticky top-0 z-20 whitespace-nowrap border-b px-2 py-1.5 font-semibold",
-                      index === 0 ? "left-0 z-30 bg-muted" : "bg-muted/70",
-                    )}
-                    key={header}
-                  >
-                    {header}
+                {compactCleaningSheet ? (
+                  <th className="sticky left-0 top-0 z-30 whitespace-nowrap border-b border-r border-border/60 bg-muted px-2 py-1.5 font-semibold">
+                    <div className="flex items-center gap-2">
+                      <input
+                        aria-label="Select all visible staged rows"
+                        checked={
+                          stagedImportRows.length > 0 &&
+                          selectedVisibleSubmissionIds.length === stagedImportRows.length
+                        }
+                        onChange={() => toggleAllVisibleSelections()}
+                        type="checkbox"
+                      />
+                      <span>Status</span>
+                    </div>
                   </th>
-                ))}
+                ) : (
+                  ["Submission ID", "Quality Flags", "Submitted / Uploaded By", "Submitted / Uploaded At", "Status", "Approval", "Primary Entity", "Related Records", "GPS Evidence", "Device"].map((header, index) => (
+                    <th
+                      className={cn(
+                        "sticky top-0 z-20 whitespace-nowrap border-b border-r border-border/60 px-1.5 py-1 font-semibold",
+                        index === 0 ? "left-0 z-30 bg-muted" : "bg-muted/70",
+                      )}
+                      key={header}
+                    >
+                      {header}
+                    </th>
+                  ))
+                )}
 	                {questions.map((question, questionIndex) => (
-	                  <th className="sticky top-0 z-10 min-w-[10rem] border-b bg-muted/70 px-2 py-1.5 font-semibold" key={question.key}>
+	                  <th
+                      className={cn(
+                        "sticky top-0 z-10 min-w-[7rem] border-b border-r border-border/60 px-1.5 py-1 font-semibold",
+                        editingCellKey === question.key
+                          ? "bg-primary/10 text-primary"
+                          : "bg-muted/70",
+                      )}
+                      key={question.key}
+                    >
 	                    <div className="flex items-center gap-1.5">
                           <span className="rounded border border-border/70 bg-background/80 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                             {spreadsheetColumnLabel(questionIndex)}
                           </span>
 	                      <span className="line-clamp-1 normal-case tracking-normal text-foreground">{question.label}</span>
-	                      <HelpHint label={`About ${question.label}`} title="Data dictionary">
+	                      {!compactCleaningSheet ? (
+                          <HelpHint label={`About ${question.label}`} title="Data dictionary">
 	                        <div className="space-y-1">
                           {questionDictionaryLines(question).map((line) => (
                             <p key={line}>{line}</p>
                           ))}
                         </div>
-                      </HelpHint>
+                          </HelpHint>
+                        ) : null}
                     </div>
-                    <div className="mt-0.5 truncate normal-case tracking-normal text-muted-foreground">
+                    <div className="mt-0.5 truncate normal-case tracking-normal text-[9px] text-muted-foreground">
                       {question.key} · {question.type}
                       {question.required ? " · required" : ""}
                     </div>
@@ -4566,176 +7027,195 @@ function FormDataGridWorkspace({
               </tr>
             </thead>
             <tbody>
-              {filteredSubmissions.map((submission) => (
+              {filteredSubmissions.map((submission, rowIndex) => (
                 (() => {
-                  const importIssueBreakdown = stagedImportIssueBreakdown(submission);
+                  const rowDraft = submissionDraft(submission);
+                  const displayAnswers = submissionDisplayAnswers(submission);
+                  const displayIssues = submissionDisplayIssues(submission);
+                  const changedDraftFields = rowDraft
+                    ? changedFieldsForDraft(questions, submission, rowDraft)
+                    : [];
+                  const changedDraftFieldKeys = new Set(
+                    changedDraftFields.map((field) => field.key),
+                  );
+                  const notedDraftFieldKeys = new Set(
+                    rowDraft
+                      ? Object.entries(rowDraft.cellNotes)
+                          .filter(([, note]) => note.trim().length > 0)
+                          .map(([fieldKey]) => fieldKey)
+                      : [],
+                  );
+                  const hasRowDraft = Boolean(rowDraft);
+                  const isSelectedRow = selectedVisibleSubmissionIds.includes(submission.id);
+                  const notedDraftFieldCount = notedDraftFieldKeys.size;
+                  const importIssueBreakdown = issueBreakdownFromList(displayIssues);
+                  const issueFieldLabels = issueFieldLabelsFromList(displayIssues);
+                  const currentRowState = stagedRowState(displayIssues.length, hasRowDraft);
+                  const isRecentlyConfirmedRow = recentlyConfirmedSubmissionIdSet.has(
+                    submission.id,
+                  );
                   return (
                 <tr
                   className={cn(
                     "odd:bg-background even:bg-muted/20",
-                    editingSubmissionId === submission.id && "bg-primary/5 ring-1 ring-inset ring-primary/20",
+                    isRecentlyConfirmedRow &&
+                      "bg-success/[0.05] ring-1 ring-inset ring-success/20",
+                    isSelectedRow && "bg-primary/[0.04]",
+                    hasRowDraft && "ring-1 ring-inset ring-accent/20",
+                    editingSubmissionId === submission.id &&
+                      "bg-primary/6 ring-1 ring-inset ring-primary/30 shadow-[inset_3px_0_0_rgba(15,118,110,0.95)]",
                   )}
                   key={submission.id}
                 >
-                  <td className="sticky left-0 z-10 whitespace-nowrap border-b bg-inherit px-2 py-1.5 font-medium">
-                    <span title={submission.client_submission_id}>{displaySubmissionId(submission)}</span>
-                  </td>
-                  <td className="border-b px-2 py-1.5">
-                    <Badge tone={isImportedSubmission(submission) ? "warning" : "success"}>
-                      {submissionSourceLabel(submission)}
-                    </Badge>
-                    {submission.source_system ? (
-                      <p className="mt-1 text-xs text-muted-foreground">{submission.source_system}</p>
-                    ) : null}
-                  </td>
-                  <td className="border-b px-2 py-1.5">
-                    <div className="flex max-w-64 flex-wrap gap-1">
-                      {rowQualityWarnings(submission).map((warning) => (
-	                        <Badge
-	                          key={warning}
-	                          tone={
-	                            warning === "Beneficiary created" ||
-                                warning === "Beneficiary linked" ||
-                                warning === "Ready to confirm"
-	                              ? "success"
-	                              : warning === "Pending review" ||
-                                    warning === "Profile update review" ||
-                                    warning === "Needs cleaning"
-	                                ? "warning"
-	                                : "danger"
-	                          }
-                        >
-                          {warning}
-                        </Badge>
-                      ))}
-                      {canCleanImportedSubmission(submission) &&
-                      stagedImportIssueCount(submission) > 0 ? (
-                        <Badge tone="warning">
-                          {stagedImportIssueCount(submission)} issue
-                          {stagedImportIssueCount(submission) === 1 ? "" : "s"} to fix
-                        </Badge>
-                      ) : null}
-                      {canCleanImportedSubmission(submission) &&
-                      importIssueBreakdown.missing > 0 ? (
-                        <Badge tone="warning">
-                          {importIssueBreakdown.missing} missing
-                        </Badge>
-                      ) : null}
-                      {canCleanImportedSubmission(submission) &&
-                      importIssueBreakdown.invalidOption > 0 ? (
-                        <Badge tone="warning">
-                          {importIssueBreakdown.invalidOption} invalid option
-                          {importIssueBreakdown.invalidOption === 1 ? "" : "s"}
-                        </Badge>
-                      ) : null}
-                      {!rowQualityWarnings(submission).length ? <Badge tone="success">Clean</Badge> : null}
-                    </div>
-                  </td>
-                  <td className="whitespace-nowrap border-b px-2 py-1.5" title={submissionActorDetail(submission)}>{submissionActorLabel(submission)}</td>
-                  <td className="whitespace-nowrap border-b px-2 py-1.5">{formatDateTime(submission.imported_at ?? submission.submitted_at)}</td>
-                  <td className="border-b px-2 py-1.5">
-                    <Badge tone={statusTone(submission.status)}>{submission.status}</Badge>
-                  </td>
-                  <td className="whitespace-nowrap border-b px-2 py-1.5">
-                    <span className={!submission.approved_at ? "text-muted-foreground" : undefined}>
-                      {approvalCellLabel(submission)}
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap border-b px-2 py-1.5">{submissionEntityCode(submission, beneficiaryCodes)}</td>
-                  <td className="max-w-56 whitespace-nowrap border-b px-2 py-1.5">
-                    <span title={(submission.linked_beneficiaries ?? []).map((link) => `${link.beneficiary_uid} ${link.display_name}`).join(", ")}>
-                      {linkedBeneficiaryLabel(submission)}
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap border-b px-2 py-1.5">
-                    <span className={cn(!submissionHasUsableGps(submission) && "text-muted-foreground")}>
-                      {formatSubmissionGpsEvidence(submission)}
-                    </span>
-                    {submissionHasUsableGps(submission) && submission.accuracy && submission.accuracy > 20 ? (
-                      <p className="mt-1 text-[11px] text-warning">Poor accuracy; review location evidence.</p>
-                    ) : null}
-                  </td>
-                  <td className="whitespace-nowrap border-b px-2 py-1.5">
-                    <p className="max-w-44 truncate font-mono text-[11px]">{formatSubmissionDeviceEvidence(submission)}</p>
-                    {submission.offline_created ? <p className="text-[11px] text-muted-foreground">Mobile offline sync</p> : null}
-                  </td>
-                  <td className="whitespace-nowrap border-b px-2 py-1.5">{form?.project_name ?? submission.project_id ?? "Project missing"}</td>
-                  <td className="whitespace-nowrap border-b px-2 py-1.5">v{submission.server_sequence}</td>
-                  <td className="whitespace-nowrap border-b px-2 py-1.5">
-                    {canCleanImportedSubmission(submission) ? (
-	                      editingSubmissionId === submission.id ? (
-	                        <div className="min-w-[200px] space-y-1">
-                            <Badge tone="accent">Editing in top workspace</Badge>
-                            <p className="text-[10px] text-muted-foreground">
-                              Click any response cell in this row to load it into the editor above.
-                            </p>
-                            <Button
-                              onClick={() =>
-                                router.push(`/submissions/all?submissionId=${submission.id}&tab=Responses`)
-                              }
-                              size="sm"
-                              variant="ghost"
-                            >
-                              <ClipboardPenLine aria-hidden="true" />
-                              Full review
-                            </Button>
+                  {compactCleaningSheet ? (
+                    <td
+                      className={cn(
+                        "sticky left-0 z-10 w-[7.25rem] border-b border-r border-border/60 px-1.5 py-1.5 align-top",
+                        editingSubmissionId === submission.id
+                          ? "bg-primary/10"
+                          : isSelectedRow
+                            ? "bg-primary/[0.08]"
+                          : "bg-inherit",
+                      )}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <input
+                            aria-label={`Select row ${rowIndex + 1}`}
+                            checked={selectedVisibleSubmissionIds.includes(submission.id)}
+                            onChange={() => toggleSubmissionSelection(submission.id)}
+                            type="checkbox"
+                          />
+                          <p className="font-medium text-foreground">Row {rowIndex + 1}</p>
                         </div>
-                      ) : (
-                        <div className="flex min-w-[250px] flex-col gap-1.5">
-                          <div className="flex flex-wrap gap-1.5">
-	                            <Button
-	                              onClick={() => startRowEdit(submission)}
-	                              size="sm"
-                                  title={stagedImportActionLabel(submission)}
-	                              variant="secondary"
-	                            >
-	                              <Pencil aria-hidden="true" />
-	                              {stagedImportActionLabel(submission)}
-	                            </Button>
-                                {!importBlockingIssues(submission).length ? (
-                                  <Button
-                                    disabled={confirmingImports || confirmingSubmissionId === submission.id}
-                                    onClick={() => void confirmSingleImportedRow(submission)}
-                                    size="sm"
-                                    variant="primary"
-                                  >
-                                    <CheckCircle2 aria-hidden="true" />
-                                    {confirmingSubmissionId === submission.id ? "Confirming" : "Confirm row"}
-                                  </Button>
-                                ) : null}
-	                            <Button
-	                              onClick={() => router.push(`/submissions/all?submissionId=${submission.id}&tab=Responses`)}
-	                              size="sm"
-                              variant="ghost"
-                            >
-                              <ClipboardPenLine aria-hidden="true" />
-                              Full review
-                            </Button>
-                          </div>
-                          <p className="text-[10px] text-muted-foreground">
-                            {stagedImportNextStepHint(submission)}
-                          </p>
-                        </div>
-                      )
-                    ) : (
-                      <Button
-                        onClick={() => router.push(`/submissions/all?submissionId=${submission.id}`)}
-                        size="sm"
-                        variant="ghost"
+                        <Badge tone={currentRowState.tone}>{currentRowState.label}</Badge>
+                        {displayIssues.length > 0 ? (
+                          <button
+                            className="text-left text-[10px] font-medium text-warning transition hover:text-warning/80"
+                            onClick={() =>
+                              startRowEdit(
+                                submission,
+                                firstIssueFieldKeyFromIssues(displayIssues) ?? undefined,
+                              )
+                            }
+                            type="button"
+                          >
+                            {displayIssues.length} issue{displayIssues.length === 1 ? "" : "s"}
+                          </button>
+                        ) : (
+                          <p className="text-[10px] text-muted-foreground">0 issues</p>
+                        )}
+                      </div>
+                    </td>
+                  ) : (
+                    <>
+                      <td
+                        className={cn(
+                          "sticky left-0 z-10 whitespace-nowrap border-b border-r border-border/60 px-1.5 py-1 font-medium",
+                          editingSubmissionId === submission.id
+                            ? "bg-primary/10"
+                            : isSelectedRow
+                              ? "bg-primary/[0.08]"
+                            : "bg-inherit",
+                        )}
                       >
-                        View
-                      </Button>
-                    )}
-                  </td>
+                        <span title={submission.client_submission_id}>{displaySubmissionId(submission)}</span>
+                      </td>
+                      <td className="border-b border-r border-border/60 px-1.5 py-1">
+                        <div className="flex items-center gap-1">
+                          <Button
+                            onClick={() => setQualityFlagsSubmissionId(submission.id)}
+                            size="sm"
+                            variant="ghost"
+                          >
+                            {rowQualityWarningsForDisplay(submission).length
+                              ? `Issues (${rowQualityWarningsForDisplay(submission).length})`
+                              : "Clean"}
+                          </Button>
+                          {isRecentlyConfirmedRow ? (
+                            <Badge tone="success">Live</Badge>
+                          ) : null}
+                          {hasRowDraft ? <Badge tone="accent">Draft</Badge> : null}
+                          {notedDraftFieldCount > 0 ? (
+                            <Badge tone="neutral">
+                              {notedDraftFieldCount} note
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap border-b border-r border-border/60 px-1.5 py-1" title={submissionActorDetail(submission)}>{submissionActorLabel(submission)}</td>
+                      <td className="whitespace-nowrap border-b border-r border-border/60 px-1.5 py-1">{formatDateTime(submission.imported_at ?? submission.submitted_at)}</td>
+                      <td className="border-b border-r border-border/60 px-1.5 py-1">
+                        <Badge tone={statusTone(submission.status)}>{submission.status}</Badge>
+                      </td>
+                      <td className="whitespace-nowrap border-b border-r border-border/60 px-1.5 py-1">
+                        <span className={!submission.approved_at ? "text-muted-foreground" : undefined}>
+                          {approvalCellLabel(submission)}
+                        </span>
+                      </td>
+                      <td
+                        className="border-b border-r border-border/60 px-1.5 py-1"
+                        title={[
+                          submissionEntityCode(submission, beneficiaryCodes),
+                          ...submissionEntityContext(submission, beneficiaryDetails),
+                        ]
+                          .filter(Boolean)
+                          .join("\n")}
+                      >
+                        <p className="whitespace-nowrap font-medium">
+                          {submissionEntityCode(submission, beneficiaryCodes)}
+                        </p>
+                        {submissionEntityContext(submission, beneficiaryDetails).map((line) => (
+                          <p className="text-[10px] text-muted-foreground" key={`${submission.id}-${line}`}>
+                            {line}
+                          </p>
+                        ))}
+                      </td>
+                      <td className="max-w-48 whitespace-nowrap border-b border-r border-border/60 px-1.5 py-1">
+                        <span title={linkedBeneficiaryTitle(submission)}>
+                          {linkedBeneficiaryLabel(submission)}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap border-b border-r border-border/60 px-1.5 py-1">
+                        <span className={cn(!submissionHasUsableGps(submission) && "text-muted-foreground")}>
+                          {formatSubmissionGpsEvidence(submission)}
+                        </span>
+                        {submissionHasUsableGps(submission) && submission.accuracy && submission.accuracy > 20 ? (
+                          <p className="mt-1 text-[10px] text-warning">Poor accuracy; review location evidence.</p>
+                        ) : null}
+                      </td>
+                      <td className="whitespace-nowrap border-b border-r border-border/60 px-1.5 py-1">
+                        <p className="max-w-32 truncate font-mono text-[10px]">{formatSubmissionDeviceEvidence(submission)}</p>
+                        {submission.offline_created ? <p className="text-[10px] text-muted-foreground">Mobile offline sync</p> : null}
+                      </td>
+                    </>
+                  )}
 	                  {questions.map((question) => (
-	                    <td className="max-w-52 border-b px-1.5 py-1 align-top" key={`${submission.id}-${question.key}`}>
+	                    <td
+                        id={`import-grid-cell-${submission.id}-${question.key}`}
+                        className={cn(
+                          "border-b border-r border-border/60 px-1 py-0.5 align-top",
+                          compactCleaningSheet ? "max-w-24" : "max-w-32",
+                          changedDraftFieldKeys.has(question.key) && "bg-accent/8",
+                          editingSubmissionId === submission.id &&
+                            editingCellKey === question.key &&
+                            "bg-primary/[0.08] ring-1 ring-inset ring-primary/20",
+                        )}
+                        key={`${submission.id}-${question.key}`}
+                      >
                           {(() => {
-                            const cellIssues = importIssuesForQuestion(submission, question);
+                            const cellIssues = issuesForQuestionFromList(displayIssues, question);
                             const hasIssues = cellIssues.length > 0;
+                            const isDraftChangedCell = changedDraftFieldKeys.has(question.key);
+                            const hasCellNote = notedDraftFieldKeys.has(question.key);
+                            const displayValue =
+                              formatCell(displayAnswers[question.key]) || "Blank";
                             return canCleanImportedSubmission(submission) ? (
                         <button
                           className={cn(
-                            "block w-full rounded border border-dashed bg-background/65 px-1.5 py-1 text-left leading-snug transition hover:border-primary/25 hover:bg-primary/5",
+                            "block w-full rounded-sm border border-dashed bg-background/65 px-1 py-0.5 text-left text-[10px] transition hover:border-primary/25 hover:bg-primary/5",
+                            isDraftChangedCell && "border-accent/60 bg-accent/10",
+                            hasCellNote && !isDraftChangedCell && "border-border/80 bg-muted/25",
                             hasIssues ? "border-warning/45 bg-warning/8" : "border-transparent",
                             editingSubmissionId === submission.id && editingCellKey === question.key
                               ? "border-primary bg-primary/8 shadow-[0_0_0_2px_rgba(15,118,110,0.12)]"
@@ -4746,22 +7226,29 @@ function FormDataGridWorkspace({
                               ? setEditingCellKey(question.key)
                               : startRowEdit(submission, question.key)
                           }
-                          title={hasIssues ? cellIssues.join("\n") : undefined}
+                          onDoubleClick={() =>
+                            editingSubmissionId === submission.id
+                              ? setEditingCellKey(question.key)
+                              : startRowEdit(submission, question.key)
+                          }
+                          title={hasIssues ? cellIssues.join("\n") : displayValue}
                           type="button"
                         >
-                          <div className="max-h-16 overflow-auto whitespace-pre-wrap break-words">
-                            {formatCell(submissionAnswerMap(submission)[question.key]) || <span className="text-muted-foreground">Blank</span>}
+                          <div className="truncate whitespace-nowrap leading-4">
+                            {displayValue === "Blank" ? <span className="text-muted-foreground">Blank</span> : displayValue}
                           </div>
                         </button>
-	                      ) : (
+		                      ) : (
                         <div
                           className={cn(
-                            "max-h-16 overflow-auto whitespace-pre-wrap break-words rounded bg-background/65 px-1.5 py-1 leading-snug",
+                            "truncate whitespace-nowrap rounded-sm bg-background/65 px-1 py-0.5 text-[10px] leading-4",
+                            isDraftChangedCell && "border border-accent/45 bg-accent/10",
+                            hasCellNote && !isDraftChangedCell && "border border-border/80 bg-muted/25",
                             hasIssues && "border border-warning/45 bg-warning/8",
                           )}
-                          title={hasIssues ? cellIssues.join("\n") : undefined}
+                          title={hasIssues ? cellIssues.join("\n") : displayValue}
                         >
-                          {formatCell(submissionAnswerMap(submission)[question.key]) || <span className="text-muted-foreground">Blank</span>}
+                          {displayValue === "Blank" ? <span className="text-muted-foreground">Blank</span> : displayValue}
                         </div>
                             );
                           })()}
@@ -4792,7 +7279,7 @@ function FormDataGridWorkspace({
                   <Button
                     onClick={() =>
                       setStagedQueueFilter(
-                        stagedQueueFilter === "needs_cleaning"
+                        stagedQueueFilter === "needs_cleaning" || stagedQueueFilter === "drafts"
                           ? "ready_to_confirm"
                           : "needs_cleaning",
                       )
@@ -4800,7 +7287,7 @@ function FormDataGridWorkspace({
                     size="sm"
                     variant="ghost"
                   >
-                    {stagedQueueFilter === "needs_cleaning"
+                    {stagedQueueFilter === "needs_cleaning" || stagedQueueFilter === "drafts"
                       ? "Show ready to confirm"
                       : "Show needs cleaning"}
                   </Button>
@@ -4809,6 +7296,81 @@ function FormDataGridWorkspace({
             </div>
           ) : null}
         </div>
+        {visibleStagedImportRows.length ? (
+          <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t bg-muted/25 px-3 py-2 text-[10px] text-muted-foreground">
+            <span>
+              Selected <span className="font-medium text-foreground">{selectedVisibleSubmissionIds.length}</span>
+            </span>
+            <span>
+              Blocked <span className="font-medium text-foreground">{stagedRowsNeedingCleaning}</span>
+            </span>
+            <span>
+              Ready <span className="font-medium text-foreground">{stagedRowsReadyToConfirm}</span>
+            </span>
+            <span>
+              Saved locally{" "}
+              <span className="font-medium text-foreground">
+                {latestCleaningDraftUpdatedAt ? formatDateTime(latestCleaningDraftUpdatedAt) : "None"}
+              </span>
+            </span>
+            <span>
+              Active cell <span className="font-medium text-foreground">{currentEditingCellReference ?? "--"}</span>
+            </span>
+          </div>
+        ) : null}
+      </div>
+      <Modal
+        contentClassName="max-w-md"
+        description="Review the row-level quality flags, validation issues, import issues, and follow-up warnings for this submission."
+        onOpenChange={(open) => {
+          if (!open) setQualityFlagsSubmissionId(null);
+        }}
+        open={Boolean(qualityFlagsSubmission)}
+        title={
+          qualityFlagsSubmission
+            ? `Quality flags · ${displaySubmissionId(qualityFlagsSubmission)}`
+            : "Quality flags"
+        }
+      >
+        <div className="space-y-3 px-5 py-4">
+          {qualityFlagsSubmission ? (
+            <>
+              <div className="flex flex-wrap gap-2">
+                <Badge tone={statusTone(qualityFlagsSubmission.status)}>
+                  {qualityFlagsSubmission.status}
+                </Badge>
+                <Badge tone={isImportedSubmission(qualityFlagsSubmission) ? "warning" : "success"}>
+                  {submissionSourceLabel(qualityFlagsSubmission)}
+                </Badge>
+                <Badge tone="neutral">
+                  {submissionActorLabel(qualityFlagsSubmission)}
+                </Badge>
+              </div>
+              {qualityFlagItems.length ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-foreground">
+                    Flags to review
+                  </p>
+                  <div className="space-y-2">
+                    {qualityFlagItems.map((item) => (
+                      <div
+                        className="rounded-md border bg-background/70 px-3 py-2 text-sm text-muted-foreground"
+                        key={item}
+                      >
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
+                  This row is clean. No current quality flags are blocking it.
+                </div>
+              )}
+            </>
+          ) : null}
+        </div>
+      </Modal>
       </div>
     </section>
   );
@@ -4835,7 +7397,7 @@ function InlineGridCellEditor({
 }) {
   const options = parseQuestionOptions(question);
   const editorClassName = cn(
-    "w-full rounded-md border bg-background px-2 py-1.5 text-[11px] outline-none transition",
+    "w-full rounded-sm border bg-background px-2 py-1 text-[10px] outline-none transition",
     active
       ? "border-primary shadow-[0_0_0_3px_rgba(15,118,110,0.14)]"
       : issues.length

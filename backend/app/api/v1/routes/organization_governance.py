@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.dependencies import require_permission
+from app.api.v1.dependencies import require_any_permission, require_permission
 from app.app_db import get_session
 from app.core.permissions import Permission
 from app.schemas.auth import CurrentPrincipal
@@ -34,6 +34,7 @@ from app.schemas.organization_governance import (
     TeamUpdate,
     WorkforceProfileCreate,
     WorkforceProfileRead,
+    WorkforceProfileUpdate,
 )
 from app.services.organization_governance import (
     OrganizationGovernanceNotFoundError,
@@ -79,7 +80,10 @@ async def create_department(
 
 @router.get("/teams", response_model=list[TeamRead])
 async def list_teams(
-    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_READ))],
+    principal: Annotated[
+        CurrentPrincipal,
+        Depends(require_any_permission(Permission.OFFICER_READ, Permission.USER_READ, Permission.ORGANIZATION_HIERARCHY_MANAGE)),
+    ],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[TeamRead]:
     return await OrganizationGovernanceService(session).list_teams(organization_uuid(principal))
@@ -88,7 +92,10 @@ async def list_teams(
 @router.post("/teams", response_model=TeamRead)
 async def create_team(
     payload: TeamCreate,
-    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_MANAGE))],
+    principal: Annotated[
+        CurrentPrincipal,
+        Depends(require_any_permission(Permission.OFFICER_MANAGE, Permission.USER_MANAGE, Permission.ORGANIZATION_HIERARCHY_MANAGE)),
+    ],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TeamRead:
     return await OrganizationGovernanceService(session).create_team(organization_uuid(principal), user_uuid(principal), payload)
@@ -98,7 +105,10 @@ async def create_team(
 async def update_team(
     team_id: UUID,
     payload: TeamUpdate,
-    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_MANAGE))],
+    principal: Annotated[
+        CurrentPrincipal,
+        Depends(require_any_permission(Permission.OFFICER_MANAGE, Permission.USER_MANAGE, Permission.ORGANIZATION_HIERARCHY_MANAGE)),
+    ],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TeamRead:
     try:
@@ -122,6 +132,24 @@ async def create_workforce_profile(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> WorkforceProfileRead:
     return await OrganizationGovernanceService(session).create_workforce_profile(organization_uuid(principal), user_uuid(principal), payload)
+
+
+@router.patch("/workforce-profiles/{profile_id}", response_model=WorkforceProfileRead)
+async def update_workforce_profile(
+    profile_id: UUID,
+    payload: WorkforceProfileUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.USER_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> WorkforceProfileRead:
+    try:
+        return await OrganizationGovernanceService(session).update_workforce_profile(
+            organization_uuid(principal),
+            user_uuid(principal),
+            profile_id,
+            payload,
+        )
+    except OrganizationGovernanceNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.get("/delegations", response_model=list[DelegationRead])

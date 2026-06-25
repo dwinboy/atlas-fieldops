@@ -436,7 +436,7 @@ function SectionHeader({
   const Icon = activePage.icon;
 
   return (
-    <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+    <div className="module-header rounded-xl p-3.5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex gap-3">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border bg-primary/10 text-primary">

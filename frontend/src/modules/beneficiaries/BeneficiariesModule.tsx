@@ -19,6 +19,7 @@ import {
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
+import { useContextualBack } from "@/hooks/useContextualBack";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { statusTone as canonicalStatusTone } from "@/lib/statusTones";
 import { Badge } from "@/components/ui/badge";
@@ -27,7 +28,10 @@ import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
+  createEntityRelationship,
   createBeneficiary,
+  deleteEntityRelationship,
+  getEntityHierarchy,
   updateBeneficiary,
   getProjectEntities,
   governExport,
@@ -39,6 +43,8 @@ import {
   mergeBeneficiaries,
   reviewBeneficiaryProfileUpdateProposal,
   type BeneficiaryCreate,
+  type EntityHierarchyRead,
+  type EntityRelationshipCreate,
   type BeneficiaryProfileUpdateProposalReview,
   type CurrentPrincipal,
   type FieldOfficerRead,
@@ -113,6 +119,15 @@ const emptyRegistrationDraft: EntityRegistrationDraft = {
 
 const PERSON_ENTITY_TYPES = new Set<EntityType>(["Farmer", "Health Worker", "Training Participant"]);
 
+const entityRelationshipOptions = [
+  { value: "member_of", label: "Member of" },
+  { value: "belongs_to", label: "Belongs to" },
+  { value: "located_in", label: "Located in" },
+  { value: "managed_by", label: "Managed by" },
+  { value: "supplied_by", label: "Supplied by" },
+  { value: "part_of", label: "Part of" },
+] as const;
+
 function isPersonEntityType(entityType: EntityType | string): boolean {
   return PERSON_ENTITY_TYPES.has(entityType as EntityType);
 }
@@ -162,6 +177,7 @@ export function BeneficiariesModule({
   const [selectedEntity, setSelectedEntity] = useState<BeneficiaryEntity | null>(
     null,
   );
+  useContextualBack(Boolean(selectedEntity));
   const [mergeOpen, setMergeOpen] = useState(false);
   const [mergeDraft, setMergeDraft] = useState({
     duplicateId: "",
@@ -231,6 +247,11 @@ export function BeneficiariesModule({
     queryFn: () => listEntityCategories(token ?? "", { include_archived: false }),
     queryKey: ["beneficiaries", "entity-categories", token],
   });
+  const hierarchyQuery = useQuery({
+    enabled: Boolean(token && !preview && selectedEntity?.id),
+    queryFn: () => getEntityHierarchy(token ?? "", selectedEntity?.id ?? ""),
+    queryKey: ["beneficiaries", "hierarchy", token, selectedEntity?.id],
+  });
 
   const linkedSubmissionRows = useMemo<SubmissionRead[]>(
     () => (preview ? getPreviewSubmissions() : submissionsQuery.data ?? []),
@@ -273,35 +294,49 @@ export function BeneficiariesModule({
     () => Array.from(new Set(entities.map((entity) => entity.entityType))).sort(),
     [entities],
   );
+  const entityCategories = useMemo(
+    () => entityCategoriesQuery.data ?? [],
+    [entityCategoriesQuery.data],
+  );
   const entityTypeOptions = useMemo(() => {
-    const categoryNames = new Set<string>();
-    for (const category of entityCategoriesQuery.data ?? []) {
-      if (projectFilter === "all" || category.project_id === projectFilter) categoryNames.add(category.name);
+    const options = new Map<string, string>();
+    for (const category of entityCategories) {
+      if (projectFilter === "all" || category.project_id === projectFilter) {
+        options.set(category.id, describeEntityCategoryTrail({ profile_json: { entity_category_id: category.id } }, entityCategories) ?? category.name);
+      }
     }
     for (const entity of entities) {
-      if (projectFilter === "all" || entity.projectId === projectFilter) categoryNames.add(entity.entityType);
+      if (projectFilter !== "all" && entity.projectId !== projectFilter) continue;
+      const category = resolveEntityCategory(entity, entityCategories);
+      if (category) {
+        options.set(category.id, describeEntityCategoryTrail(entity, entityCategories) ?? category.name);
+      } else {
+        options.set(`type:${entity.entityType}`, entity.entityType);
+      }
     }
-    return Array.from(categoryNames).sort();
-  }, [entities, entityCategoriesQuery.data, projectFilter]);
+    return Array.from(options.entries())
+      .map(([value, label]) => ({ label, value }))
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [entities, entityCategories, projectFilter]);
   const registrationEntityTypes = useMemo(
     () =>
       Array.from(
         new Set([
           ...entityTypes,
-          ...(entityCategoriesQuery.data ?? []).map((category) => category.name),
+          ...entityCategories.map((category) => category.name),
           ...allEntityTypeOptions,
         ]),
       ).sort(),
-    [allEntityTypeOptions, entityCategoriesQuery.data],
+    [allEntityTypeOptions, entityCategories],
   );
   const filteredEntities = useMemo(
     () =>
       entities.filter(
         (entity) =>
-          (entityTypeFilter === "all" || entity.entityType === entityTypeFilter) &&
+          (entityTypeFilter === "all" || entityMatchesCategoryFilter(entity, entityTypeFilter, entityCategories)) &&
           (projectFilter === "all" || entity.projectId === projectFilter),
       ),
-    [entities, entityTypeFilter, projectFilter],
+    [entities, entityCategories, entityTypeFilter, projectFilter],
   );
   const visibleEntities = useMemo(
     () =>
@@ -324,6 +359,10 @@ export function BeneficiariesModule({
     }
     return (projectsQuery.data ?? []).map((project) => ({ id: project.id, name: project.name }));
   }, [preview, projectsQuery.data]);
+  const selectedEntityHierarchy = useMemo<EntityHierarchyRead>(
+    () => hierarchyQuery.data ?? { parents: [], children: [] },
+    [hierarchyQuery.data],
+  );
   const mergeMutation = useMutation({
     mutationFn: () => mergeBeneficiaries(token ?? "", {
       duplicate_beneficiary_id: mergeDraft.duplicateId,
@@ -374,6 +413,47 @@ export function BeneficiariesModule({
       pushToast({
         title: "Profile update failed",
         description: error instanceof Error ? error.message : "The entity profile could not be updated.",
+        tone: "danger",
+      });
+    },
+  });
+  const createRelationshipMutation = useMutation({
+    mutationFn: (payload: EntityRelationshipCreate) =>
+      createEntityRelationship(token ?? "", selectedEntity?.id ?? "", payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["beneficiaries", "hierarchy", token, selectedEntity?.id],
+      });
+      pushToast({
+        title: "Entity link saved",
+        description: "The hierarchy link is now available for follow-up forms and entity context.",
+        tone: "success",
+      });
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Entity link failed",
+        description: error instanceof Error ? error.message : "The entity relationship could not be saved.",
+        tone: "danger",
+      });
+    },
+  });
+  const deleteRelationshipMutation = useMutation({
+    mutationFn: (relationshipId: string) => deleteEntityRelationship(token ?? "", relationshipId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["beneficiaries", "hierarchy", token, selectedEntity?.id],
+      });
+      pushToast({
+        title: "Entity link removed",
+        description: "The hierarchy link was removed from this entity.",
+        tone: "success",
+      });
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Remove failed",
+        description: error instanceof Error ? error.message : "The entity relationship could not be removed.",
         tone: "danger",
       });
     },
@@ -656,7 +736,7 @@ export function BeneficiariesModule({
   if (isImportRoute) {
     return (
       <section className="space-y-3">
-        <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+        <div className="module-header rounded-xl p-3.5">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
               <Badge tone="collect">ENTITIES</Badge>
@@ -873,8 +953,8 @@ export function BeneficiariesModule({
           >
             <option value="all">All categories</option>
             {entityTypeOptions.map((type) => (
-              <option key={type} value={type}>
-                {type}
+              <option key={type.value} value={type.value}>
+                {type.label}
               </option>
             ))}
           </Select>
@@ -941,15 +1021,23 @@ export function BeneficiariesModule({
           }
         />
         <EntitySidePanel
+          availableEntities={entities}
           duplicates={duplicates}
+          entityCategories={entityCategoriesQuery.data ?? []}
           entity={panelEntity}
+          allSubmissions={linkedSubmissionRows}
+          hierarchy={selectedEntityHierarchy}
+          hierarchyLoading={hierarchyQuery.isLoading}
           onEdit={openEditEntity}
+          onCreateRelationship={(payload) => createRelationshipMutation.mutate(payload)}
+          onDeleteRelationship={(relationshipId) => deleteRelationshipMutation.mutate(relationshipId)}
           linkedSubmissions={
             submissionsByEntity.get(panelEntity?.id ?? "") ?? []
           }
           managerAccess={managerAccess}
           onMerge={openMergeReview}
           onReviewProposal={openProposalReview}
+          relationshipBusy={createRelationshipMutation.isPending || deleteRelationshipMutation.isPending}
         />
       </div>
       <MergeBeneficiariesModal
@@ -1102,18 +1190,33 @@ export function BeneficiariesModule({
 }
 
 function EntitySidePanel({
+  availableEntities,
+  allSubmissions,
   duplicates,
+  entityCategories,
   entity,
+  hierarchy,
+  hierarchyLoading,
   linkedSubmissions,
   managerAccess,
+  onCreateRelationship,
+  onDeleteRelationship,
   onEdit,
   onMerge,
   onReviewProposal,
+  relationshipBusy,
 }: {
+  availableEntities: BeneficiaryEntity[];
+  allSubmissions: SubmissionRead[];
   duplicates: BeneficiaryEntity[];
+  entityCategories: EntityCategoryRead[];
   entity: BeneficiaryEntity | null;
+  hierarchy: EntityHierarchyRead;
+  hierarchyLoading: boolean;
   linkedSubmissions: SubmissionRead[];
   managerAccess: boolean;
+  onCreateRelationship: (payload: EntityRelationshipCreate) => void;
+  onDeleteRelationship: (relationshipId: string) => void;
   onEdit: (entity: BeneficiaryEntity) => void;
   onMerge: (duplicate?: BeneficiaryEntity) => void;
   onReviewProposal: (
@@ -1121,9 +1224,10 @@ function EntitySidePanel({
     proposal: ProfileUpdateProposal,
     action: BeneficiaryProfileUpdateProposalReview["action"],
   ) => void;
+  relationshipBusy: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<
-    "Overview" | "Profile" | "Forms & Records" | "Timeline"
+    "Overview" | "Profile" | "Hierarchy" | "Forms & Records" | "Timeline"
   >("Overview");
   if (!entity) {
     return (
@@ -1134,6 +1238,14 @@ function EntitySidePanel({
       </aside>
     );
   }
+
+  const relatedEntityIds = new Set(
+    [...hierarchy.parents, ...hierarchy.children].map((item) => item.related_beneficiary.id),
+  );
+  const relatedSubmissions = allSubmissions.filter((submission) =>
+    submission.entity_id ? relatedEntityIds.has(submission.entity_id) : false,
+  );
+  const categoryTrail = describeEntityCategoryTrail(entity, entityCategories);
 
   return (
     <aside className="space-y-3">
@@ -1158,9 +1270,15 @@ function EntitySidePanel({
         <div className="mt-4 grid grid-cols-2 gap-2">
           <MetricButton
             icon={ClipboardList}
-            label="Linked submissions"
+            label="Direct records"
             onClick={() => setActiveTab("Forms & Records")}
             value={linkedSubmissions.length}
+          />
+          <MetricButton
+            icon={UsersRound}
+            label="Context records"
+            onClick={() => setActiveTab("Forms & Records")}
+            value={relatedSubmissions.length}
           />
           <MetricButton
             icon={GitBranch}
@@ -1168,9 +1286,15 @@ function EntitySidePanel({
             onClick={() => setActiveTab("Profile")}
             value={pendingProfileUpdateProposals(entity).length}
           />
+          <MetricButton
+            icon={Link2}
+            label="Hierarchy links"
+            onClick={() => setActiveTab("Hierarchy")}
+            value={hierarchy.parents.length + hierarchy.children.length}
+          />
         </div>
         <div className="mt-4 flex gap-1 overflow-x-auto product-scrollbar">
-          {(["Overview", "Profile", "Forms & Records", "Timeline"] as const).map((tab) => (
+          {(["Overview", "Profile", "Hierarchy", "Forms & Records", "Timeline"] as const).map((tab) => (
             <button
               className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition ${
                 activeTab === tab
@@ -1186,16 +1310,44 @@ function EntitySidePanel({
           ))}
         </div>
         {activeTab === "Overview" ? (
-          <BeneficiaryOverview entity={entity} linkedSubmissions={linkedSubmissions} />
+          <BeneficiaryOverview
+            categoryTrail={categoryTrail}
+            entity={entity}
+            hierarchy={hierarchy}
+            linkedSubmissions={linkedSubmissions}
+            relatedSubmissions={relatedSubmissions}
+          />
         ) : null}
         {activeTab === "Profile" ? (
           <BeneficiaryProfile entity={entity} managerAccess={managerAccess} onReviewProposal={onReviewProposal} />
         ) : null}
+        {activeTab === "Hierarchy" ? (
+          <BeneficiaryHierarchy
+            availableEntities={availableEntities}
+            entity={entity}
+            entityCategories={entityCategories}
+            hierarchy={hierarchy}
+            isLoading={hierarchyLoading}
+            managerAccess={managerAccess}
+            onCreateRelationship={onCreateRelationship}
+            onDeleteRelationship={onDeleteRelationship}
+            relationshipBusy={relationshipBusy}
+          />
+        ) : null}
         {activeTab === "Forms & Records" ? (
-          <BeneficiaryRecords linkedSubmissions={linkedSubmissions} />
+          <BeneficiaryRecords
+            hierarchy={hierarchy}
+            linkedSubmissions={linkedSubmissions}
+            relatedSubmissions={relatedSubmissions}
+          />
         ) : null}
         {activeTab === "Timeline" ? (
-          <BeneficiaryTimeline entity={entity} linkedSubmissions={linkedSubmissions} />
+          <BeneficiaryTimeline
+            entity={entity}
+            hierarchy={hierarchy}
+            linkedSubmissions={linkedSubmissions}
+            relatedSubmissions={relatedSubmissions}
+          />
         ) : null}
       </div>
       <div className="rounded-xl border bg-panel p-4 shadow-line">
@@ -1265,15 +1417,22 @@ function EntitySidePanel({
 }
 
 function BeneficiaryOverview({
+  categoryTrail,
   entity,
+  hierarchy,
   linkedSubmissions,
+  relatedSubmissions,
 }: {
+  categoryTrail: string | null;
   entity: BeneficiaryEntity;
+  hierarchy: EntityHierarchyRead;
   linkedSubmissions: SubmissionRead[];
+  relatedSubmissions: SubmissionRead[];
 }) {
   return (
     <div className="mt-4 grid gap-2 text-sm">
       <Signal label="Project" value={entity.projectName} />
+      <Signal label="Category path" value={categoryTrail ?? entity.entityType} />
       <Signal label="Location" value={`${entity.village}, ${entity.district}`} />
       <Signal label="Phone" value={entity.phoneNumber ?? "Not recorded"} />
       <Signal label="Household" value={entity.householdId ?? "N/A"} />
@@ -1283,6 +1442,9 @@ function BeneficiaryOverview({
         label="Approved records"
         value={`${linkedSubmissions.filter((submission) => submission.status === "approved").length}`}
       />
+      <Signal label="Parent links" value={String(hierarchy.parents.length)} />
+      <Signal label="Child links" value={String(hierarchy.children.length)} />
+      <Signal label="Related context records" value={String(relatedSubmissions.length)} />
       <Signal label="Data source" value={entity.registrationSource} />
     </div>
   );
@@ -1449,49 +1611,302 @@ function BeneficiaryProfile({
   );
 }
 
-function BeneficiaryRecords({
-  linkedSubmissions,
+function BeneficiaryHierarchy({
+  availableEntities,
+  entity,
+  entityCategories,
+  hierarchy,
+  isLoading,
+  managerAccess,
+  onCreateRelationship,
+  onDeleteRelationship,
+  relationshipBusy,
 }: {
-  linkedSubmissions: SubmissionRead[];
+  availableEntities: BeneficiaryEntity[];
+  entity: BeneficiaryEntity;
+  entityCategories: EntityCategoryRead[];
+  hierarchy: EntityHierarchyRead;
+  isLoading: boolean;
+  managerAccess: boolean;
+  onCreateRelationship: (payload: EntityRelationshipCreate) => void;
+  onDeleteRelationship: (relationshipId: string) => void;
+  relationshipBusy: boolean;
 }) {
-  if (!linkedSubmissions.length) {
+  const [draft, setDraft] = useState<EntityRelationshipCreate>({
+    related_beneficiary_id: "",
+    related_role: "parent",
+    relationship_type: "member_of",
+  });
+  const candidates = useMemo(
+    () =>
+      availableEntities
+        .filter((candidate) => candidate.id !== entity.id && candidate.projectId === entity.projectId)
+        .sort((left, right) => left.fullName.localeCompare(right.fullName)),
+    [availableEntities, entity.id, entity.projectId],
+  );
+  const submit = (): void => {
+    if (!draft.related_beneficiary_id || !draft.relationship_type) return;
+    onCreateRelationship(draft);
+    setDraft({
+      related_beneficiary_id: "",
+      related_role: "parent",
+      relationship_type: "member_of",
+    });
+  };
+
+  return (
+    <div className="mt-4 space-y-3">
+      <div className="rounded-lg border bg-background p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold">Entity structure</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Keep follow-up records tied to the right parent record, site, group, household, store, or facility chain.
+            </p>
+          </div>
+          <Badge tone="neutral">{hierarchy.parents.length + hierarchy.children.length} links</Badge>
+        </div>
+        <div className="mt-3 grid gap-2 md:grid-cols-3">
+          <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+            Link type
+            <Select
+              disabled={!managerAccess || relationshipBusy}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, relationship_type: event.target.value }))
+              }
+              value={draft.relationship_type}
+            >
+              {entityRelationshipOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+            Related role
+            <Select
+              disabled={!managerAccess || relationshipBusy}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  related_role: event.target.value as EntityRelationshipCreate["related_role"],
+                }))
+              }
+              value={draft.related_role}
+            >
+              <option value="parent">Related entity is the parent</option>
+              <option value="child">Related entity is the child</option>
+            </Select>
+          </label>
+          <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+            Related entity
+            <Select
+              disabled={!managerAccess || relationshipBusy}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, related_beneficiary_id: event.target.value }))
+              }
+              value={draft.related_beneficiary_id}
+            >
+              <option value="">Choose entity</option>
+              {candidates.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.fullName} · {candidate.entityId}
+                </option>
+              ))}
+            </Select>
+          </label>
+        </div>
+        <div className="mt-3 flex justify-end">
+          <Button
+            disabled={!managerAccess || relationshipBusy || !draft.related_beneficiary_id}
+            onClick={submit}
+            size="sm"
+            variant="primary"
+          >
+            Save link
+          </Button>
+        </div>
+      </div>
+      <HierarchyGroup
+        entityCategories={entityCategories}
+        emptyLabel="No parent links yet."
+        isLoading={isLoading}
+        items={hierarchy.parents}
+        managerAccess={managerAccess}
+        onDeleteRelationship={onDeleteRelationship}
+        title="Parents"
+      />
+      <HierarchyGroup
+        entityCategories={entityCategories}
+        emptyLabel="No child links yet."
+        isLoading={isLoading}
+        items={hierarchy.children}
+        managerAccess={managerAccess}
+        onDeleteRelationship={onDeleteRelationship}
+        title="Children"
+      />
+    </div>
+  );
+}
+
+function HierarchyGroup({
+  entityCategories,
+  emptyLabel,
+  isLoading,
+  items,
+  managerAccess,
+  onDeleteRelationship,
+  title,
+}: {
+  entityCategories: EntityCategoryRead[];
+  emptyLabel: string;
+  isLoading: boolean;
+  items: EntityHierarchyRead["parents"];
+  managerAccess: boolean;
+  onDeleteRelationship: (relationshipId: string) => void;
+  title: string;
+}) {
+  return (
+    <div className="rounded-lg border bg-background p-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold">{title}</p>
+        <Badge tone="neutral">{items.length}</Badge>
+      </div>
+      <div className="mt-3 space-y-2">
+        {isLoading ? (
+          <p className="text-xs text-muted-foreground">Loading hierarchy…</p>
+        ) : null}
+        {!isLoading && !items.length ? (
+          <p className="rounded-lg border border-dashed bg-panel/40 p-3 text-sm text-muted-foreground">
+            {emptyLabel}
+          </p>
+        ) : null}
+        {items.map((item) => (
+          <div className="flex items-start justify-between gap-3 rounded-lg border bg-panel/40 p-3" key={item.id}>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">{item.related_beneficiary.display_name}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {item.related_beneficiary.beneficiary_uid} · {item.related_beneficiary.beneficiary_type}
+              </p>
+              {describeEntityCategoryTrail(item.related_beneficiary, entityCategories) ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {describeEntityCategoryTrail(item.related_beneficiary, entityCategories)}
+                </p>
+              ) : null}
+              {[
+                item.related_beneficiary.community,
+                item.related_beneficiary.district,
+                item.related_beneficiary.region,
+              ]
+                .filter(Boolean)
+                .length ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {[
+                    item.related_beneficiary.community,
+                    item.related_beneficiary.district,
+                    item.related_beneficiary.region,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              ) : null}
+              <p className="mt-1 text-xs text-muted-foreground">
+                {humanizeRelationshipType(item.relationship_type)}
+              </p>
+            </div>
+            <Button
+              disabled={!managerAccess}
+              onClick={() => onDeleteRelationship(item.id)}
+              size="sm"
+              variant="ghost"
+            >
+              Remove
+            </Button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BeneficiaryRecords({
+  hierarchy,
+  linkedSubmissions,
+  relatedSubmissions,
+}: {
+  hierarchy: EntityHierarchyRead;
+  linkedSubmissions: SubmissionRead[];
+  relatedSubmissions: SubmissionRead[];
+}) {
+  if (!linkedSubmissions.length && !relatedSubmissions.length) {
     return (
       <p className="mt-4 rounded-lg border border-dashed bg-background p-3 text-sm text-muted-foreground">
-        No approved or pending submissions are linked to this entity yet.
+        No approved or pending submissions are linked to this entity or its related records yet.
       </p>
     );
   }
+
+  const relationshipByEntityId = new Map(
+    [...hierarchy.parents, ...hierarchy.children].map((item) => [
+      item.related_beneficiary.id,
+      item,
+    ]),
+  );
+
   return (
     <div className="mt-4 space-y-2">
-      {linkedSubmissions.map((submission) => (
-        <div className="rounded-lg border bg-background p-3" key={submission.id}>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold">{submission.form_id.replaceAll("-", " ")}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {submission.client_submission_id} · {submissionSourceLabel(submission)}
-              </p>
-            </div>
-            <Badge tone={submission.status === "approved" ? "success" : "warning"}>
-              {submission.status.replaceAll("_", " ")}
-            </Badge>
+      {linkedSubmissions.length ? (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Direct records
+            </p>
+            <Badge tone="neutral">{linkedSubmissions.length}</Badge>
           </div>
-          <div className="mt-3 grid gap-2 text-xs md:grid-cols-2">
-            <Signal label="Submitted/uploaded by" value={submissionActorLabel(submission)} />
-            <Signal label="Date" value={formatEntityDate(submission.imported_at ?? submission.submitted_at)} />
-          </div>
+          {linkedSubmissions.map((submission) => (
+            <SubmissionRecordCard key={submission.id} submission={submission} />
+          ))}
         </div>
-      ))}
+      ) : null}
+      {relatedSubmissions.length ? (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Related entity context
+            </p>
+            <Badge tone="neutral">{relatedSubmissions.length}</Badge>
+          </div>
+          {relatedSubmissions.map((submission) => {
+            const relationship = submission.entity_id ? relationshipByEntityId.get(submission.entity_id) : undefined;
+            const contextLabel = relationship
+              ? `${humanizeRelationshipType(relationship.relationship_type)} · ${relationship.related_beneficiary.display_name}`
+              : "Linked related entity";
+            return (
+              <SubmissionRecordCard
+                key={submission.id}
+                note={contextLabel}
+                submission={submission}
+                tag="Context record"
+              />
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function BeneficiaryTimeline({
   entity,
+  hierarchy,
   linkedSubmissions,
+  relatedSubmissions,
 }: {
   entity: BeneficiaryEntity;
+  hierarchy: EntityHierarchyRead;
   linkedSubmissions: SubmissionRead[];
+  relatedSubmissions: SubmissionRead[];
 }) {
   const events = [
     {
@@ -1499,9 +1914,24 @@ function BeneficiaryTimeline({
       meta: `${entity.registrationSource} · ${entity.entityId}`,
       time: entity.registrationDate,
     },
+    ...hierarchy.parents.map((relationship) => ({
+      label: "Linked To Parent Entity",
+      meta: `${relationship.related_beneficiary.display_name} · ${humanizeRelationshipType(relationship.relationship_type)}`,
+      time: relationship.created_at,
+    })),
+    ...hierarchy.children.map((relationship) => ({
+      label: "Child Entity Linked",
+      meta: `${relationship.related_beneficiary.display_name} · ${humanizeRelationshipType(relationship.relationship_type)}`,
+      time: relationship.created_at,
+    })),
     ...linkedSubmissions.map((submission) => ({
       label: submission.status === "approved" ? "Approved Record Linked" : "Submission Linked",
       meta: `${submission.client_submission_id} · ${submission.form_id.replaceAll("-", " ")}`,
+      time: submission.imported_at ?? submission.submitted_at,
+    })),
+    ...relatedSubmissions.map((submission) => ({
+      label: "Related Entity Context Updated",
+      meta: `${submission.client_submission_id} · ${submission.form_id.replaceAll("-", " ")} · ${submission.beneficiary_code ?? submission.entity_id ?? "related entity"}`,
       time: submission.imported_at ?? submission.submitted_at,
     })),
   ].sort((left, right) => new Date(right.time).getTime() - new Date(left.time).getTime());
@@ -1523,11 +1953,119 @@ function BeneficiaryTimeline({
   );
 }
 
+function SubmissionRecordCard({
+  note,
+  submission,
+  tag,
+}: {
+  note?: string;
+  submission: SubmissionRead;
+  tag?: string;
+}) {
+  return (
+    <div className="rounded-lg border bg-background p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold">{submission.form_id.replaceAll("-", " ")}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {submission.client_submission_id} · {submissionSourceLabel(submission)}
+          </p>
+          {note ? <p className="mt-1 text-xs text-muted-foreground">{note}</p> : null}
+        </div>
+        <div className="flex flex-col items-end gap-2">
+          {tag ? <Badge tone="neutral">{tag}</Badge> : null}
+          <Badge tone={submission.status === "approved" ? "success" : "warning"}>
+            {submission.status.replaceAll("_", " ")}
+          </Badge>
+        </div>
+      </div>
+      <div className="mt-3 grid gap-2 text-xs md:grid-cols-2">
+        <Signal label="Submitted/uploaded by" value={submissionActorLabel(submission)} />
+        <Signal label="Date" value={formatEntityDate(submission.imported_at ?? submission.submitted_at)} />
+      </div>
+    </div>
+  );
+}
+
 function fieldLineage(entity: BeneficiaryEntity): Record<string, Record<string, unknown>> {
   const value = entity.profileJson.fieldLineage;
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, Record<string, unknown>>)
     : {};
+}
+
+function humanizeRelationshipType(value: string): string {
+  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function describeEntityCategoryTrail(
+  entity: {
+    entityType?: string;
+    beneficiary_type?: string | null;
+    profileJson?: Record<string, unknown>;
+    profile_json?: Record<string, unknown>;
+  },
+  categories: EntityCategoryRead[],
+): string | null {
+  const matched = resolveEntityCategory(entity, categories);
+  if (!matched) return null;
+  const byId = new Map(categories.map((category) => [category.id, category]));
+  const chain: string[] = [];
+  const seen = new Set<string>();
+  let current: EntityCategoryRead | undefined = matched;
+  while (current && !seen.has(current.id)) {
+    chain.unshift(current.name);
+    seen.add(current.id);
+    current = current.parent_category_id ? byId.get(current.parent_category_id) : undefined;
+  }
+  return chain.join(" / ");
+}
+
+function resolveEntityCategory(
+  entity: {
+    entityType?: string;
+    beneficiary_type?: string | null;
+    profileJson?: Record<string, unknown>;
+    profile_json?: Record<string, unknown>;
+  },
+  categories: EntityCategoryRead[],
+): EntityCategoryRead | null {
+  const profile = entity.profileJson ?? entity.profile_json ?? {};
+  const rawCategoryId = typeof profile.entityCategoryId === "string"
+    ? profile.entityCategoryId
+    : typeof profile.entity_category_id === "string"
+      ? profile.entity_category_id
+      : null;
+  const byId = new Map(categories.map((category) => [category.id, category]));
+  return (
+    (rawCategoryId ? byId.get(rawCategoryId) : null)
+    ?? categories.find((category) => category.name === (entity.entityType ?? entity.beneficiary_type ?? ""))
+    ?? categories.find((category) => category.slug.replaceAll("-", " ").toLowerCase() === (entity.entityType ?? entity.beneficiary_type ?? "").toLowerCase())
+    ?? null
+  );
+}
+
+function entityMatchesCategoryFilter(
+  entity: BeneficiaryEntity,
+  filter: string,
+  categories: EntityCategoryRead[],
+): boolean {
+  if (filter === "all") return true;
+  if (filter.startsWith("type:")) {
+    return entity.entityType === filter.slice(5);
+  }
+  const category = resolveEntityCategory(entity, categories);
+  if (!category) return false;
+  if (category.id === filter) return true;
+  const byId = new Map(categories.map((item) => [item.id, item]));
+  const seen = new Set<string>();
+  let current: EntityCategoryRead | undefined = category;
+  while (current?.parent_category_id && !seen.has(current.parent_category_id)) {
+    if (current.parent_category_id === filter) return true;
+    seen.add(current.parent_category_id);
+    current = byId.get(current.parent_category_id);
+  }
+  return false;
 }
 
 function humanizeProfileKey(key: string): string {

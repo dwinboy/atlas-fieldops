@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { previewAccessCatalog, previewRoles, previewTeams, previewUsers, usersTeamsSectionFromPath } from "@/modules/users-teams/data";
-import { computeSummaryFromRecords, groupPermissions, normalizeRoleLabel, statusTone } from "@/modules/users-teams/utils";
+import { previewAccessCatalog, previewProfiles, previewRoles, previewTeams, previewUsers, usersTeamsSectionFromPath } from "@/modules/users-teams/data";
+import { computeSummaryFromRecords, groupPermissions, matchesUserSetupFilter, normalizeRoleLabel, normalizeTeamCode, resolveTeamCode, statusTone, userSetupIssues } from "@/modules/users-teams/utils";
 
 describe("users-teams utilities", () => {
   it("summarizes identity records for the people dashboard", () => {
@@ -27,8 +27,44 @@ describe("users-teams utilities", () => {
     expect(statusTone(true)).toBe("success");
   });
 
+  it("normalizes team codes and generates one when the user leaves it blank", () => {
+    expect(normalizeTeamCode("TEAM NORTH WEST")).toBe("team-north-west");
+    expect(resolveTeamCode("North West Team", "")).toBe("north-west-team");
+    expect(resolveTeamCode("North West Team", "TEAM-NW")).toBe("team-nw");
+  });
+
+  it("flags incomplete field access setup without blocking ready users", () => {
+    const readyFieldOfficer = previewUsers.find((user) => user.id === "user-grace");
+    const donorViewer = previewUsers.find((user) => user.id === "user-donor");
+
+    expect(readyFieldOfficer).toBeDefined();
+    expect(donorViewer).toBeDefined();
+    expect(userSetupIssues(readyFieldOfficer!, previewProfiles.find((profile) => profile.user_id === "user-grace"))).toEqual([]);
+    expect(userSetupIssues(donorViewer!, null)).toEqual([]);
+  });
+
+  it("surfaces missing team and supervisor details for field officers", () => {
+    const incompleteFieldOfficer = {
+      ...previewUsers.find((user) => user.id === "user-grace")!,
+      role_assignments: [],
+    };
+
+    expect(userSetupIssues(incompleteFieldOfficer, null)).toEqual(
+      expect.arrayContaining(["No workforce profile", "No supervisor linked", "No team assigned"]),
+    );
+  });
+
+  it("matches access-center filters for setup and sign-in status", () => {
+    expect(matchesUserSetupFilter(["No team assigned"], true, "needs_setup")).toBe(true);
+    expect(matchesUserSetupFilter([], true, "needs_setup")).toBe(false);
+    expect(matchesUserSetupFilter([], true, "ready")).toBe(true);
+    expect(matchesUserSetupFilter([], false, "inactive")).toBe(true);
+    expect(matchesUserSetupFilter([], true, "inactive")).toBe(false);
+  });
+
   it("maps users and teams routes to the correct workspace section", () => {
     expect(usersTeamsSectionFromPath("/users-teams")).toBe("dashboard");
+    expect(usersTeamsSectionFromPath("/users-teams/access-center")).toBe("access-center");
     expect(usersTeamsSectionFromPath("/users-teams/users")).toBe("users");
     expect(usersTeamsSectionFromPath("/users-teams/roles")).toBe("roles");
     expect(usersTeamsSectionFromPath("/users-teams/teams")).toBe("teams");

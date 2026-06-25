@@ -493,6 +493,7 @@ class FormEntityControlSettings(BaseModel):
     duplicate_threshold: int = Field(default=90, ge=0, le=100)
     duplicate_action: str = Field(default="block", pattern=r"^(block|warn|review)$")
     prefill_profile: bool = True
+    prefill_mappings: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
     lock_prefilled_fields: bool = True
     editable_with_reason: bool = True
     profile_update_mode: str = Field(default="with_supervisor_approval", pattern=r"^(never|after_submission|with_supervisor_approval)$")

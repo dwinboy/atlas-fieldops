@@ -1,11 +1,13 @@
 import type {
   MobileAssignment,
   MobileCollectionIntegrity,
+  MobileFormEntitySettings,
   MobileFormVersion,
   MobileIntegritySignal,
   MobileQuestion,
   MobileSubmission,
 } from "@/models/contracts";
+import { requiresEntitySelection } from "@/entities/entityCategoryUtils";
 
 type SignalInput = Omit<MobileIntegritySignal, "createdAt">;
 
@@ -45,12 +47,16 @@ export class FieldIntegrityService {
       });
     }
 
-    if (formVersion.entitySettings.requiresExistingEntity && !draft.entityId) {
+    if (requiresEntitySelection(formVersion.entitySettings) && !draft.entityId) {
+      const entityMessage = missingEntityIntegrityMessage(formVersion.entitySettings);
       signals.push({
         code: "MISSING_REQUIRED_ENTITY",
         severity: "Critical",
-        message: "This form requires an existing entity record, but the draft is not linked to one.",
-        evidence: { requiresExistingEntity: true },
+        message: entityMessage,
+        evidence: {
+          requiresExistingEntity: true,
+          respondentIdentityMode: formVersion.entitySettings.respondentIdentityMode ?? null,
+        },
       });
     }
 
@@ -189,6 +195,34 @@ function repeatedAnswerSignal(questionValues: Array<{ question: MobileQuestion; 
     message: "Many text/select answers are identical. Supervisor should verify this was not copied across questions.",
     evidence: { repeatedAnswer: answer, repeatedCount: count, checkedAnswers: values.length },
   };
+}
+
+function missingEntityIntegrityMessage(settings: MobileFormEntitySettings): string {
+  const label = (settings.entityType ?? "entity").toLowerCase();
+  const explicitMode = settings.respondentIdentityMode;
+  const createsNewEntity = settings.createsNewEntity;
+  const updatesExistingEntity = settings.updatesExistingEntity;
+  const requiresExistingEntity = settings.requiresExistingEntity;
+  const linkedToEntity = settings.linkedToEntity;
+  const mode =
+    explicitMode
+      ? explicitMode
+      : createsNewEntity && updatesExistingEntity
+        ? "existing_or_new"
+        : createsNewEntity
+          ? "new_registration"
+          : updatesExistingEntity || requiresExistingEntity
+            ? "existing_beneficiary"
+            : linkedToEntity
+              ? null
+              : "anonymous_allowed";
+  if (mode === "existing_beneficiary") {
+    return `This follow-up form requires an existing ${label}, but the draft is not linked to one.`;
+  }
+  if (mode === "existing_or_new") {
+    return `This draft is missing the ${label} it is supposed to update. If this should create a new ${label}, restart the form without selecting an existing record.`;
+  }
+  return "This form requires an existing entity record, but the draft is not linked to one.";
 }
 
 function expandQuestionValues(

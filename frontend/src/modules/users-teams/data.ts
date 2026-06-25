@@ -13,6 +13,7 @@ import type {
 
 export const usersTeamsSections = [
   { id: "dashboard", label: "Overview", route: "/users-teams" },
+  { id: "access-center", label: "Access Center", route: "/users-teams/access-center" },
   { id: "users", label: "Users", route: "/users-teams/users" },
   { id: "roles", label: "Roles", route: "/users-teams/roles" },
   { id: "teams", label: "Teams", route: "/users-teams/teams" },

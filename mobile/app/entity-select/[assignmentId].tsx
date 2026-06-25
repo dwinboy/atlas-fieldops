@@ -4,11 +4,19 @@ import { AlertTriangle, ChevronRight, MapPin, Phone, Search, UserSearch, X } fro
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { Badge, Card, EmptyState, IconButton, Input } from "@/components/ui";
-import { displayEntityCategoryName, pluralizeEntityCategory } from "@/entities/entityCategoryUtils";
+import { Badge, Button, Card, EmptyState, IconButton, Input } from "@/components/ui";
+import {
+  describeEntityHierarchy,
+  describeFormEntityWorkflow,
+  displayEntityCategoryName,
+  entityCategoryTrailForEntity,
+  entityCategoryTrailForFormSettings,
+  entityMatchesFormEntityScope,
+  pluralizeEntityCategory,
+} from "@/entities/entityCategoryUtils";
 import { DataCollectionSessionService } from "@/forms/dataCollectionSession";
 import { localDatabase } from "@/storage/localDatabase";
-import type { MobileEntity } from "@/models/contracts";
+import type { MobileEntity, MobileEntityCategory } from "@/models/contracts";
 import { useAppContext } from "@/context/AppContext";
 import { colors, fontFamily, radii, spacing, tone, type Tone, typography } from "@/theme";
 
@@ -31,9 +39,11 @@ const AVATAR_PALETTE = [colors.primary, colors.info, colors.warning, colors.dang
 export default function EntitySelectScreen() {
   const { assignmentId } = useLocalSearchParams<{ assignmentId: string }>();
   const router = useRouter();
-  const { refresh } = useAppContext();
+  const { refresh, refreshKey } = useAppContext();
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
+  const entityCategories = useMemo(() => localDatabase.entityCategories.list(), [refreshKey]);
+  const allEntities = useMemo(() => localDatabase.entities.list(), [refreshKey]);
 
   const assignment = useMemo(
     () => localDatabase.assignments.get(assignmentId ?? ""),
@@ -47,13 +57,26 @@ export default function EntitySelectScreen() {
 
   const entityType = useMemo(() => {
     const settings = formVersion?.entitySettings;
-    const categories = localDatabase.entityCategories.list();
     const category = settings?.entityCategoryId
-      ? categories.find((item) => item.id === settings.entityCategoryId)
+      ? entityCategories.find((item) => item.id === settings.entityCategoryId)
       : null;
-    return category?.name ?? displayEntityCategoryName(settings?.entityType, categories, "Entity");
-  }, [formVersion]);
+    return category?.name ?? displayEntityCategoryName(settings?.entityType, entityCategories, "Entity");
+  }, [entityCategories, formVersion]);
   const entityTypePlural = pluralizeEntityCategory(entityType);
+  const workflow = useMemo(
+    () =>
+      formVersion
+        ? describeFormEntityWorkflow(formVersion.entitySettings, entityCategories)
+        : null,
+    [entityCategories, formVersion],
+  );
+  const formCategoryTrail = useMemo(
+    () =>
+      formVersion
+        ? entityCategoryTrailForFormSettings(formVersion.entitySettings, entityCategories)
+        : null,
+    [entityCategories, formVersion],
+  );
 
   const query = search.trim().toLowerCase();
 
@@ -76,22 +99,20 @@ export default function EntitySelectScreen() {
 
   const assignedEntities = useMemo(() => {
     if (!assignment) return [];
-    return localDatabase.entities
-      .list()
+    return allEntities
       .filter((e) => assignment.entityIds.includes(e.id))
       .filter(matchesQuery);
-  }, [assignment, search]);
+  }, [allEntities, assignment, search]);
 
   const otherEntities = useMemo(() => {
     if (!assignment || query.length < MIN_BROAD_SEARCH_LENGTH) return [];
     const assignedIds = new Set(assignment.entityIds);
-    return localDatabase.entities
-      .list()
+    return allEntities
       .filter((e) => !assignedIds.has(e.id))
-      .filter((e) => matchesEntityCategory(e.entityType, formVersion?.entitySettings?.entityType ?? null, formVersion?.entitySettings?.entityCategoryId))
+      .filter((e) => !formVersion || entityMatchesFormEntityScope(e, formVersion, entityCategories))
       .filter(matchesQuery)
       .slice(0, OTHER_RESULTS_LIMIT + 1);
-  }, [assignment, search, formVersion]);
+  }, [allEntities, assignment, entityCategories, formVersion, query.length, search]);
 
   const otherEntitiesShown = otherEntities.slice(0, OTHER_RESULTS_LIMIT);
   const otherEntitiesTruncated = otherEntities.length > OTHER_RESULTS_LIMIT;
@@ -127,6 +148,18 @@ export default function EntitySelectScreen() {
     );
   }
 
+  function startNewDraft() {
+    if (!assignment || !workflow?.allowsCreateWithoutSelection) return;
+    try {
+      setError("");
+      const result = dataCollection.startForm(assignment.localId, null);
+      refresh();
+      router.push(`/form-fill/${result.draft.localId}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start form.");
+    }
+  }
+
   if (!assignment) {
     return (
       <SafeAreaView style={styles.screen} edges={["bottom"]}>
@@ -153,10 +186,32 @@ export default function EntitySelectScreen() {
           <Text style={styles.contextSubtitle}>
             Select the {entityType.toLowerCase()} you are working with to begin data collection.
           </Text>
+          {formCategoryTrail ? (
+            <Text style={[styles.contextSubtitle, { marginTop: spacing.xs, opacity: 0.9 }]}>
+              Category path: {formCategoryTrail}
+            </Text>
+          ) : null}
+          {workflow ? (
+            <Text style={[styles.contextSubtitle, { marginTop: spacing.xs, opacity: 0.92 }]}>
+              {workflow.helperText}
+            </Text>
+          ) : null}
           <Text style={[styles.contextSubtitle, { marginTop: spacing.xs, opacity: 0.85 }]}>
             {assignment.entityIds.length} {entityTypePlural} assigned to this survey
           </Text>
         </Card>
+
+        {workflow?.allowsCreateWithoutSelection ? (
+          <Card padding="lg" style={{ gap: spacing.sm }}>
+            <Text style={styles.sectionTitle}>Start a new {entityType.toLowerCase()} record</Text>
+            <Text style={styles.entityMeta}>
+              Continue without selecting an existing record when this submission should register a new {entityType.toLowerCase()}.
+            </Text>
+            <Button onPress={startNewDraft} rightIcon={<ChevronRight size={16} color={colors.primaryForeground} />}>
+              Continue without selection
+            </Button>
+          </Card>
+        ) : null}
 
         <View>
           <Search size={18} color={colors.mutedForeground} style={styles.searchIcon} />
@@ -181,7 +236,9 @@ export default function EntitySelectScreen() {
         <Text style={styles.hint}>
           {isBroadSearch
             ? "Showing records assigned to you, plus other matches from your synced data."
-            : "Showing records assigned to you. Keep typing to search all synced records."}
+            : workflow?.allowsCreateWithoutSelection
+              ? "Showing records assigned to you. Keep typing to search all synced records, or continue without selection to register a new record."
+              : "Showing records assigned to you. Keep typing to search all synced records."}
         </Text>
 
         {error ? (
@@ -207,6 +264,8 @@ export default function EntitySelectScreen() {
           assignedEntities.map((entity) => (
             <EntityCard
               key={entity.localId}
+              allEntities={allEntities}
+              entityCategories={entityCategories}
               entity={entity}
               query={query}
               onPress={() => startDraft(entity, true)}
@@ -224,6 +283,8 @@ export default function EntitySelectScreen() {
             {otherEntitiesShown.map((entity) => (
               <EntityCard
                 key={entity.localId}
+                allEntities={allEntities}
+                entityCategories={entityCategories}
                 entity={entity}
                 query={query}
                 tag="Other record"
@@ -263,11 +324,15 @@ function ListSectionHeader({ title, count, hint }: { title: string; count: numbe
 }
 
 function EntityCard({
+  allEntities,
+  entityCategories,
   entity,
   query,
   tag,
   onPress,
 }: {
+  allEntities: MobileEntity[];
+  entityCategories: MobileEntityCategory[];
   entity: MobileEntity;
   query: string;
   tag?: string;
@@ -278,6 +343,8 @@ function EntityCard({
     .join(", ") || "No location";
   const statusTone = STATUS_TONE[entity.status] ?? "neutral";
   const avatarColor = AVATAR_PALETTE[hashString(entity.entityUid || entity.id) % AVATAR_PALETTE.length];
+  const hierarchy = describeEntityHierarchy(entity, allEntities);
+  const categoryTrail = entityCategoryTrailForEntity(entity, entityCategories);
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]}>
@@ -311,11 +378,15 @@ function EntityCard({
           <MapPin size={14} color={colors.mutedForeground} />
           <Text style={styles.entityMeta}><HighlightedText text={location} query={query} /></Text>
         </View>
+        {categoryTrail ? <Text style={styles.entityMicro}>Category: {categoryTrail}</Text> : null}
         {entity.householdId ? (
           <Text style={styles.entityMicro}>
             Household: <HighlightedText text={entity.householdId} query={query} />
           </Text>
         ) : null}
+        {hierarchy.summary ? <Text style={styles.entityMicro}>Linked records: {hierarchy.summary}</Text> : null}
+        {hierarchy.parentLine ? <Text style={styles.entityMicro}>{hierarchy.parentLine}</Text> : null}
+        {hierarchy.childLine ? <Text style={styles.entityMicro}>{hierarchy.childLine}</Text> : null}
 
         <View style={styles.startRow}>
           <Text style={styles.startLabel}>Tap to start form</Text>
@@ -357,15 +428,6 @@ function hashString(value: string): number {
     hash |= 0;
   }
   return Math.abs(hash);
-}
-
-function matchesEntityCategory(entityType: string, settingsType: string | null, categoryId?: string | null): boolean {
-  if (settingsType && entityType === settingsType) return true;
-  const category = categoryId
-    ? localDatabase.entityCategories.list().find((item) => item.id === categoryId)
-    : null;
-  if (!category) return false;
-  return entityType === category.id || entityType === category.slug || entityType === category.name;
 }
 
 const styles = StyleSheet.create({

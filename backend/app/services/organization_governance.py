@@ -43,6 +43,7 @@ from app.schemas.organization_governance import (
     TeamUpdate,
     WorkforceProfileCreate,
     WorkforceProfileRead,
+    WorkforceProfileUpdate,
 )
 
 
@@ -133,6 +134,23 @@ class OrganizationGovernanceService:
             "workforce_profile",
             str(row.id),
             {"user_id": str(row.user_id), "lifecycle_status": row.lifecycle_status},
+        )
+        await self.session.commit()
+        return WorkforceProfileRead.model_validate(row)
+
+    async def update_workforce_profile(self, organization_id: UUID, actor_user_id: UUID, profile_id: UUID, payload: WorkforceProfileUpdate) -> WorkforceProfileRead:
+        row = await self.repository.get_workforce_profile(organization_id, profile_id)
+        if row is None:
+            raise OrganizationGovernanceNotFoundError("Workforce profile not found")
+        values = payload.model_dump(exclude_unset=True)
+        row = await self.repository.update_workforce_profile(row, values)
+        await self._audit(
+            organization_id,
+            actor_user_id,
+            "org_governance.workforce_profile_updated",
+            "workforce_profile",
+            str(row.id),
+            {"fields": list(values)},
         )
         await self.session.commit()
         return WorkforceProfileRead.model_validate(row)

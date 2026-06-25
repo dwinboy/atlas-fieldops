@@ -52,6 +52,7 @@ import {
   type FormControlsSettings,
   type EntityCategoryRead,
   type ProjectListItemRead,
+  type FormType,
   type SurveyCreate,
   type TeamRead,
 } from "@/lib/api";
@@ -117,6 +118,15 @@ type RecommendedQuestion = {
   required?: boolean;
   type: FieldType;
   validation?: FormField["validation"];
+};
+
+type EntityTypeOption = {
+  attributeCount: number;
+  categoryId: string;
+  entityType: string;
+  label: string;
+  path: string | null;
+  value: string;
 };
 
 type FormControlsDraft = {
@@ -1489,6 +1499,24 @@ function entityCodeExample(entityType: string): string {
   return `${compact.padEnd(3, "X")}-${new Date().getFullYear()}-000001`;
 }
 
+function entityCategoryPath(
+  category: EntityCategoryRead,
+  categories: EntityCategoryRead[],
+): string {
+  const categoryById = new Map(categories.map((item) => [item.id, item]));
+  const path: string[] = [];
+  const seen = new Set<string>();
+  let current: EntityCategoryRead | undefined = category;
+  while (current && !seen.has(current.id)) {
+    path.unshift(current.name);
+    seen.add(current.id);
+    current = current.parent_category_id
+      ? categoryById.get(current.parent_category_id)
+      : undefined;
+  }
+  return path.join(" / ");
+}
+
 function messageFromUnknownError(error: unknown): string {
   if (error instanceof Error) return error.message;
   return "The request could not be completed.";
@@ -1552,6 +1580,73 @@ function formOperationalFamily(formType: string): "registration" | "baseline" | 
   if (/monitor|follow|visit|case update/.test(normalized)) return "monitoring";
   if (/attendance|distribution|training|service|input|cash|kit/.test(normalized)) return "attendance";
   return "custom";
+}
+
+function apiFormTypeValue(formType: string): FormType {
+  const normalized = formType.trim().toLowerCase();
+  if (/registration|register|intake|enrol/.test(normalized)) return "registration";
+  if (/baseline/.test(normalized)) return "baseline";
+  if (/endline/.test(normalized)) return "endline";
+  if (/follow[\s_-]?up/.test(normalized)) return "follow_up";
+  if (/monitor|visit/.test(normalized)) return "monitoring";
+  if (/attendance|training/.test(normalized)) return "attendance";
+  if (/distribution|delivery|stock|inventory/.test(normalized)) return "distribution";
+  if (/verification|inspect|audit/.test(normalized)) return "verification";
+  if (/assessment|evaluation|survey/.test(normalized)) return "assessment";
+  if (/case[\s_-]?update/.test(normalized)) return "case_update";
+  if (/complaint|feedback|incident/.test(normalized)) return "complaint";
+  return "custom";
+}
+
+function prefillSourceFieldForProfileTarget(
+  target: keyof FormControlsDraft["profileMappings"],
+): string | null {
+  switch (target) {
+    case "fullName":
+      return "name";
+    case "phone":
+      return "phone";
+    case "gender":
+      return "gender";
+    case "dob":
+      return "dateOfBirth";
+    case "village":
+      return "village";
+    case "gps":
+      return "gps";
+    default:
+      return null;
+  }
+}
+
+function buildEntityPrefillMappings(
+  controls: FormControlsDraft,
+  form: DynamicForm,
+): Array<{ sourceEntityField: string; targetQuestionId: string; lockBehavior: "ReadOnly" | "Editable" | "EditableWithReason" }> {
+  const questionIdsByVariable = new Map(
+    form.fields.map((field) => [
+      (field.variableName ?? variableNameFromLabel(field.label, field.id)).trim().toLowerCase(),
+      field.id,
+    ]),
+  );
+  const lockBehavior =
+    controls.profileUpdateMode === "with_supervisor_approval"
+      ? "ReadOnly"
+      : controls.profileUpdateMode === "after_submission"
+        ? "EditableWithReason"
+        : "Editable";
+
+  return Object.entries(controls.profileMappings).flatMap(([target, mappedVariable]) => {
+    const variable = mappedVariable.trim().toLowerCase();
+    const sourceEntityField = prefillSourceFieldForProfileTarget(
+      target as keyof FormControlsDraft["profileMappings"],
+    );
+    const questionId = variable ? questionIdsByVariable.get(variable) : undefined;
+    if (!sourceEntityField || !questionId) {
+      return [];
+    }
+    return [{ sourceEntityField, targetQuestionId: questionId, lockBehavior }];
+  });
 }
 
 function recommendedQuestionsForFormType(
@@ -2050,7 +2145,9 @@ function createDuplicateDraftFromForm(
 function controlsDraftToApiControls(
   controls: FormControlsDraft,
   form: DynamicForm,
+  formType: string,
 ): FormControlsSettings {
+  const family = formOperationalFamily(formType);
   const requiredFields = form.fields
     .filter((field) => field.required)
     .map((field) => field.variableName ?? field.id);
@@ -2165,6 +2262,21 @@ function controlsDraftToApiControls(
             sla_hours: 48,
           },
         ];
+  const createsNewEntity =
+    controls.respondentIdentification === "new_registration"
+    || controls.respondentIdentification === "existing_or_new"
+    || (family === "registration" && controls.respondentIdentification !== "existing_beneficiary");
+  const requiresExistingEntity =
+    controls.requiresEntity
+    || controls.respondentIdentification === "existing_beneficiary"
+    || (
+      ["baseline", "monitoring", "attendance"].includes(family)
+      && controls.respondentIdentification !== "new_registration"
+      && !controls.allowAnonymous
+    );
+  const updatesExistingEntity =
+    controls.profileUpdateMode !== "never"
+    && (requiresExistingEntity || controls.respondentIdentification === "existing_or_new");
 
   return {
     reference_bindings: controls.referenceDataRequired
@@ -2216,10 +2328,9 @@ function controlsDraftToApiControls(
         Object.values(controls.profileMappings).some(Boolean),
       entity_category_id: controls.entityCategoryId || null,
       entity_type: controls.entityType,
-      creates_new_entity:
-        /registration/i.test(form.name) || controls.profileUpdateMode === "after_submission",
-      updates_existing_entity: controls.profileUpdateMode !== "never",
-      requires_existing_entity: controls.requiresEntity,
+      creates_new_entity: createsNewEntity,
+      updates_existing_entity: updatesExistingEntity,
+      requires_existing_entity: requiresExistingEntity,
       allows_anonymous: controls.allowAnonymous,
       submission_frequency: controls.submissionFrequency,
       unique_fields: ["entity_id", "national_id"],
@@ -2231,6 +2342,7 @@ function controlsDraftToApiControls(
       lock_prefilled_fields: controls.profileUpdateMode === "with_supervisor_approval",
       editable_with_reason: true,
       profile_update_mode: controls.profileUpdateMode,
+      prefill_mappings: buildEntityPrefillMappings(controls, form),
     },
     permission_rules: [
       {
@@ -2944,6 +3056,48 @@ function controlsDraftFromApiControls(
           defaultAction === "no_update"
         ? "never"
         : "with_supervisor_approval";
+  const explicitRespondentIdentification = stringValue(
+    respondentIdentity.mode,
+  ) as FormControlsDraft["respondentIdentification"];
+  const createsNewEntity = booleanValue(entity.creates_new_entity, false);
+  const updatesExistingEntity = booleanValue(
+    entity.updates_existing_entity,
+    false,
+  );
+  const requiresExistingEntity = booleanValue(
+    entity.requires_existing_entity,
+    false,
+  );
+  const allowsAnonymous = booleanValue(entity.allows_anonymous, false);
+  const linkedToEntity = booleanValue(entity.linked_to_entity, true);
+  const prefillProfile = booleanValue(entity.prefill_profile, true);
+  const inferredRespondentIdentification: FormControlsDraft["respondentIdentification"] =
+    explicitRespondentIdentification
+      ? explicitRespondentIdentification
+      : createsNewEntity && updatesExistingEntity
+      ? "existing_or_new"
+      : createsNewEntity
+        ? "new_registration"
+        : requiresExistingEntity || updatesExistingEntity
+          ? "existing_beneficiary"
+          : allowsAnonymous || !linkedToEntity
+            ? "anonymous_allowed"
+            : defaultControlsDraft.respondentIdentification;
+  const beneficiarySearch: FormControlsDraft["beneficiarySearch"] =
+    !prefillProfile
+      ? "disabled"
+      : inferredRespondentIdentification === "existing_beneficiary"
+        ? "required"
+        : inferredRespondentIdentification === "existing_or_new"
+          ? booleanValue(respondentIdentity.beneficiary_search_required, false)
+            ? "required"
+            : "optional"
+          : inferredRespondentIdentification === "new_registration" ||
+              inferredRespondentIdentification === "anonymous_allowed"
+            ? "disabled"
+            : requiresExistingEntity
+              ? "required"
+              : "optional";
   const profileMappings = { ...defaultControlsDraft.profileMappings };
   for (const rule of profileRules) {
     const impact = asRecord(rule.profile_impact);
@@ -2997,11 +3151,7 @@ function controlsDraftFromApiControls(
       fieldIntegrity.back_check_sample_percent,
       defaultControlsDraft.backCheckSamplePercent,
     ),
-    beneficiarySearch: booleanValue(entity.prefill_profile, true)
-      ? booleanValue(entity.requires_existing_entity, false)
-        ? "required"
-        : "optional"
-      : "disabled",
+    beneficiarySearch,
     blockWithoutConsent: booleanValue(
       governance.consent_required,
       defaultControlsDraft.blockWithoutConsent,
@@ -3200,10 +3350,7 @@ function controlsDraftFromApiControls(
       repeatGroups.policy,
       defaultControlsDraft.repeatGroupPolicy,
     ) as FormControlsDraft["repeatGroupPolicy"],
-    respondentIdentification: stringValue(
-      respondentIdentity.mode,
-      defaultControlsDraft.respondentIdentification,
-    ) as FormControlsDraft["respondentIdentification"],
+    respondentIdentification: inferredRespondentIdentification,
     resultArea: stringValue(purpose.result_area),
     reviewApprover: stringValue(
       certification.approver_role,
@@ -3214,10 +3361,13 @@ function controlsDraftFromApiControls(
       "data_manager_review"
       ? "data_manager"
       : defaultControlsDraft.reviewer,
-    requiresEntity: booleanValue(
-      entity.requires_existing_entity,
-      defaultControlsDraft.requiresEntity,
-    ),
+    requiresEntity:
+      inferredRespondentIdentification === "existing_beneficiary"
+        ? true
+        : booleanValue(
+            entity.requires_existing_entity,
+            defaultControlsDraft.requiresEntity,
+          ),
     requiresGps: booleanValue(
       governance.require_gps_capture,
       defaultControlsDraft.requiresGps,
@@ -5534,11 +5684,22 @@ export function FormCreationWorkspace({
       }),
     queryKey: ["form-builder-entity-categories", token, selectedProjectId],
   });
-  const entityTypeOptions = useMemo(() => {
+  const entityTypeOptions = useMemo<EntityTypeOption[]>(() => {
     const activeCategories = (entityCategoriesQuery.data ?? [])
       .filter((category) => category.status !== "archived")
-      .sort((first, second) => first.name.localeCompare(second.name));
-    const names = activeCategories.map((category) => category.name);
+      .sort((first, second) =>
+        entityCategoryPath(first, activeCategories).localeCompare(
+          entityCategoryPath(second, activeCategories),
+        ),
+      );
+    const categoryOptions: EntityTypeOption[] = activeCategories.map((category) => ({
+      attributeCount: category.attributes.length,
+      categoryId: category.id,
+      entityType: category.name,
+      label: entityCategoryPath(category, activeCategories),
+      path: entityCategoryPath(category, activeCategories),
+      value: `category:${category.id}`,
+    }));
     const fallback = [
       primaryEntityLabel,
       "Household",
@@ -5551,8 +5712,47 @@ export function FormCreationWorkspace({
       "Custom Entity",
     ];
     const current = controlsDraft.entityType.trim();
-    return Array.from(new Set([...(names.length ? names : fallback), ...(current ? [current] : [])]));
+    const fallbackOptions = Array.from(
+      new Set([...(categoryOptions.length ? [] : fallback), ...(current ? [current] : [])]),
+    ).map((type) => ({
+      attributeCount: 0,
+      categoryId: "",
+      entityType: type,
+      label: type,
+      path: null,
+      value: `type:${type}`,
+    }));
+    if (!categoryOptions.length) return fallbackOptions;
+    if (
+      current &&
+      !categoryOptions.some(
+        (option) => option.entityType.toLowerCase() === current.toLowerCase(),
+      )
+    ) {
+      categoryOptions.push({
+        attributeCount: 0,
+        categoryId: "",
+        entityType: current,
+        label: `${current} (custom for this form)`,
+        path: null,
+        value: `type:${current}`,
+      });
+    }
+    return categoryOptions;
   }, [controlsDraft.entityType, entityCategoriesQuery.data, primaryEntityLabel]);
+  const selectedEntityTypeOption = useMemo(
+    () =>
+      entityTypeOptions.find((option) =>
+        option.categoryId
+          ? option.categoryId === controlsDraft.entityCategoryId
+          : option.entityType.toLowerCase() === controlsDraft.entityType.trim().toLowerCase(),
+      ) ?? null,
+    [controlsDraft.entityCategoryId, controlsDraft.entityType, entityTypeOptions],
+  );
+  const entityTypeSelectValue =
+    selectedEntityTypeOption?.value ??
+    entityTypeOptions[0]?.value ??
+    `type:${controlsDraft.entityType || primaryEntityLabel}`;
   const selectedEntityCategory = useMemo<EntityCategoryRead | null>(
     () =>
       (entityCategoriesQuery.data ?? []).find(
@@ -5562,6 +5762,13 @@ export function FormCreationWorkspace({
             category.name.toLowerCase() === controlsDraft.entityType.trim().toLowerCase()),
       ) ?? null,
     [controlsDraft.entityCategoryId, controlsDraft.entityType, entityCategoriesQuery.data],
+  );
+  const selectedEntityCategoryPath = useMemo(
+    () =>
+      selectedEntityCategory
+        ? entityCategoryPath(selectedEntityCategory, entityCategoriesQuery.data ?? [])
+        : null,
+    [entityCategoriesQuery.data, selectedEntityCategory],
   );
   useEffect(() => {
     const activeCategories = (entityCategoriesQuery.data ?? []).filter(
@@ -5580,6 +5787,68 @@ export function FormCreationWorkspace({
       entityType: firstCategory?.name ?? controlsDraft.entityType,
     });
   }, [controlsDraft.entityType, entityCategoriesQuery.data]);
+  const entityCollectionSummary = useMemo(() => {
+    const entityLabel = controlsDraft.entityType.trim() || primaryEntityLabel;
+    const categoryRule = selectedEntityCategoryPath
+      ? `Project category path: ${selectedEntityCategoryPath}.`
+      : selectedProjectId
+        ? "No project category is linked yet, so this form is using a form-only entity label."
+        : "Select a project first so this form can inherit the right sector or custom entity categories.";
+    const searchRule =
+      controlsDraft.respondentIdentification === "existing_beneficiary"
+        ? `Field officers must search and select an existing ${entityLabel.toLowerCase()} before they collect.`
+        : controlsDraft.respondentIdentification === "new_registration"
+          ? `Field officers can register a new ${entityLabel.toLowerCase()} directly from this form.`
+          : controlsDraft.respondentIdentification === "existing_or_new"
+            ? `Field officers can link an existing ${entityLabel.toLowerCase()} or register a new one from the same workflow.`
+            : `This form allows anonymous collection when the project does not require a tracked ${entityLabel.toLowerCase()}.`;
+    const approvalRule =
+      controlsDraft.profileUpdateMode === "never"
+        ? `Approved submissions stay linked, but they do not update the official ${entityLabel.toLowerCase()} profile.`
+        : controlsDraft.profileUpdateMode === "after_submission"
+          ? `Approved submissions can update the official ${entityLabel.toLowerCase()} profile automatically after approval.`
+          : `Approved submissions prepare ${entityLabel.toLowerCase()} profile updates for supervisor review before they become official.`;
+    const fieldRule = selectedEntityCategory
+      ? `${selectedEntityCategory.attributes.length} configured category field(s) are available to add into the Builder.`
+      : "Category-specific entity fields are not available yet for this form.";
+    return [categoryRule, searchRule, approvalRule, fieldRule];
+  }, [
+    controlsDraft.entityType,
+    controlsDraft.profileUpdateMode,
+    controlsDraft.respondentIdentification,
+    primaryEntityLabel,
+    selectedEntityCategory,
+    selectedEntityCategoryPath,
+    selectedProjectId,
+  ]);
+  const entityWorkflowSummary = useMemo(() => {
+    const entityLabel = controlsDraft.entityType.trim() || primaryEntityLabel;
+    const entityLabelLower = entityLabel.toLowerCase();
+    if (controlsDraft.respondentIdentification === "existing_beneficiary") {
+      return `follow-up on existing ${entityLabelLower} records`;
+    }
+    if (controlsDraft.respondentIdentification === "existing_or_new") {
+      return `existing or new ${entityLabelLower} workflow`;
+    }
+    if (controlsDraft.respondentIdentification === "new_registration") {
+      return `new ${entityLabelLower} registration workflow`;
+    }
+    if (controlsDraft.respondentIdentification === "anonymous_allowed") {
+      return `anonymous ${entityLabelLower} collection allowed`;
+    }
+    if (!controlsDraft.requiresEntity) {
+      return controlsDraft.allowAnonymous
+        ? "anonymous or unlinked collection allowed"
+        : "standalone collection without entity linkage";
+    }
+    return `${entityLabelLower} rule needs review`;
+  }, [
+    controlsDraft.allowAnonymous,
+    controlsDraft.entityType,
+    controlsDraft.requiresEntity,
+    controlsDraft.respondentIdentification,
+    primaryEntityLabel,
+  ]);
   const selectedSurvey =
     !preview && selectedProjectId
       ? tenantSurveys.find((survey) => survey.project_id === selectedProjectId)
@@ -5758,6 +6027,109 @@ export function FormCreationWorkspace({
 
   function updateControlsDraft(patch: Partial<FormControlsDraft>): void {
     setControlsDraft((current) => ({ ...current, ...patch }));
+  }
+
+  function updateRespondentIdentification(
+    respondentIdentification: FormControlsDraft["respondentIdentification"],
+  ): void {
+    setControlsDraft((current) => ({
+      ...current,
+      allowAnonymous: respondentIdentification === "anonymous_allowed",
+      beneficiarySearch:
+        respondentIdentification === "existing_beneficiary"
+          ? "required"
+          : respondentIdentification === "existing_or_new"
+            ? current.beneficiarySearch === "required" ? "required" : "optional"
+            : "disabled",
+      requiresEntity: respondentIdentification === "existing_beneficiary",
+      respondentIdentification,
+    }));
+  }
+
+  function updateRequiresEntity(requiresEntity: boolean): void {
+    setControlsDraft((current) => {
+      if (requiresEntity) {
+        return {
+          ...current,
+          allowAnonymous: false,
+          beneficiarySearch: "required",
+          requiresEntity: true,
+          respondentIdentification: "existing_beneficiary",
+        };
+      }
+      const respondentIdentification =
+        current.allowAnonymous
+          ? "anonymous_allowed"
+          : current.beneficiarySearch === "disabled"
+            ? "new_registration"
+            : "existing_or_new";
+      return {
+        ...current,
+        beneficiarySearch:
+          respondentIdentification === "existing_or_new" ? "optional" : current.beneficiarySearch,
+        requiresEntity: false,
+        respondentIdentification,
+      };
+    });
+  }
+
+  function updateAllowAnonymous(allowAnonymous: boolean): void {
+    setControlsDraft((current) => {
+      if (allowAnonymous) {
+        return {
+          ...current,
+          allowAnonymous: true,
+          beneficiarySearch: "disabled",
+          requiresEntity: false,
+          respondentIdentification: "anonymous_allowed",
+        };
+      }
+      if (current.respondentIdentification !== "anonymous_allowed") {
+        return { ...current, allowAnonymous: false };
+      }
+      const respondentIdentification =
+        current.profileUpdateMode !== "never" ? "existing_or_new" : "new_registration";
+      return {
+        ...current,
+        allowAnonymous: false,
+        beneficiarySearch:
+          respondentIdentification === "existing_or_new" ? "optional" : "disabled",
+        requiresEntity: false,
+        respondentIdentification,
+      };
+    });
+  }
+
+  function updateBeneficiarySearch(
+    beneficiarySearch: FormControlsDraft["beneficiarySearch"],
+  ): void {
+    setControlsDraft((current) => {
+      if (beneficiarySearch === "disabled") {
+        return {
+          ...current,
+          beneficiarySearch: "disabled",
+          requiresEntity: false,
+          respondentIdentification:
+            current.allowAnonymous ? "anonymous_allowed" : "new_registration",
+        };
+      }
+      if (current.respondentIdentification === "existing_beneficiary") {
+        return {
+          ...current,
+          beneficiarySearch,
+          requiresEntity: beneficiarySearch === "required",
+          respondentIdentification:
+            beneficiarySearch === "required" ? "existing_beneficiary" : "existing_or_new",
+        };
+      }
+      return {
+        ...current,
+        allowAnonymous: false,
+        beneficiarySearch,
+        requiresEntity: false,
+        respondentIdentification: "existing_or_new",
+      };
+    });
   }
 
   function addEntityCategoryQuestions(): void {
@@ -5996,20 +6368,37 @@ export function FormCreationWorkspace({
 
     if (quickFixId === "apply_profile_mapping") {
       const suggestedMappings = suggestedProfileMappingsFromFields(draftForm?.fields ?? []);
-      setControlsDraft((current) => ({
-        ...current,
-        profileMappings: {
-          ...current.profileMappings,
-          ...Object.fromEntries(
-            Object.entries(suggestedMappings).filter(([, value]) => Boolean(value)),
-          ),
-        } as FormControlsDraft["profileMappings"],
-        profileUpdateMode:
-          current.profileUpdateMode === "never"
-            ? "with_supervisor_approval"
-            : current.profileUpdateMode,
-        requiresEntity: true,
-      }));
+      setControlsDraft((current) => {
+        const respondentIdentification =
+          current.respondentIdentification === "new_registration"
+            ? "new_registration"
+            : current.respondentIdentification === "existing_or_new"
+              || current.respondentIdentification === "anonymous_allowed"
+              ? "existing_or_new"
+              : "existing_beneficiary";
+        return {
+          ...current,
+          allowAnonymous: false,
+          beneficiarySearch:
+            respondentIdentification === "existing_beneficiary"
+              ? "required"
+              : respondentIdentification === "existing_or_new"
+                ? current.beneficiarySearch === "required" ? "required" : "optional"
+                : "disabled",
+          profileMappings: {
+            ...current.profileMappings,
+            ...Object.fromEntries(
+              Object.entries(suggestedMappings).filter(([, value]) => Boolean(value)),
+            ),
+          } as FormControlsDraft["profileMappings"],
+          profileUpdateMode:
+            current.profileUpdateMode === "never"
+              ? "with_supervisor_approval"
+              : current.profileUpdateMode,
+          requiresEntity: respondentIdentification === "existing_beneficiary",
+          respondentIdentification,
+        };
+      });
       setActiveControlStep("beneficiaries");
       setStage("controls");
       setPublishMessage("Suggested entity profile mappings were applied. Review them before publishing.");
@@ -6158,6 +6547,7 @@ export function FormCreationWorkspace({
             ...commonEntityDefaults,
             beneficiarySearch: "disabled",
             frequencyWindow: "none",
+            requiresEntity: false,
             respondentIdentification: "new_registration",
             submissionFrequency: "once_ever",
           };
@@ -6578,6 +6968,7 @@ export function FormCreationWorkspace({
         saved = await updateForm(token, savedBackendFormId, {
           description:
             setup.description || formToPersist.sections[0]?.description || null,
+          form_type: apiFormTypeValue(setup.formType),
           name: backendDraftName,
           publish: false,
           schema,
@@ -6599,6 +6990,7 @@ export function FormCreationWorkspace({
         saved = await createForm(token, {
           description:
             setup.description || formToPersist.sections[0]?.description || null,
+          form_type: apiFormTypeValue(setup.formType),
           name: backendDraftName,
           project_id: selectedProjectId,
           publish: false,
@@ -6620,7 +7012,7 @@ export function FormCreationWorkspace({
       await updateFormControls(
         token,
         saved.id,
-        controlsDraftToApiControls(controlsDraft, savedDraft),
+        controlsDraftToApiControls(controlsDraft, savedDraft, setup.formType),
       );
       upsertLocalForm(workspaceFormFromDraft(savedDraft, setup, selectedProjectId));
       return { ok: true };
@@ -6818,6 +7210,7 @@ export function FormCreationWorkspace({
           ? await updateForm(token, targetFormId, {
               description:
                 setup.description || draftForm.sections[0]?.description || null,
+              form_type: apiFormTypeValue(setup.formType),
               name: draftForm.name,
               publish: true,
               schema,
@@ -6825,6 +7218,7 @@ export function FormCreationWorkspace({
           : await createForm(token, {
               description:
                 setup.description || draftForm.sections[0]?.description || null,
+              form_type: apiFormTypeValue(setup.formType),
               name: draftForm.name,
               project_id: selectedProjectId,
               publish: true,
@@ -6844,7 +7238,7 @@ export function FormCreationWorkspace({
         await updateFormControls(
           token,
           saved.id,
-          controlsDraftToApiControls(controlsDraft, nextPublishedForm),
+          controlsDraftToApiControls(controlsDraft, nextPublishedForm, setup.formType),
         );
         const assignmentDelivery = await assignPublishedFormToSelectedOfficers(
           saved.id,
@@ -9437,9 +9831,7 @@ export function FormCreationWorkspace({
                 <label className="flex items-center gap-2 text-sm font-medium">
                   <input
                     checked={controlsDraft.requiresEntity}
-                    onChange={(event) =>
-                      updateControlsDraft({ requiresEntity: event.target.checked })
-                    }
+                    onChange={(event) => updateRequiresEntity(event.target.checked)}
                     type="checkbox"
                   />
                   Require existing entity record
@@ -9447,9 +9839,7 @@ export function FormCreationWorkspace({
                 <label className="flex items-center gap-2 text-sm font-medium">
                   <input
                     checked={controlsDraft.allowAnonymous}
-                    onChange={(event) =>
-                      updateControlsDraft({ allowAnonymous: event.target.checked })
-                    }
+                    onChange={(event) => updateAllowAnonymous(event.target.checked)}
                     type="checkbox"
                   />
                   Allow anonymous submission
@@ -9459,28 +9849,38 @@ export function FormCreationWorkspace({
                   <Select
                     className="mt-2"
                     onChange={(event) => {
-                      const category = (entityCategoriesQuery.data ?? []).find(
-                        (item) => item.name === event.target.value,
+                      const selectedOption = entityTypeOptions.find(
+                        (option) => option.value === event.target.value,
                       );
                       updateControlsDraft({
-                        entityCategoryId: category?.id ?? "",
-                        entityType: event.target.value,
+                        entityCategoryId: selectedOption?.categoryId ?? "",
+                        entityType: selectedOption?.entityType ?? event.target.value.replace(/^type:/, ""),
                       });
                     }}
-                    value={controlsDraft.entityType}
+                    value={entityTypeSelectValue}
                   >
-                    {entityTypeOptions.map((type) => (
-                      <option key={type} value={type}>{type}</option>
+                    {entityTypeOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
                     ))}
                   </Select>
                   <span className="mt-1 block text-xs font-normal text-muted-foreground">
                     {selectedEntityCategory
-                      ? `Linked to the project category “${selectedEntityCategory.name}”.`
+                      ? `Linked to the project category path “${selectedEntityCategoryPath}”.`
                       : selectedProjectId
                         ? "No matching active project category found; add one in Project settings if this should be tracked as an entity."
                         : "Select a project first to use its sector or custom entity categories."}
                   </span>
                 </label>
+                <div className="rounded-lg border bg-background/70 p-3 text-xs leading-5 text-muted-foreground">
+                  <p className="font-semibold text-foreground">Collection behavior</p>
+                  <div className="mt-2 space-y-1.5">
+                    {entityCollectionSummary.map((line) => (
+                      <p key={line}>{line}</p>
+                    ))}
+                  </div>
+                </div>
                 <div className="rounded-lg border bg-background/70 p-3 text-xs leading-5 text-muted-foreground">
                   <p className="font-semibold text-foreground">Official entity code</p>
                   <p className="mt-1">
@@ -9498,6 +9898,11 @@ export function FormCreationWorkspace({
                       <p className="mt-1">
                         Add the selected category&apos;s configured fields as editable Builder questions.
                       </p>
+                      {selectedEntityCategory ? (
+                        <p className="mt-1 text-muted-foreground">
+                          {selectedEntityCategory.attributes.length} configured field(s) available from {selectedEntityCategoryPath ?? selectedEntityCategory.name}.
+                        </p>
+                      ) : null}
                     </div>
                     <Button
                       disabled={!selectedEntityCategory || !selectedEntityCategory.attributes.length}
@@ -9514,10 +9919,9 @@ export function FormCreationWorkspace({
                   <Select
                     className="mt-2"
                     onChange={(event) =>
-                      updateControlsDraft({
-                        respondentIdentification:
-                          event.target.value as FormControlsDraft["respondentIdentification"],
-                      })
+                      updateRespondentIdentification(
+                        event.target.value as FormControlsDraft["respondentIdentification"],
+                      )
                     }
                     value={controlsDraft.respondentIdentification}
                   >
@@ -9548,9 +9952,9 @@ export function FormCreationWorkspace({
                   <Select
                     className="mt-2"
                     onChange={(event) =>
-                      updateControlsDraft({
-                        beneficiarySearch: event.target.value as FormControlsDraft["beneficiarySearch"],
-                      })
+                      updateBeneficiarySearch(
+                        event.target.value as FormControlsDraft["beneficiarySearch"],
+                      )
                     }
                     value={controlsDraft.beneficiarySearch}
                   >
@@ -10145,12 +10549,7 @@ export function FormCreationWorkspace({
                   Current control summary: {controlsDraft.permissionPreset} permissions,
                   {" "}{controlsDraft.workflowPreset.replaceAll("_", " ")},
                   {" "}{controlsDraft.dataQualityMode} quality mode,
-                  {" "}
-                  {controlsDraft.requiresEntity
-                    ? controlsDraft.entityType
-                    : controlsDraft.allowAnonymous
-                      ? "anonymous submission allowed"
-                      : "entity rule not set"}.
+                  {" "}{entityWorkflowSummary}.
                 </div>
               </div>
             </section>

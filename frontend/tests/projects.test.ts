@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { previewProjects, projectSectionFromPath } from "@/modules/projects/data";
+import { previewProjects, projectSectionFromPath, statusGroupFromPath } from "@/modules/projects/data";
 import { computeProjectSummary, filterProjects, healthTone, projectCodeFromName } from "@/modules/projects/utils";
 
 describe("projects utilities", () => {
@@ -35,7 +35,18 @@ describe("projects utilities", () => {
   it("maps project routes to the correct workspace section", () => {
     expect(projectSectionFromPath("/projects")).toBe("dashboard");
     expect(projectSectionFromPath("/projects/all")).toBe("all");
-    expect(projectSectionFromPath("/projects/active")).toBe("active");
+    // Active/Draft/Closed are now status filters inside the single "All Projects" view,
+    // so their legacy routes resolve to "all" (and preselect a status group below).
+    expect(projectSectionFromPath("/projects/active")).toBe("all");
+    expect(projectSectionFromPath("/projects/draft")).toBe("all");
+    expect(projectSectionFromPath("/projects/closed")).toBe("all");
     expect(projectSectionFromPath("/projects/templates")).toBe("templates");
+  });
+
+  it("derives the status filter group from legacy status routes", () => {
+    expect(statusGroupFromPath("/projects/all")).toBe("");
+    expect(statusGroupFromPath("/projects/active")).toBe("active");
+    expect(statusGroupFromPath("/projects/draft")).toBe("draft");
+    expect(statusGroupFromPath("/projects/closed")).toBe("closed");
   });
 });

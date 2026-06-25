@@ -6,10 +6,18 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Badge, Card, EmptyState, Input } from "@/components/ui";
 import { useAppContext } from "@/context/AppContext";
-import { displayEntityCategoryName } from "@/entities/entityCategoryUtils";
+import {
+  describeEntityHierarchy,
+  describeFormEntityWorkflow,
+  displayEntityCategoryName,
+  entityCategoryTrailForEntity,
+  entityMatchesCategoryFilter,
+  entityMatchesFormEntityScope,
+  resolveEntityCategoryForEntity,
+} from "@/entities/entityCategoryUtils";
 import { DataCollectionSessionService } from "@/forms/dataCollectionSession";
 import { localDatabase } from "@/storage/localDatabase";
-import type { MobileAssignment, MobileEntity } from "@/models/contracts";
+import type { MobileAssignment, MobileEntity, MobileEntityCategory } from "@/models/contracts";
 import { colors, fontFamily, radii, spacing, type Tone, typography } from "@/theme";
 
 const dataCollection = new DataCollectionSessionService(localDatabase);
@@ -25,9 +33,10 @@ const STATUS_TONE: Record<MobileEntity["status"], Tone> = {
   Archived: "neutral",
 };
 
-function eligibleAssignmentsFor(entity: MobileEntity): { assignment: MobileAssignment; formName: string }[] {
+function eligibleAssignmentsFor(entity: MobileEntity): { assignment: MobileAssignment; formName: string; workflowBadge: string; workflowHint: string }[] {
   const seenForms = new Set<string>();
-  const results: { assignment: MobileAssignment; formName: string }[] = [];
+  const results: { assignment: MobileAssignment; formName: string; workflowBadge: string; workflowHint: string }[] = [];
+  const categories = localDatabase.entityCategories.list();
   for (const assignment of localDatabase.assignments.list()) {
     if (!assignment.formId || !assignment.formVersionId) continue;
     if (!ACTIVE_ASSIGNMENT_STATUSES.has(assignment.status)) continue;
@@ -35,11 +44,19 @@ function eligibleAssignmentsFor(entity: MobileEntity): { assignment: MobileAssig
     const formVersion = localDatabase.formVersions.list().find((v) => v.id === assignment.formVersionId);
     if (!formVersion) continue;
     const settings = formVersion.entitySettings;
-    if (!settings.linkedToEntity || !matchesEntityCategory(entity, settings.entityType, settings.entityCategoryId)) continue;
-    if (!settings.updatesExistingEntity && !settings.requiresExistingEntity) continue;
+    if (!settings.linkedToEntity || !entityMatchesFormEntityScope(entity, formVersion, categories)) continue;
+    const workflow = describeFormEntityWorkflow(settings, categories);
+    if (!workflow.needsEntityPicker) continue;
     seenForms.add(assignment.formId);
     const form = localDatabase.forms.list().find((f) => f.id === assignment.formId);
-    results.push({ assignment, formName: form?.name ?? "Form" });
+    results.push({
+      assignment,
+      formName: form?.name ?? "Form",
+      workflowBadge: workflow.allowsCreateWithoutSelection
+        ? `Existing or new ${workflow.label}`
+        : `Existing ${workflow.label}`,
+      workflowHint: workflow.helperText,
+    });
   }
   return results;
 }
@@ -52,26 +69,23 @@ function displayEntityTypeValue(entityType: string): string {
   return displayEntityCategoryName(entityType, localDatabase.entityCategories.list());
 }
 
-function matchesEntityCategory(entity: MobileEntity, entityType: string | null, categoryId?: string | null): boolean {
-  if (entityType && entity.entityType === entityType) return true;
-  const category = categoryId
-    ? localDatabase.entityCategories.list().find((item) => item.id === categoryId)
-    : null;
-  if (!category) return false;
-  return entity.entityType === category.id || entity.entityType === category.slug || entity.entityType === category.name;
-}
-
 export default function BeneficiariesScreen() {
   const router = useRouter();
   const { refreshKey, isSyncing, syncWork, refresh } = useAppContext();
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const allEntities = useMemo(() => localDatabase.entities.list(), [refreshKey]);
+  const entityCategories = useMemo(() => localDatabase.entityCategories.list(), [refreshKey]);
 
   const beneficiaries = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const all = localDatabase.entities.list();
-    return all.filter((entity) => {
-      if (categoryFilter !== "all" && entity.entityType !== categoryFilter) return false;
+    return allEntities.filter((entity) => {
+      if (
+        categoryFilter !== "all"
+        && !entityMatchesCategoryFilter(entity, categoryFilter, entityCategories)
+      ) {
+        return false;
+      }
       if (!q) return true;
       const village = entity.location.village ?? entity.location.community ?? entity.location.district ?? "";
       return [
@@ -85,12 +99,16 @@ export default function BeneficiariesScreen() {
         ...Object.values(entity.profile ?? {}),
       ].some((value) => String(value ?? "").toLowerCase().includes(q));
     });
-  }, [categoryFilter, search, refreshKey]);
+  }, [allEntities, categoryFilter, entityCategories, search]);
 
   const categories = useMemo(() => {
-    const values = new Set(localDatabase.entities.list().map((entity) => entity.entityType).filter(Boolean));
-    return [...values].sort((a, b) => displayEntityTypeValue(a).localeCompare(displayEntityTypeValue(b)));
-  }, [refreshKey]);
+    const unique = new Map<string, MobileEntityCategory>();
+    for (const entity of allEntities) {
+      const category = resolveEntityCategoryForEntity(entity, entityCategories);
+      if (category) unique.set(category.id, category);
+    }
+    return [...unique.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [allEntities, entityCategories]);
 
   function startDraft(entity: MobileEntity, assignment: MobileAssignment) {
     try {
@@ -132,8 +150,8 @@ export default function BeneficiariesScreen() {
               <Badge label="All" tone={categoryFilter === "all" ? "success" : "neutral"} />
             </Pressable>
             {categories.map((category) => (
-              <Pressable key={category} onPress={() => setCategoryFilter(category)}>
-                <Badge label={displayEntityTypeValue(category)} tone={categoryFilter === category ? "success" : "neutral"} />
+              <Pressable key={category.id} onPress={() => setCategoryFilter(category.id)}>
+                <Badge label={category.name} tone={categoryFilter === category.id ? "success" : "neutral"} />
               </Pressable>
             ))}
           </ScrollView>
@@ -154,9 +172,10 @@ export default function BeneficiariesScreen() {
             ].filter(Boolean).join(", ");
             const actions = entity.status === "Active" ? eligibleAssignmentsFor(entity) : [];
             const profileFields = categoryProfilePreview(entity);
+            const hierarchy = describeEntityHierarchy(entity, allEntities);
 
             return (
-              <Card key={entity.localId} padding="lg" style={{ gap: spacing.sm }}>
+                <Card key={entity.localId} padding="lg" style={{ gap: spacing.sm }}>
                 <View style={styles.titleRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.name}>{entity.name || "Unnamed record"}</Text>
@@ -171,6 +190,14 @@ export default function BeneficiariesScreen() {
                   {entity.phone ? <Text style={styles.meta}>Phone: {entity.phone}</Text> : null}
                   {entity.householdId ? <Text style={styles.meta}>Household: {entity.householdId}</Text> : null}
                   {location ? <Text style={styles.meta}>Location: {location}</Text> : null}
+                  {entityCategoryTrailForEntity(entity, entityCategories) ? (
+                    <Text style={styles.meta}>
+                      Category: {entityCategoryTrailForEntity(entity, entityCategories)}
+                    </Text>
+                  ) : null}
+                  {hierarchy.summary ? <Text style={styles.meta}>Linked records: {hierarchy.summary}</Text> : null}
+                  {hierarchy.parentLine ? <Text style={styles.meta}>{hierarchy.parentLine}</Text> : null}
+                  {hierarchy.childLine ? <Text style={styles.meta}>{hierarchy.childLine}</Text> : null}
                   {profileFields.map(({ label, value }) => (
                     <Text key={label} style={styles.meta}>{label}: {value}</Text>
                   ))}
@@ -182,15 +209,15 @@ export default function BeneficiariesScreen() {
                 {actions.length > 0 ? (
                   <View style={styles.actionsBlock}>
                     <Text style={styles.actionsLabel}>Continue data collection</Text>
-                    {actions.map(({ assignment, formName }) => (
-                      <Pressable
-                        key={assignment.localId}
-                        onPress={() => startDraft(entity, assignment)}
-                        style={({ pressed }) => [styles.actionRow, { opacity: pressed ? 0.85 : 1 }]}
-                      >
-                        <Text style={styles.actionLabel} numberOfLines={1}>{formName}</Text>
+                    {actions.map(({ assignment, formName, workflowBadge, workflowHint }) => (
+                      <Pressable key={assignment.localId} onPress={() => startDraft(entity, assignment)} style={({ pressed }) => [styles.actionCard, { opacity: pressed ? 0.85 : 1 }]}>
+                        <View style={styles.actionHeaderRow}>
+                          <Text style={styles.actionLabel} numberOfLines={1}>{formName}</Text>
+                          <Badge label={workflowBadge} tone="neutral" />
+                        </View>
+                        <Text style={styles.actionHint}>{workflowHint}</Text>
                         <View style={styles.actionStart}>
-                          <Text style={styles.actionStartLabel}>Start</Text>
+                          <Text style={styles.actionStartLabel}>Start with this record</Text>
                           <ArrowRight size={14} color={colors.primaryForeground} />
                         </View>
                       </Pressable>
@@ -202,11 +229,7 @@ export default function BeneficiariesScreen() {
           })
         )}
 
-        {beneficiaries.length > 0 ? (
-          <Text style={styles.footer}>
-            {beneficiaries.length} entity record(s) on this device
-          </Text>
-        ) : null}
+        {beneficiaries.length > 0 ? <Text style={styles.footer}>{beneficiaries.length} entity record(s) on this device</Text> : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -235,23 +258,35 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.semibold,
     fontWeight: "700",
   },
-  actionRow: {
-    alignItems: "center",
-    backgroundColor: colors.primary,
+  actionCard: {
+    backgroundColor: colors.panel,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 1,
+  },
+  actionHeaderRow: {
     borderRadius: radii.lg,
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 1,
+    gap: spacing.sm,
+  },
+  actionHint: {
+    ...typography.micro,
+    color: colors.mutedForeground,
   },
   actionStart: {
     alignItems: "center",
     flexDirection: "row",
     gap: 4,
+    justifyContent: "flex-end",
+    marginTop: 2,
   },
   actionStartLabel: {
     ...typography.small,
-    color: colors.primaryForeground,
+    color: colors.primary,
     fontFamily: fontFamily.semibold,
     fontWeight: "700",
   },

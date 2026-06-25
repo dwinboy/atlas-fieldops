@@ -129,6 +129,9 @@ class MobileEntityRead(MobileSchema):
     id: str
     entity_uid: str
     entity_type: str
+    entity_category_id: str | None = None
+    parent_entity_ids: list[str] = Field(default_factory=list)
+    child_entity_ids: list[str] = Field(default_factory=list)
     name: str
     phone: str | None = None
     national_id: str | None = None
@@ -159,6 +162,7 @@ class MobileEntityCategoryAttributeRead(MobileSchema):
 class MobileEntityCategoryRead(MobileSchema):
     id: str
     project_id: str | None = None
+    parent_category_id: str | None = None
     name: str
     slug: str
     sector: str | None = None
@@ -191,6 +195,23 @@ class MobileFormRead(MobileSchema):
     current_version_id: str | None = None
 
 
+class MobileFormEntitySettingsRead(MobileSchema):
+    linked_to_entity: bool = False
+    entity_type: str | None = None
+    entity_category_id: str | None = None
+    creates_new_entity: bool = False
+    updates_existing_entity: bool = False
+    requires_existing_entity: bool = False
+    allows_anonymous_submission: bool = True
+    respondent_identity_mode: str | None = None
+    entity_search_mode: Literal["required", "optional", "disabled"] = "disabled"
+    frequency_rule: str = "Unlimited"
+    prefill_mappings: list[dict[str, Any]] = Field(default_factory=list)
+    duplicate_mode: Literal["exact", "fuzzy", "weighted"] = "weighted"
+    duplicate_threshold: int = 60
+    duplicate_action: Literal["block", "warn", "review"] = "block"
+
+
 class MobileFormVersionRead(MobileSchema):
     id: str
     form_id: str
@@ -198,7 +219,7 @@ class MobileFormVersionRead(MobileSchema):
     published_at: datetime | None = None
     offline_compatible: bool = True
     sections: list[dict[str, Any]] = Field(default_factory=list)
-    entity_settings: dict[str, Any] = Field(default_factory=dict)
+    entity_settings: MobileFormEntitySettingsRead = Field(default_factory=MobileFormEntitySettingsRead)
 
 
 class MobileReferenceListRead(MobileSchema):
@@ -287,6 +308,9 @@ class MobileNotificationRead(MobileSchema):
     id: str
     title: str
     body: str
+    event_type: str
+    resource_type: str | None = None
+    resource_id: str | None = None
     read_at: datetime | None = None
     created_by_server_at: datetime
 

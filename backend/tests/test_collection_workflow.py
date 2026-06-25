@@ -1205,6 +1205,122 @@ async def test_cleaned_imported_form_row_can_be_confirmed_and_used() -> None:
 
 
 @pytest.mark.asyncio
+async def test_confirmed_import_links_existing_beneficiary_by_uploaded_code() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        actor_user_id = uuid4()
+        project_id = uuid4()
+        form_id = uuid4()
+        version_id = uuid4()
+        existing_beneficiary_id = uuid4()
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Link Org", slug="link-org"),
+                User(id=actor_user_id, email="link-manager@example.org", full_name="Link Manager", password_hash="x"),
+                Project(id=project_id, organization_id=organization_id, name="Link Project", slug="link-project", status="active"),
+                DataForm(
+                    id=form_id,
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    created_by_user_id=actor_user_id,
+                    name="Farmer Monitoring",
+                    slug="farmer-monitoring",
+                    status="published",
+                    current_version=1,
+                    controls_json={
+                        "entity_controls": {
+                            "linked_to_entity": True,
+                            "entity_type": "Farmer",
+                            "updates_existing_entity": True,
+                        }
+                    },
+                ),
+                DataFormVersion(
+                    id=version_id,
+                    organization_id=organization_id,
+                    form_id=form_id,
+                    version=1,
+                    schema_json={
+                        "sections": [
+                            {
+                                "id": "identity",
+                                "title": "Identity",
+                                "fields": [
+                                    {"id": "beneficiary_code", "variable_name": "beneficiary_code", "type": "text", "label": "Beneficiary Code", "required": True},
+                                    {"id": "farmer_name", "variable_name": "farmer_name", "type": "text", "label": "Farmer Name", "required": True},
+                                    {"id": "phone", "variable_name": "phone", "type": "phone", "label": "Phone"},
+                                ],
+                            }
+                        ]
+                    },
+                    offline_compatible=True,
+                    published_at=datetime.now(UTC),
+                ),
+                Beneficiary(
+                    id=existing_beneficiary_id,
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    beneficiary_uid="FRM-2026-000001",
+                    beneficiary_type="Farmer",
+                    display_name="Amina Farmer",
+                    phone_number="677000001",
+                    enrollment_status="active",
+                ),
+            ]
+        )
+        await session.commit()
+
+        service = SubmissionService(session)
+        imported = await service.import_form_rows(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            form_id=form_id,
+            payload=FormDataImportRequest(
+                rows=[
+                    {
+                        "beneficiary_code": "FRM-2026-000001",
+                        "farmer_name": "Amina Farmer",
+                        "phone": "677000001",
+                    }
+                ],
+                source_name="monitoring.csv",
+                source_system="Form spreadsheet upload",
+                import_reason="Monitoring backfill",
+            ),
+        )
+        submission_id = imported.submissions[0].id
+
+        confirmed = await service.confirm_imported_form_rows(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            form_id=form_id,
+            payload=FormDataImportConfirmRequest(submission_ids=[submission_id], comment="Ready"),
+        )
+        await session.commit()
+
+        beneficiaries = (
+            await session.execute(
+                select(Beneficiary).where(Beneficiary.organization_id == organization_id)
+            )
+        ).scalars().all()
+        submission = (
+            await session.execute(select(Submission).where(Submission.id == submission_id))
+        ).scalar_one()
+
+        assert confirmed.confirmed_rows == 1
+        assert len(beneficiaries) == 1
+        assert submission.entity_id == existing_beneficiary_id
+        assert submission.payload_json["_beneficiary_processing"]["action"] == "linked"
+        assert submission.payload_json["_beneficiary_processing"]["beneficiary_uid"] == "FRM-2026-000001"
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_import_form_rows_parses_repeat_and_matrix_json_cells() -> None:
     env = await _seed_dedup_environment({"entity_controls": {}})
     session: object = env["session"]
@@ -1400,6 +1516,115 @@ async def test_mobile_synced_submission_is_visible_and_creates_beneficiary_after
         refreshed_submission = await session.get(Submission, submission.id)
         assert refreshed_submission is not None
         assert refreshed_submission.entity_id == beneficiary.id
+
+
+@pytest.mark.asyncio
+async def test_mobile_follow_up_submission_requires_existing_entity_before_sync() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        field_user_id = uuid4()
+        manager_user_id = uuid4()
+        project_id = uuid4()
+        survey_id = uuid4()
+        form_id = uuid4()
+        version_id = uuid4()
+        officer_id = uuid4()
+        now = datetime.now(UTC)
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Follow Up Org", slug="follow-up-org"),
+                User(id=field_user_id, email="field@example.org", full_name="Field Officer", password_hash="x"),
+                User(id=manager_user_id, email="manager@example.org", full_name="Manager", password_hash="x"),
+                FieldOfficerProfile(id=officer_id, organization_id=organization_id, user_id=field_user_id, is_active=True),
+                Project(id=project_id, organization_id=organization_id, name="Follow Up Project", slug="follow-up-project", status="active"),
+                Survey(
+                    id=survey_id,
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    created_by_user_id=manager_user_id,
+                    owner_user_id=manager_user_id,
+                    title="Follow Up Survey",
+                    code="FOLLOW-1",
+                    survey_type="follow_up",
+                    status="active",
+                ),
+                DataForm(
+                    id=form_id,
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    survey_id=survey_id,
+                    created_by_user_id=manager_user_id,
+                    name="Farmer Follow Up",
+                    slug="farmer-follow-up",
+                    status="published",
+                    current_version=1,
+                    controls_json={
+                        "entity_controls": {
+                            "linked_to_entity": True,
+                            "entity_type": "Farmer",
+                            "creates_new_entity": False,
+                            "requires_existing_entity": True,
+                        }
+                    },
+                ),
+                DataFormVersion(
+                    id=version_id,
+                    organization_id=organization_id,
+                    form_id=form_id,
+                    version=1,
+                    schema_json={
+                        "sections": [
+                            {
+                                "id": "visit",
+                                "title": "Visit",
+                                "fields": [
+                                    {"id": "q_visit_notes", "variable_name": "visit_notes", "type": "text", "label": "Visit notes", "required": True},
+                                ],
+                            }
+                        ]
+                    },
+                    offline_compatible=True,
+                    published_at=now,
+                ),
+            ]
+        )
+        await session.commit()
+
+        principal = CurrentPrincipal(
+            user_id=str(field_user_id),
+            organization_id=str(organization_id),
+            email="field@example.org",
+            full_name="Field Officer",
+            organization_slug="follow-up-org",
+            organization_name="Follow Up Org",
+            roles=["field_officer"],
+            permissions=["submission.create", "sync.mobile"],
+            scope_type="own",
+        )
+        with pytest.raises(ValueError, match="Select an existing farmer before syncing this submission."):
+            await MobileService(session).upload_submission(
+                principal=principal,
+                payload=MobileSubmissionUpload(
+                    local_id="mobile-follow-up-001",
+                    project_id=str(project_id),
+                    form_id=str(form_id),
+                    form_version_id=str(version_id),
+                    entity_type="Farmer",
+                    responses=[
+                        {"questionId": "q_visit_notes", "variableName": "visit_notes", "value": "Visited the farmer", "updatedAt": now},
+                    ],
+                    location={"latitude": 5.9, "longitude": 10.1, "accuracy": 8, "timestamp": now},
+                    device_id="android-test",
+                    app_version="1.0.0-test",
+                    created_at=now,
+                    submitted_at=now,
+                ),
+            )
 
 
 @pytest.mark.asyncio
@@ -2013,6 +2238,168 @@ async def test_unique_fields_links_existing_beneficiary_via_custom_field() -> No
         assert processing["action"] == "linked"
         assert processing["beneficiary_id"] == str(existing_beneficiary.id)
         assert submission.entity_id == existing_beneficiary.id
+
+
+@pytest.mark.asyncio
+async def test_web_follow_up_submission_requires_existing_entity_without_explicit_anonymous_flag() -> None:
+    env = await _seed_dedup_environment(
+        {
+            "entity_controls": {
+                "linked_to_entity": True,
+                "entity_type": "Farmer",
+                "creates_new_entity": False,
+                "requires_existing_entity": True,
+            }
+        }
+    )
+    session: object = env["session"]
+    async with session:
+        service = SubmissionService(session)
+        with pytest.raises(CollectionConflictError, match="Select an existing farmer before submitting this form."):
+            await service.create_submission(
+                organization_id=env["organization_id"],
+                actor_user_id=env["field_user_id"],
+                payload=_dedup_submission_payload(
+                    env,
+                    client_submission_id="followup-missing-entity-001",
+                    payload={"farmer_name": "Needs existing entity"},
+                ),
+            )
+
+
+@pytest.mark.asyncio
+async def test_existing_or_new_submission_without_entity_is_allowed_for_web_submission_flow() -> None:
+    env = await _seed_dedup_environment(
+        {
+            "entity_controls": {
+                "linked_to_entity": True,
+                "entity_type": "Farmer",
+                "creates_new_entity": True,
+                "updates_existing_entity": True,
+                "requires_existing_entity": False,
+                "allows_anonymous": False,
+            }
+        }
+    )
+    session: object = env["session"]
+    async with session:
+        service = SubmissionService(session)
+        submission = await service.create_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["field_user_id"],
+            payload=_dedup_submission_payload(
+                env,
+                client_submission_id="existing-or-new-web-001",
+                payload={"farmer_name": "Mixed Workflow Person", "village": "Bafut"},
+            ),
+        )
+        await session.commit()
+
+        assert submission.entity_id is None
+        assert submission.status == "submitted"
+
+
+@pytest.mark.asyncio
+async def test_approved_follow_up_submission_updates_existing_beneficiary_state() -> None:
+    env = await _seed_dedup_environment(
+        {
+            "entity_controls": {
+                "linked_to_entity": True,
+                "entity_type": "Farmer",
+                "creates_new_entity": False,
+                "requires_existing_entity": True,
+            }
+        }
+    )
+    session: object = env["session"]
+    async with session:
+        existing_beneficiary = Beneficiary(
+            id=uuid4(),
+            organization_id=env["organization_id"],
+            project_id=env["project_id"],
+            beneficiary_uid="FRM-LINK1",
+            beneficiary_type="Farmer",
+            display_name="Follow Up Farmer",
+            phone_number="+237677000300",
+            profile_json={"source": "seed"},
+        )
+        session.add(existing_beneficiary)
+        await session.commit()
+
+        service = SubmissionService(session)
+        submission = await service.create_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["field_user_id"],
+            payload=_dedup_submission_payload(
+                env,
+                client_submission_id="followup-linked-001",
+                payload={"farmer_name": "Follow Up Farmer", "phone": "+237677000300", "district": "Mezam"},
+                entity_id=existing_beneficiary.id,
+            ),
+        )
+        await session.commit()
+
+        await service.review_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["manager_user_id"],
+            submission_id=submission.id,
+            payload=SubmissionReviewAction(action="approve", comment="Approved"),
+        )
+        await session.commit()
+
+        updated = await session.get(Beneficiary, existing_beneficiary.id)
+        assert updated is not None
+        assert updated.id == existing_beneficiary.id
+        assert updated.last_visit_at == submission.submitted_at
+        assert updated.district == "Mezam"
+        assert updated.profile_json["lastApprovedSubmissionId"] == str(submission.id)
+        assert updated.profile_json["lastApprovedFormId"] == str(env["form_id"])
+        assert updated.profile_json["fieldLineage"]["district"]["sourceSubmissionId"] == str(submission.id)
+
+
+@pytest.mark.asyncio
+async def test_submission_approval_creates_mobile_notification_with_submission_reference() -> None:
+    env = await _seed_dedup_environment({"entity_controls": {}})
+    session: object = env["session"]
+    async with session:
+        service = SubmissionService(session)
+        submission = await service.create_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["field_user_id"],
+            payload=_dedup_submission_payload(
+                env,
+                client_submission_id="notify-approved-001",
+                payload={"farmer_name": "Notify Farmer", "phone": "677000555"},
+            ),
+        )
+        await session.commit()
+
+        await service.review_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["manager_user_id"],
+            submission_id=submission.id,
+            payload=SubmissionReviewAction(action="approve", comment="Approved for mobile follow-up."),
+        )
+        await session.commit()
+
+        principal = CurrentPrincipal(
+            user_id=str(env["field_user_id"]),
+            organization_id=str(env["organization_id"]),
+            email="field@example.org",
+            full_name="Field Officer",
+            organization_slug="dedup-org",
+            organization_name="Dedup Org",
+            roles=["field_officer"],
+            permissions=["sync.mobile"],
+            scope_type="own",
+        )
+        notifications = await MobileService(session).notifications(principal)
+
+        assert notifications
+        assert notifications[0].title == "Submission approved"
+        assert notifications[0].event_type == "submission.approved"
+        assert notifications[0].resource_type == "submission"
+        assert notifications[0].resource_id == str(submission.id)
 
 
 @pytest.mark.asyncio

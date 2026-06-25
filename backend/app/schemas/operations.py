@@ -219,6 +219,7 @@ class EntityCategoryCreate(BaseModel):
     name: str = Field(min_length=2, max_length=160)
     slug: str | None = Field(default=None, max_length=120, pattern=r"^[a-z0-9-]+$")
     project_id: UUID | None = None
+    parent_category_id: UUID | None = None
     sector: str | None = Field(default=None, max_length=80)
     description: str | None = Field(default=None, max_length=2000)
     icon: str = Field(default="users", max_length=80)
@@ -233,6 +234,7 @@ class EntityCategoryCreate(BaseModel):
 
 class EntityCategoryUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=160)
+    parent_category_id: UUID | None = None
     sector: str | None = Field(default=None, max_length=80)
     description: str | None = Field(default=None, max_length=2000)
     icon: str | None = Field(default=None, max_length=80)
@@ -247,6 +249,7 @@ class EntityCategoryUpdate(BaseModel):
 class EntityCategoryRead(BaseModel):
     id: UUID
     project_id: UUID | None
+    parent_category_id: UUID | None
     name: str
     slug: str
     sector: str | None
@@ -263,6 +266,28 @@ class EntityCategoryRead(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class EntityRelationshipCreate(BaseModel):
+    related_beneficiary_id: UUID
+    related_role: Literal["parent", "child"]
+    relationship_type: str = Field(min_length=2, max_length=80)
+    metadata_json: dict[str, object] = Field(default_factory=dict)
+
+
+class EntityRelationshipRead(BaseModel):
+    id: UUID
+    direction: Literal["parent", "child"]
+    relationship_type: str
+    related_beneficiary: BeneficiaryRead
+    metadata_json: dict[str, object] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+
+class EntityHierarchyRead(BaseModel):
+    parents: list[EntityRelationshipRead] = Field(default_factory=list)
+    children: list[EntityRelationshipRead] = Field(default_factory=list)
 
 
 class PredefinedEntityCategoryRead(BaseModel):

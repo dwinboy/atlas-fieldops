@@ -7,6 +7,18 @@ import type {
   WorkforceProfileRead,
 } from "@/lib/api";
 
+const fieldTeamRoleKeys = new Set(["district_supervisor", "field_officer", "regional_manager"]);
+const geographyScopeKeys = new Set(["community", "country", "district", "province", "region", "sub_district", "village", "ward"]);
+
+function normalizedKey(value?: string | null): string {
+  return (value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "");
+}
+
 export function normalizeRoleLabel(roleName?: string | null): string {
   if (!roleName) return "No role";
   return roleName
@@ -34,6 +46,18 @@ export function statusTone(status: string | boolean | undefined): "success" | "w
   return "neutral";
 }
 
+export function normalizeTeamCode(value?: string | null): string {
+  return (value ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+export function resolveTeamCode(name: string, code?: string | null): string {
+  return normalizeTeamCode(code) || normalizeTeamCode(name) || "team";
+}
+
 export function profileForUser(profiles: WorkforceProfileRead[], userId: string): WorkforceProfileRead | undefined {
   return profiles.find((profile) => profile.user_id === userId);
 }
@@ -41,6 +65,34 @@ export function profileForUser(profiles: WorkforceProfileRead[], userId: string)
 export function teamName(teams: TeamRead[], teamId?: string | null): string {
   if (!teamId) return "Unassigned";
   return teams.find((team) => team.id === teamId)?.name ?? "Unknown team";
+}
+
+export function userSetupIssues(user: UserRead, profile?: WorkforceProfileRead | null): string[] {
+  const issues: string[] = [];
+  const activeAssignments = (user.role_assignments ?? []).filter((assignment) => assignment.is_active);
+  const roleKey = normalizedKey(user.role_name);
+  const scopeKey = normalizedKey(user.scope_type);
+  const effectiveProjectId = user.project_id ?? activeAssignments.find((assignment) => assignment.project_id)?.project_id ?? null;
+  const effectiveGeographyId = user.geography_id ?? activeAssignments.find((assignment) => assignment.geography_id)?.geography_id ?? null;
+  const effectiveTeamId = profile?.team_id ?? activeAssignments.find((assignment) => assignment.team_id)?.team_id ?? null;
+
+  if (!roleKey) issues.push("Default role missing");
+  if (fieldTeamRoleKeys.has(roleKey) && !profile) issues.push("No workforce profile");
+  if ((fieldTeamRoleKeys.has(roleKey) || scopeKey === "field_team") && !effectiveTeamId) issues.push("No team assigned");
+  if (roleKey === "field_officer" && !profile?.supervisor_user_id) issues.push("No supervisor linked");
+  if (scopeKey === "project" && !effectiveProjectId) issues.push("Project scope is not set");
+  if (geographyScopeKeys.has(scopeKey) && !effectiveGeographyId) issues.push("Location boundary is not set");
+
+  return [...new Set(issues)];
+}
+
+export type UserSetupFilter = "all" | "inactive" | "needs_setup" | "ready";
+
+export function matchesUserSetupFilter(issues: string[], isActive: boolean, filter: UserSetupFilter): boolean {
+  if (filter === "needs_setup") return issues.length > 0;
+  if (filter === "ready") return issues.length === 0;
+  if (filter === "inactive") return !isActive;
+  return true;
 }
 
 export function computeSummaryFromRecords(
@@ -98,4 +150,3 @@ export function toCsv(rows: Record<string, string | number | boolean | null | un
   }
   return lines.join("\n");
 }
-

@@ -1,8 +1,9 @@
 "use client";
 
-import { ArrowDownUp, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
+import { ArrowDownUp, ChevronLeft, ChevronRight, Maximize2, Minimize2, Search, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +19,7 @@ export type TableColumn<T> = {
 };
 
 const PAGE_SIZE = 25;
+const FULLSCREEN_PAGE_SIZE = 100;
 
 export type TableEmptyAction = {
   label: string;
@@ -57,6 +59,21 @@ export function DataTable<T>({
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
   const [activeRowIndex, setActiveRowIndex] = useState<number | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsFullscreen(false);
+    };
+    window.addEventListener("keydown", handleKey);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", handleKey);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isFullscreen]);
   const filteredRows = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     const matchingRows = normalizedQuery
@@ -85,11 +102,14 @@ export function DataTable<T>({
     });
   }, [columns, query, rows, sortDirection, sortKey]);
 
-  const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  // Load more rows per page in full screen so the larger canvas is filled with
+  // data instead of capping at the compact page size and forcing pagination.
+  const pageSize = isFullscreen ? FULLSCREEN_PAGE_SIZE : PAGE_SIZE;
+  const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize));
   const safePage = Math.min(page, pageCount - 1);
   const pagedRows = useMemo(
-    () => filteredRows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE),
-    [filteredRows, safePage],
+    () => filteredRows.slice(safePage * pageSize, safePage * pageSize + pageSize),
+    [filteredRows, pageSize, safePage],
   );
 
   useEffect(() => {
@@ -132,11 +152,22 @@ export function DataTable<T>({
     </div>
   );
 
-  return (
-    <section
-      className="surface-premium overflow-hidden rounded-xl"
-      aria-labelledby={`${title}-title`}
-    >
+  const content = (
+    <>
+      {isFullscreen ? (
+        <div
+          aria-hidden="true"
+          className="fixed inset-0 z-40 bg-foreground/30 backdrop-blur-sm"
+          onClick={() => setIsFullscreen(false)}
+        />
+      ) : null}
+      <section
+        className={cn(
+          "surface-premium overflow-hidden rounded-xl",
+          isFullscreen && "fixed inset-2 z-50 flex flex-col sm:inset-4",
+        )}
+        aria-labelledby={`${title}-title`}
+      >
       <div className="flex flex-col gap-2 border-b bg-muted/25 px-3 py-2.5 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 id={`${title}-title`} className="text-xs font-semibold">
@@ -167,12 +198,22 @@ export function DataTable<T>({
               Clear
             </Button>
           ) : null}
+          <Button
+            aria-label={isFullscreen ? "Exit full screen" : "Open full screen"}
+            className="shrink-0"
+            onClick={() => setIsFullscreen((value) => !value)}
+            size="sm"
+            title={isFullscreen ? "Exit full screen" : "Open full screen"}
+            variant="secondary"
+          >
+            {isFullscreen ? <Minimize2 aria-hidden="true" /> : <Maximize2 aria-hidden="true" />}
+          </Button>
         </div>
       </div>
 
-      <div className="divide-y md:hidden">
+      <div className={cn("divide-y md:hidden", isFullscreen && "min-h-0 flex-1 overflow-y-auto product-scrollbar")}>
         {pagedRows.map((row, index) => {
-          const rowIndex = safePage * PAGE_SIZE + index;
+          const rowIndex = safePage * pageSize + index;
           const active = activeRowIndex === rowIndex;
           return (
           <article
@@ -221,12 +262,17 @@ export function DataTable<T>({
         ) : null}
       </div>
 
-      <div className="hidden max-h-[68vh] overflow-x-auto overflow-y-auto overscroll-contain product-scrollbar md:block">
-        <table className="w-full text-left text-xs" style={{ minWidth: tableMinWidth }}>
+      <div
+        className={cn(
+          "hidden overflow-x-auto overflow-y-auto overscroll-contain product-scrollbar md:block",
+          isFullscreen ? "min-h-0 flex-1" : "max-h-[68vh]",
+        )}
+      >
+        <table className="w-full border-separate border-spacing-0 text-left text-xs" style={{ minWidth: tableMinWidth }}>
           <thead className="sticky top-0 z-20 bg-muted/45 text-muted-foreground shadow-line backdrop-blur">
             <tr>
               {selection ? (
-                <th className="w-10 px-2.5 py-2">
+                <th className="w-10 border-b border-r border-border/60 px-2.5 py-2">
                   <input
                     aria-label="Select all rows on this page"
                     checked={allPagedSelected}
@@ -242,7 +288,7 @@ export function DataTable<T>({
                 <th
                   key={column.key}
                   className={cn(
-                    "whitespace-nowrap px-2.5 py-2 font-semibold",
+                    "whitespace-nowrap border-b border-r border-border/60 px-2.5 py-2 font-semibold",
                     columnIndex === 0 &&
                       !selection &&
                       "sticky left-0 z-10 border-r border-border/60 bg-muted/45 backdrop-blur",
@@ -288,9 +334,9 @@ export function DataTable<T>({
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y">
+          <tbody>
             {pagedRows.map((row, index) => {
-              const rowIndex = safePage * PAGE_SIZE + index;
+              const rowIndex = safePage * pageSize + index;
               const active = activeRowIndex === rowIndex;
               return (
               <tr
@@ -310,7 +356,7 @@ export function DataTable<T>({
                 tabIndex={0}
               >
                 {selection ? (
-                  <td className="w-10 px-2.5 py-2 align-top">
+                  <td className="w-10 border-b border-r border-border/60 px-2.5 py-2 align-top">
                     {(selection.isSelectable?.(row) ?? true) ? (
                       <input
                         aria-label="Select row"
@@ -325,7 +371,7 @@ export function DataTable<T>({
                   <td
                     key={column.key}
                     className={cn(
-                      "max-w-72 px-2.5 py-2 align-top",
+                      "max-w-72 border-b border-r border-border/60 px-2.5 py-2 align-top",
                       column.align === "right" && "text-right tabular-nums",
                       columnIndex === 0 &&
                         !selection &&
@@ -363,11 +409,11 @@ export function DataTable<T>({
         </table>
       </div>
 
-      {filteredRows.length > PAGE_SIZE ? (
+      {filteredRows.length > pageSize ? (
         <div className="flex flex-col gap-2 border-t bg-muted/15 px-3 py-2.5 text-[11px] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <p>
-            Showing {safePage * PAGE_SIZE + 1}–
-            {Math.min((safePage + 1) * PAGE_SIZE, filteredRows.length)} of{" "}
+            Showing {safePage * pageSize + 1}–
+            {Math.min((safePage + 1) * pageSize, filteredRows.length)} of{" "}
             {filteredRows.length}
           </p>
           <div className="flex items-center gap-1.5">
@@ -395,6 +441,14 @@ export function DataTable<T>({
           </div>
         </div>
       ) : null}
-    </section>
+      </section>
+    </>
   );
+
+  // When fullscreen, portal to <body> so the fixed overlay escapes any ancestor
+  // with a CSS transform (e.g. the page transition wrapper), which would
+  // otherwise trap `position: fixed` and shrink the view to a few rows.
+  return isFullscreen && typeof document !== "undefined"
+    ? createPortal(content, document.body)
+    : content;
 }

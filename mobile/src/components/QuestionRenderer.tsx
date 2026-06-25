@@ -60,6 +60,12 @@ export function QuestionRenderer({
 
   const hasError = issues.some((i) => i.questionId === question.id && i.severity === "Error");
   const hasWarning = issues.some((i) => i.questionId === question.id && i.severity === "Warning");
+  const responses = allResponses ?? new Map<string, unknown>();
+  const reasonQuestionId = changeReasonQuestionId(question.id);
+  const reasonVariableName = `${question.variableName}__change_reason`;
+  const requiresChangeReason = Boolean(question.governanceControls?.changeReasonRequired);
+  const changedPrefilledValue = requiresChangeReason && hasPrefilledValueChanged(question, value);
+  const changeReason = typeof responses.get(reasonQuestionId) === "string" ? String(responses.get(reasonQuestionId) ?? "") : "";
 
   const borderColor = hasError ? "#fca5a5" : hasWarning ? "#fed7aa" : "#dbe7e2";
 
@@ -95,7 +101,22 @@ export function QuestionRenderer({
       {/* Input by type */}
       {question.readOnly && question.type !== "CalculatedField" && String(question.type) !== "Calculated"
         ? renderReadOnlyValue(question, value)
-        : renderInput(question, value, answer, allResponses ?? new Map(), referenceLists ?? [])}
+        : renderInput(question, value, answer, responses, referenceLists ?? [])}
+
+      {changedPrefilledValue ? (
+        <View style={{ gap: 6 }}>
+          <Text style={{ color: "#49635a", fontSize: 12, fontWeight: "700" }}>
+            Reason for changing the prefilled value
+          </Text>
+          <TextInput
+            onChangeText={(text) => onAnswer(reasonQuestionId, reasonVariableName, text)}
+            placeholder="Explain why this profile value changed in the field"
+            placeholderTextColor="#94a3b8"
+            style={inputStyle}
+            value={changeReason}
+          />
+        </View>
+      ) : null}
 
       {/* Validation messages */}
       {issues
@@ -118,6 +139,14 @@ export function QuestionRenderer({
         ))}
     </View>
   );
+}
+
+export function changeReasonQuestionId(questionId: string): string {
+  return `${questionId}__change_reason`;
+}
+
+export function hasPrefilledValueChanged(question: MobileQuestion, value: unknown): boolean {
+  return JSON.stringify(question.defaultValue ?? null) !== JSON.stringify(value ?? null);
 }
 
 // ─── Input renderers ─────────────────────────────────────────────────────────

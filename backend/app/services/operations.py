@@ -5,7 +5,7 @@ from difflib import SequenceMatcher
 from datetime import UTC, date, datetime, timedelta
 from io import StringIO
 from uuid import UUID
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +20,7 @@ from app.models.operations import (
     DataQualitySignal,
     DonorReport,
     ReportSchedule,
+    EntityRelationship,
     FieldVisitRequest,
     FieldWorkPlan,
     OperationalTargetRecord,
@@ -45,7 +46,10 @@ from app.schemas.operations import (
     BeneficiaryRead,
     EntityDuplicateCandidateRead,
     EntityDuplicateCheckRequest,
+    EntityHierarchyRead,
     EntityPrefillRead,
+    EntityRelationshipCreate,
+    EntityRelationshipRead,
     MobileSyncPackageRead,
     BulkEditRead,
     BulkEditRequest,
@@ -1109,6 +1113,11 @@ class OperationsService:
     ) -> EntityCategoryRead:
         if payload.project_id and not await self.repository.project_exists(organization_id=organization_id, project_id=payload.project_id):
             raise ValueError("Project not found")
+        await self._validate_parent_category(
+            organization_id=organization_id,
+            project_id=payload.project_id,
+            parent_category_id=payload.parent_category_id,
+        )
         values = payload.model_dump(exclude={"attributes"})
         values["slug"] = payload.slug or category_slug(payload.name)
         category = await self.repository.create_entity_category(
@@ -1139,6 +1148,13 @@ class OperationsService:
         if category is None:
             raise ValueError("Entity category not found")
         values = payload.model_dump(exclude_unset=True, exclude={"attributes"})
+        if "parent_category_id" in values:
+            await self._validate_parent_category(
+                organization_id=organization_id,
+                project_id=category.project_id,
+                parent_category_id=cast(UUID | None, values.get("parent_category_id")),
+                category_id=category.id,
+            )
         category = await self.repository.update_entity_category(
             organization_id=organization_id,
             category=category,
@@ -1156,6 +1172,181 @@ class OperationsService:
         await self.session.flush()
         categories = await self.list_entity_categories(organization_id, project_id=category.project_id, include_archived=True)
         return next(item for item in categories if item.id == category.id)
+
+    async def _validate_parent_category(
+        self,
+        *,
+        organization_id: UUID,
+        project_id: UUID | None,
+        parent_category_id: UUID | None,
+        category_id: UUID | None = None,
+    ) -> None:
+        if parent_category_id is None:
+            return
+        if category_id is not None and parent_category_id == category_id:
+            raise ValueError("An entity category cannot be its own parent.")
+        parent = await self.repository.get_entity_category(
+            organization_id=organization_id,
+            category_id=parent_category_id,
+        )
+        if parent is None:
+            raise ValueError("Parent entity category not found")
+        if parent.project_id != project_id:
+            raise ValueError("Parent entity category must belong to the same project.")
+
+    async def get_entity_hierarchy(
+        self,
+        organization_id: UUID,
+        beneficiary_id: UUID,
+    ) -> EntityHierarchyRead:
+        beneficiary = await self.repository.get_beneficiary(
+            organization_id=organization_id,
+            beneficiary_id=beneficiary_id,
+        )
+        if beneficiary is None:
+            raise LookupError("Entity not found")
+        relationships = await self.repository.list_entity_relationships(
+            organization_id=organization_id,
+            beneficiary_id=beneficiary_id,
+        )
+        related_ids = {
+            relationship.parent_beneficiary_id
+            if relationship.child_beneficiary_id == beneficiary_id
+            else relationship.child_beneficiary_id
+            for relationship in relationships
+        }
+        related_beneficiaries = await self.repository.list_beneficiaries_by_ids(
+            organization_id=organization_id,
+            beneficiary_ids=related_ids,
+        )
+        related_by_id = {item.id: item for item in related_beneficiaries}
+        parents: list[EntityRelationshipRead] = []
+        children: list[EntityRelationshipRead] = []
+        for relationship in relationships:
+            if relationship.child_beneficiary_id == beneficiary_id:
+                related = related_by_id.get(relationship.parent_beneficiary_id)
+                if related is not None:
+                    parents.append(self._entity_relationship_read("parent", relationship.relationship_type, relationship.metadata_json, relationship, related))
+            else:
+                related = related_by_id.get(relationship.child_beneficiary_id)
+                if related is not None:
+                    children.append(self._entity_relationship_read("child", relationship.relationship_type, relationship.metadata_json, relationship, related))
+        parents.sort(key=lambda item: item.related_beneficiary.display_name.lower())
+        children.sort(key=lambda item: item.related_beneficiary.display_name.lower())
+        return EntityHierarchyRead(parents=parents, children=children)
+
+    async def create_entity_relationship(
+        self,
+        organization_id: UUID,
+        beneficiary_id: UUID,
+        payload: EntityRelationshipCreate,
+        actor_user_id: UUID,
+    ) -> EntityRelationshipRead:
+        beneficiary = await self.repository.get_beneficiary(
+            organization_id=organization_id,
+            beneficiary_id=beneficiary_id,
+        )
+        if beneficiary is None:
+            raise LookupError("Entity not found")
+        related = await self.repository.get_beneficiary(
+            organization_id=organization_id,
+            beneficiary_id=payload.related_beneficiary_id,
+        )
+        if related is None:
+            raise ValueError("Related entity not found")
+        if related.id == beneficiary.id:
+            raise ValueError("An entity cannot be linked to itself.")
+        if beneficiary.project_id != related.project_id:
+            raise ValueError("Entity relationships must stay within the same project.")
+        if payload.related_role == "parent":
+            parent_id = related.id
+            child_id = beneficiary.id
+            direction: Literal["parent", "child"] = "parent"
+        else:
+            parent_id = beneficiary.id
+            child_id = related.id
+            direction = "child"
+        existing = await self.repository.list_entity_relationships(
+            organization_id=organization_id,
+            beneficiary_id=beneficiary.id,
+        )
+        duplicate_exists = any(
+            relationship.parent_beneficiary_id == parent_id
+            and relationship.child_beneficiary_id == child_id
+            and relationship.relationship_type == payload.relationship_type
+            for relationship in existing
+        )
+        if duplicate_exists:
+            raise ValueError("That entity relationship already exists.")
+        relationship = await self.repository.create_entity_relationship(
+            organization_id=organization_id,
+            values={
+                "project_id": beneficiary.project_id,
+                "parent_beneficiary_id": parent_id,
+                "child_beneficiary_id": child_id,
+                "relationship_type": payload.relationship_type,
+                "metadata_json": payload.metadata_json,
+            },
+        )
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="entity_relationship.created",
+            resource_type="entity_relationship",
+            resource_id=str(relationship.id),
+            metadata={
+                "project_id": str(beneficiary.project_id) if beneficiary.project_id else None,
+                "parent_beneficiary_id": str(parent_id),
+                "child_beneficiary_id": str(child_id),
+                "relationship_type": payload.relationship_type,
+            },
+        )
+        return self._entity_relationship_read(direction, relationship.relationship_type, relationship.metadata_json, relationship, related)
+
+    async def delete_entity_relationship(
+        self,
+        organization_id: UUID,
+        relationship_id: UUID,
+        actor_user_id: UUID,
+    ) -> None:
+        relationship = await self.repository.get_entity_relationship(
+            organization_id=organization_id,
+            relationship_id=relationship_id,
+        )
+        if relationship is None:
+            raise LookupError("Entity relationship not found")
+        await self.repository.delete_entity_relationship(relationship)
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="entity_relationship.deleted",
+            resource_type="entity_relationship",
+            resource_id=str(relationship.id),
+            metadata={
+                "project_id": str(relationship.project_id) if relationship.project_id else None,
+                "parent_beneficiary_id": str(relationship.parent_beneficiary_id),
+                "child_beneficiary_id": str(relationship.child_beneficiary_id),
+                "relationship_type": relationship.relationship_type,
+            },
+        )
+
+    def _entity_relationship_read(
+        self,
+        direction: Literal["parent", "child"],
+        relationship_type: str,
+        metadata_json: dict[str, Any],
+        relationship: EntityRelationship,
+        related_beneficiary: Beneficiary,
+    ) -> EntityRelationshipRead:
+        return EntityRelationshipRead(
+            id=relationship.id,
+            direction=direction,
+            relationship_type=relationship_type,
+            related_beneficiary=BeneficiaryRead.model_validate(related_beneficiary),
+            metadata_json=metadata_json,
+            created_at=relationship.created_at,
+            updated_at=relationship.updated_at,
+        )
 
     async def activate_predefined_entity_category(
         self,

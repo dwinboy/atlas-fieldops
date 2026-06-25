@@ -37,7 +37,10 @@ from app.schemas.operations import (
     EntityCategoryUpdate,
     EntityDuplicateCandidateRead,
     EntityDuplicateCheckRequest,
+    EntityHierarchyRead,
     EntityPrefillRead,
+    EntityRelationshipCreate,
+    EntityRelationshipRead,
     ExportJobCreate,
     ExportJobRead,
     FieldVisitRequestRead,
@@ -538,6 +541,77 @@ async def review_beneficiary_profile_update_proposal(
     except Exception:
         await session.rollback()
         raise
+
+
+@router.get(
+    "/beneficiaries/{beneficiary_id}/relationships",
+    response_model=EntityHierarchyRead,
+    summary="List parent and child entity relationships",
+)
+async def get_entity_hierarchy(
+    beneficiary_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> EntityHierarchyRead:
+    try:
+        return await OperationsService(session).get_entity_hierarchy(
+            organization_uuid(principal),
+            beneficiary_id,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post(
+    "/beneficiaries/{beneficiary_id}/relationships",
+    response_model=EntityRelationshipRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a parent or child link between entities",
+)
+async def create_entity_relationship(
+    beneficiary_id: UUID,
+    payload: EntityRelationshipCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> EntityRelationshipRead:
+    try:
+        result = await OperationsService(session).create_entity_relationship(
+            organization_uuid(principal),
+            beneficiary_id,
+            payload,
+            user_uuid(principal),
+        )
+        await session.commit()
+        return result
+    except LookupError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.delete(
+    "/entity-relationships/{relationship_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove an entity relationship link",
+)
+async def delete_entity_relationship(
+    relationship_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> Response:
+    try:
+        await OperationsService(session).delete_entity_relationship(
+            organization_uuid(principal),
+            relationship_id,
+            user_uuid(principal),
+        )
+        await session.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except LookupError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.get(

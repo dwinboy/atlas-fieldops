@@ -184,6 +184,105 @@ const fieldTypeIcons: Record<FieldType, typeof Type> = {
   grid: Grid3X3,
 };
 
+function asSettingsRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function describeEntityCollectionWorkflow(
+  controls: FormControlsSettings,
+): {
+  badge: string;
+  description: string;
+  entityLabel: string;
+  tone: BadgeProps["tone"];
+} {
+  const entityControls = controls.entity_controls;
+  const entityLabel = entityControls?.entity_type?.trim() || "Entity";
+  const entityLabelLower = entityLabel.toLowerCase();
+  const respondentIdentity = asSettingsRecord(controls.instrument?.respondent_identity);
+  const rawRespondentIdentityMode =
+    typeof respondentIdentity.mode === "string" && respondentIdentity.mode.trim()
+      ? respondentIdentity.mode.trim()
+      : null;
+  const createsNewEntity = Boolean(entityControls?.creates_new_entity);
+  const updatesExistingEntity = Boolean(entityControls?.updates_existing_entity);
+  const requiresExistingEntity = Boolean(entityControls?.requires_existing_entity);
+  const linkedToEntity = Boolean(entityControls?.linked_to_entity);
+  const allowsAnonymous = Boolean(entityControls?.allows_anonymous);
+  const respondentIdentityMode =
+    rawRespondentIdentityMode === "existing_beneficiary"
+    || rawRespondentIdentityMode === "new_registration"
+    || rawRespondentIdentityMode === "existing_or_new"
+    || rawRespondentIdentityMode === "anonymous_allowed"
+      ? rawRespondentIdentityMode
+      : createsNewEntity && updatesExistingEntity
+        ? "existing_or_new"
+        : createsNewEntity
+          ? "new_registration"
+          : updatesExistingEntity || requiresExistingEntity
+            ? "existing_beneficiary"
+            : allowsAnonymous || !linkedToEntity
+              ? "anonymous_allowed"
+              : null;
+
+  if (!linkedToEntity) {
+    return {
+      badge: "Standalone form",
+      description: "This form can collect standalone records without linking them to a tracked entity profile first.",
+      entityLabel,
+      tone: "neutral",
+    };
+  }
+  if (respondentIdentityMode === "existing_beneficiary") {
+    return {
+      badge: `Follow-up on existing ${entityLabel}`,
+      description: `Field officers must search for and select an existing ${entityLabelLower} before collection starts.`,
+      entityLabel,
+      tone: "warning",
+    };
+  }
+  if (respondentIdentityMode === "existing_or_new") {
+    return {
+      badge: `Existing or new ${entityLabel}`,
+      description: `Field officers can link an existing ${entityLabelLower} or continue without one to register a new ${entityLabelLower}.`,
+      entityLabel,
+      tone: "collect",
+    };
+  }
+  if (respondentIdentityMode === "new_registration") {
+    return {
+      badge: `Creates new ${entityLabel}`,
+      description: `This form is designed for registration or intake, so collection can create new ${entityLabelLower} records directly.`,
+      entityLabel,
+      tone: "success",
+    };
+  }
+  if (respondentIdentityMode === "anonymous_allowed") {
+    return {
+      badge: "Anonymous or unlinked allowed",
+      description: `This form can be submitted without a tracked ${entityLabelLower} when the workflow allows anonymous or unlinked collection.`,
+      entityLabel,
+      tone: "accent",
+    };
+  }
+  if (updatesExistingEntity || requiresExistingEntity) {
+    return {
+      badge: `Updates existing ${entityLabel}`,
+      description: `Approved submissions update existing ${entityLabelLower} records, so this form works best as a follow-up or profile maintenance tool.`,
+      entityLabel,
+      tone: "accent",
+    };
+  }
+  return {
+    badge: "Entity-linked form",
+    description: `This form links to ${entityLabelLower} records, but the collection rule still needs a manager review.`,
+    entityLabel,
+    tone: "success",
+  };
+}
+
 const frequentFieldTypes: { type: FieldType; label: string }[] = [
   { type: "text", label: "Short text" },
   { type: "number", label: "Number" },
@@ -896,6 +995,40 @@ function escapedRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function autoVariableAliases(label: string): string[] {
+  const normalized = normalizeVariableNameInput(label);
+  if (!normalized) return [];
+  const aliases = new Set<string>([normalized, variableBaseFromQuestion(label)]);
+  const genericSuffixes = [
+    "answer",
+    "capture",
+    "code",
+    "entry",
+    "evidence",
+    "field",
+    "id",
+    "list",
+    "location",
+    "number",
+    "question",
+    "response",
+    "signature",
+  ];
+  const removableSuffixes = new Set(genericSuffixes);
+  const parts = normalized.split("_").filter(Boolean);
+  for (let index = parts.length; index > 1; index -= 1) {
+    const tail = parts[index - 1];
+    if (!removableSuffixes.has(tail)) break;
+    const base = parts.slice(0, index - 1).join("_");
+    if (!base) continue;
+    aliases.add(base);
+    for (const suffix of genericSuffixes) {
+      aliases.add(`${base}_${suffix}`);
+    }
+  }
+  return Array.from(aliases).filter(Boolean);
+}
+
 export function labelPatchWithAutoVariable(
   field: FormField,
   nextLabel: string,
@@ -911,12 +1044,19 @@ export function labelPatchWithAutoVariable(
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
+  const priorAliases = autoVariableAliases(field.label);
   const shouldRegenerate =
     !currentVariable ||
     currentVariable === field.id ||
     currentVariable === idAutoVariable ||
     currentVariable === previousAutoVariable ||
     currentVariable === previousBaseVariable ||
+    priorAliases.includes(currentVariable) ||
+    priorAliases.some((alias) =>
+      new RegExp(`^${escapedRegExp(alias)}_(?:answer|capture|code|entry|evidence|field|id|list|location|number|question|response|signature)$`).test(
+        currentVariable,
+      ),
+    ) ||
     new RegExp(`^${escapedRegExp(previousBaseVariable)}_\\d+$`).test(currentVariable);
   return {
     label: nextLabel,
@@ -1993,6 +2133,14 @@ function createDefaultFormControls(form?: DynamicForm): FormControlsSettings {
       auto_lock_after_approval: true,
       auto_archive_after_project_closure: true,
     },
+    instrument: {
+      respondent_identity: {
+        allow_anonymous: false,
+        allow_new_registration: false,
+        beneficiary_search_required: true,
+        mode: "existing_beneficiary",
+      },
+    },
     audit: {
       immutable: true,
       reason_required_events: [
@@ -2045,6 +2193,21 @@ function normalizeFormControls(
     defaults.entity_controls as NonNullable<
       FormControlsSettings["entity_controls"]
     >;
+  const defaultInstrument = defaults.instrument ?? {};
+  const recordInstrument =
+    record.instrument && typeof record.instrument === "object"
+      ? record.instrument
+      : undefined;
+  const defaultRespondentIdentity =
+    defaultInstrument.respondent_identity &&
+    typeof defaultInstrument.respondent_identity === "object"
+      ? defaultInstrument.respondent_identity
+      : {};
+  const recordRespondentIdentity =
+    recordInstrument?.respondent_identity &&
+    typeof recordInstrument.respondent_identity === "object"
+      ? recordInstrument.respondent_identity
+      : {};
 
   return {
     reference_bindings: Array.isArray(record.reference_bindings)
@@ -2064,6 +2227,14 @@ function normalizeFormControls(
       ...(record.entity_controls ?? {}),
     },
     governance: { ...defaults.governance, ...(record.governance ?? {}) },
+    instrument: {
+      ...defaultInstrument,
+      ...recordInstrument,
+      respondent_identity: {
+        ...defaultRespondentIdentity,
+        ...recordRespondentIdentity,
+      },
+    },
     audit: { ...defaults.audit, ...(record.audit ?? {}) },
     versioning: { ...defaults.versioning, ...(record.versioning ?? {}) },
   };
@@ -3600,6 +3771,10 @@ export function DynamicForms({
         : createDefaultFormControls(),
     [formControlsByFormId, selectedBackendForm?.controls_json, selectedForm],
   );
+  const selectedEntityWorkflow = useMemo(
+    () => describeEntityCollectionWorkflow(selectedFormControls),
+    [selectedFormControls],
+  );
   const selectedMobileDeployment =
     selectedForm?.mobileDeployment ??
     (selectedForm ? mobileDeployments[selectedForm.id] : undefined);
@@ -3621,6 +3796,14 @@ export function DynamicForms({
   const selectedField =
     selectedForm?.fields.find((field) => field.id === selectedFieldId) ??
     selectedForm?.fields[0];
+  useEffect(() => {
+    setLogicConditionFieldId("");
+    setLogicConditionValue("");
+    setLogicActionKind("show");
+    setAdvancedLogicKind("validation");
+    setAdvancedLogicExpression("");
+    setAdvancedLogicMessage("");
+  }, [selectedField?.id]);
   const isPersistedSelectedForm = Boolean(
     selectedFormId && persistedForms.some((form) => form.id === selectedFormId),
   );
@@ -7526,21 +7709,15 @@ export function DynamicForms({
                       Entity & duplicate controls
                     </h3>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                      Decide whether this form creates, updates, or requires an
-                      entity record before collection starts.
+                      Set the exact collection rule for this form so field teams know whether they should register a new record, select an existing one, or work without entity linkage.
                     </p>
                   </div>
-                  <Badge
-                    tone={
-                      selectedFormControls.entity_controls?.linked_to_entity
-                        ? "success"
-                        : "neutral"
-                    }
-                  >
-                    {selectedFormControls.entity_controls?.linked_to_entity
-                      ? "Entity-linked"
-                      : "Optional"}
+                  <Badge tone={selectedEntityWorkflow.tone}>
+                    {selectedEntityWorkflow.badge}
                   </Badge>
+                </div>
+                <div className="mt-3 rounded-lg border bg-panel p-3 text-sm text-muted-foreground">
+                  {selectedEntityWorkflow.description}
                 </div>
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
                   <Select
@@ -7644,23 +7821,23 @@ export function DynamicForms({
                   {[
                     [
                       "linked_to_entity",
-                      "Link this form to an entity",
-                      "Start collection by selecting or creating an entity.",
+                      "Track this form against an entity record",
+                      "Turn this on when submissions should link to a person, household, facility, customer, asset, case, product, or other tracked record.",
                     ],
                     [
                       "creates_new_entity",
-                      "Creates new entity",
-                      "Use for farmer, household, facility, or school registration.",
+                      `Allow this form to register new ${selectedEntityWorkflow.entityLabel.toLowerCase()} records`,
+                      "Use this for registration, intake, onboarding, or any workflow that creates a first official record.",
                     ],
                     [
                       "requires_existing_entity",
-                      "Requires existing entity",
-                      "Use for baseline, monitoring, endline, attendance, or distribution forms.",
+                      `Require field teams to select an existing ${selectedEntityWorkflow.entityLabel.toLowerCase()}`,
+                      "Use this for follow-up, monitoring, attendance, inspection, service, delivery, or update workflows.",
                     ],
                     [
                       "updates_existing_entity",
-                      "Updates profile after submission",
-                      "Apply approved changes back to the entity profile.",
+                      `Allow approved submissions to update the official ${selectedEntityWorkflow.entityLabel.toLowerCase()} profile`,
+                      "Use this when the form should push reviewed changes back to the tracked record after approval.",
                     ],
                     [
                       "allows_anonymous",

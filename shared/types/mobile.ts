@@ -184,6 +184,9 @@ export type MobileEntity = LocalRecord & {
   id: UUID;
   entityUid: string;
   entityType: string;
+  entityCategoryId?: UUID | null;
+  parentEntityIds: UUID[];
+  childEntityIds: UUID[];
   name: string;
   phone: string | null;
   nationalId: string | null;
@@ -224,6 +227,7 @@ export type MobileEntityCategoryAttribute = {
 export type MobileEntityCategory = LocalRecord & {
   id: UUID;
   projectId: UUID | null;
+  parentCategoryId?: UUID | null;
   name: string;
   slug: string;
   sector: string | null;
@@ -435,6 +439,13 @@ export type MobileFormEntitySettings = {
   updatesExistingEntity: boolean;
   requiresExistingEntity: boolean;
   allowsAnonymousSubmission: boolean;
+  respondentIdentityMode?:
+    | "existing_beneficiary"
+    | "new_registration"
+    | "existing_or_new"
+    | "anonymous_allowed"
+    | null;
+  entitySearchMode?: "required" | "optional" | "disabled";
   frequencyRule: FrequencyRule;
   prefillMappings: PrefillMapping[];
   duplicateMode: "exact" | "fuzzy" | "weighted";
@@ -576,6 +587,9 @@ export type MobileNotification = LocalRecord & {
   id: string;
   title: string;
   body: string;
+  eventType: string | null;
+  resourceType: string | null;
+  resourceId: string | null;
   readAt: ISODateTime | null;
   createdByServerAt: ISODateTime;
 };

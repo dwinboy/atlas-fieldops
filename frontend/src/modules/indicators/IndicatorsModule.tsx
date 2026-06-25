@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
+import { useContextualBack } from "@/hooks/useContextualBack";
 import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
@@ -358,6 +359,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
   const router = useRouter();
   const [activeSection, setActiveSection] = useState<IndicatorSection>(() => indicatorSectionFromPath(pathname));
   const [selectedIndicatorId, setSelectedIndicatorId] = useState<string | null>(null);
+  useContextualBack(Boolean(selectedIndicatorId));
   const [activeDetailTab, setActiveDetailTab] = useState<IndicatorDetailTab>("Overview");
   const [actionResult, setActionResult] = useState("");
   const [creationOpen, setCreationOpen] = useState(false);
@@ -598,7 +600,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
 
   return (
     <section className="space-y-3">
-      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="module-header rounded-xl p-3.5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
@@ -890,12 +892,16 @@ function IndicatorLibrary({ indicators, loading, onCreateIndicator, onImportIndi
 
   return (
     <section className="space-y-4">
-      <SectionHeader
-        action={<div className="flex flex-wrap gap-2"><Button onClick={onCreateIndicator} variant="primary"><BookOpenCheck aria-hidden="true" /> Create metric</Button><Button onClick={onImportIndicators} variant="secondary"><Import aria-hidden="true" /> Import metrics</Button></div>}
-        description="Create, edit, archive, duplicate, import, export, and link metrics or KPIs to projects, forms, questions, targets, baselines, and responsible people."
-        route="/indicators/library"
-        title="Metric Library"
-      />
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button onClick={onCreateIndicator} variant="primary">
+          <BookOpenCheck aria-hidden="true" />
+          Create metric
+        </Button>
+        <Button onClick={onImportIndicators} variant="secondary">
+          <Import aria-hidden="true" />
+          Import metrics
+        </Button>
+      </div>
       <DataTable
         columns={columns}
         emptyAction={{ label: "Create metric", onClick: onCreateIndicator }}

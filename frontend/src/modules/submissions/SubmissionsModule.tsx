@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
+import { useContextualBack } from "@/hooks/useContextualBack";
 import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
@@ -42,6 +43,7 @@ import { Input, Select } from "@/components/ui/input";
 import type { CurrentPrincipal, DataFormRead, DataFormSchemaRead, UserRead } from "@/lib/api";
 import {
   governExport,
+  getEntityHierarchy,
   getFormSchema,
   listFormRepeatRows,
   listForms,
@@ -53,6 +55,7 @@ import {
   reviewSubmission,
   updateSubmissionResponses,
 } from "@/lib/api";
+import type { EntityHierarchyRead } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   submissionSectionFromPath,
@@ -353,13 +356,45 @@ function mobileIntegrityLabel(integrity: MobileIntegrityPayload | null): string 
   return "Clear";
 }
 
+function humanizeEntityLinkType(value: string): string {
+  return value
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function linkedBeneficiaryDescriptor(
+  link: NonNullable<SubmissionRecord["linked_beneficiaries"]>[number],
+  detail: "compact" | "full" = "compact",
+): string {
+  const role = humanizeEntityLinkType(link.link_type);
+  const codeAndName = `${link.beneficiary_uid} ${link.display_name}`.trim();
+  const sourceField =
+    detail === "full" && link.source_field
+      ? ` · from ${link.source_field}`
+      : "";
+  if (role.toLowerCase() === "participant") {
+    return `${codeAndName}${sourceField}`;
+  }
+  return `${role}: ${codeAndName}${sourceField}`;
+}
+
 function linkedBeneficiaryLabel(submission: SubmissionRecord): string {
   const links = submission.linked_beneficiaries ?? [];
   const participantLinks = links.filter((link) => link.link_type !== "primary");
   if (!participantLinks.length) return "None";
-  const shown = participantLinks.slice(0, 2).map((link) => link.beneficiary_uid);
+  const shown = participantLinks.slice(0, 2).map((link) => linkedBeneficiaryDescriptor(link));
   const remaining = participantLinks.length - shown.length;
   return remaining > 0 ? `${shown.join(", ")} +${remaining}` : shown.join(", ");
+}
+
+function linkedBeneficiaryTitle(submission: SubmissionRecord): string {
+  const links = submission.linked_beneficiaries ?? [];
+  const participantLinks = links.filter((link) => link.link_type !== "primary");
+  if (!participantLinks.length) return "No related records linked";
+  return participantLinks
+    .map((link) => linkedBeneficiaryDescriptor(link, "full"))
+    .join(", ");
 }
 
 function submissionSourceLabel(submission: SubmissionRecord): string {
@@ -418,6 +453,7 @@ export function SubmissionsModule({
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<
     string | null
   >(null);
+  useContextualBack(Boolean(selectedSubmissionId));
   const [activeDetailTab, setActiveDetailTab] =
     useState<SubmissionDetailTab>("Overview");
   const [reviewComment, setReviewComment] = useState("");
@@ -935,7 +971,7 @@ export function SubmissionsModule({
       header: "Participants",
       value: (submission) => linkedBeneficiaryLabel(submission),
       render: (submission) => (
-        <span title={(submission.linked_beneficiaries ?? []).map((link) => `${link.beneficiary_uid} ${link.display_name}`).join(", ")}>
+        <span title={linkedBeneficiaryTitle(submission)}>
           {linkedBeneficiaryLabel(submission)}
         </span>
       ),
@@ -1142,7 +1178,7 @@ export function SubmissionsModule({
 
   return (
     <section className="space-y-3">
-      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="module-header rounded-xl p-3.5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
@@ -1239,14 +1275,6 @@ export function SubmissionsModule({
 
       {!selectedSubmission && activeSection === "data" ? (
         <section className="space-y-4">
-          <SectionHeader
-            description={
-              submissionSections.find((section) => section.id === "data")
-                ?.description ?? "Spreadsheet view of collected field values"
-            }
-            route="/submissions/data"
-            title="Data Explorer"
-          />
           <DataExplorerSection
             forms={formsQuery.data ?? []}
             onOpenSubmission={openSubmission}
@@ -1259,35 +1287,21 @@ export function SubmissionsModule({
 
       {!selectedSubmission && activeSection !== "dashboard" && activeSection !== "data" ? (
         <section className="space-y-4">
-          <SectionHeader
-            action={
-              <Button
-                disabled={!canExport || !filteredSubmissions.length}
-                onClick={() =>
-                  exportSubmissionsCsv("atlas-submission-view.csv", filteredSubmissions, {
-                    section: activeSection,
-                    visible_statuses: Array.from(new Set(filteredSubmissions.map((submission) => submission.status))),
-                  })
-                }
-                variant="secondary"
-              >
-                <Download aria-hidden="true" />
-                Export view
-              </Button>
-            }
-            description={
-              submissionSections.find((section) => section.id === activeSection)
-                ?.description ?? "Manage submissions"
-            }
-            route={
-              submissionSections.find((section) => section.id === activeSection)
-                ?.route ?? "/submissions"
-            }
-            title={
-              submissionSections.find((section) => section.id === activeSection)
-                ?.label ?? "Submissions"
-            }
-          />
+          <div className="flex justify-end">
+            <Button
+              disabled={!canExport || !filteredSubmissions.length}
+              onClick={() =>
+                exportSubmissionsCsv("atlas-submission-view.csv", filteredSubmissions, {
+                  section: activeSection,
+                  visible_statuses: Array.from(new Set(filteredSubmissions.map((submission) => submission.status))),
+                })
+              }
+              variant="secondary"
+            >
+              <Download aria-hidden="true" />
+              Export view
+            </Button>
+          </div>
           <SubmissionFilters
             activeSection={activeSection}
             filters={submissionFilters}
@@ -1747,6 +1761,13 @@ function SubmissionDetailWorkspace({
   tab: SubmissionDetailTab;
   token: string | null;
 }) {
+  const entityHierarchyQuery = useQuery({
+    queryKey: ["submission-entity-hierarchy", token, submission.entity_id],
+    queryFn: () => getEntityHierarchy(token ?? "", submission.entity_id ?? ""),
+    enabled: Boolean(token && !preview && submission.entity_id),
+  });
+  const entityHierarchy = entityHierarchyQuery.data ?? { parents: [], children: [] } satisfies EntityHierarchyRead;
+
   return (
     <section className="space-y-4 rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
@@ -1793,7 +1814,13 @@ function SubmissionDetailWorkspace({
         ))}
       </div>
 
-      {tab === "Overview" ? <OverviewTab submission={submission} /> : null}
+      {tab === "Overview" ? (
+        <OverviewTab
+          entityHierarchy={entityHierarchy}
+          entityHierarchyLoading={entityHierarchyQuery.isLoading}
+          submission={submission}
+        />
+      ) : null}
       {tab === "Responses" ? (
         <ResponsesTab
           canEdit={canEditResponses}
@@ -1840,9 +1867,18 @@ function SubmissionDetailWorkspace({
   );
 }
 
-function OverviewTab({ submission }: { submission: SubmissionRecord }) {
+function OverviewTab({
+  entityHierarchy,
+  entityHierarchyLoading,
+  submission,
+}: {
+  entityHierarchy: EntityHierarchyRead;
+  entityHierarchyLoading: boolean;
+  submission: SubmissionRecord;
+}) {
   const integrity = getMobileIntegrity(submission);
   const processing = getBeneficiaryProcessingStatus(submission);
+  const hierarchyLinkCount = entityHierarchy.parents.length + entityHierarchy.children.length;
   return (
     <div className="space-y-4">
       <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
@@ -1896,7 +1932,7 @@ function OverviewTab({ submission }: { submission: SubmissionRecord }) {
           </div>
         </Panel>
       </div>
-      <Panel title="Beneficiary Link">
+      <Panel title="Entity Linkage">
         {processing ? (
           <div className="mb-3 rounded-xl border bg-background/60 p-3">
             <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
@@ -1937,14 +1973,19 @@ function OverviewTab({ submission }: { submission: SubmissionRecord }) {
             <div>
               <div className="flex items-center gap-2">
                 <Link2 aria-hidden="true" className="text-success" size={16} />
-                <p className="text-sm font-semibold">Linked to beneficiary/entity</p>
+                <p className="text-sm font-semibold">Primary linked entity</p>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
                 {submission.entity_type ?? "Beneficiary"}
                 {submission.beneficiary_code ? ` · ${submission.beneficiary_code}` : ` · ${submission.entity_id}`}
               </p>
             </div>
-            <Badge tone="success">Timeline ready</Badge>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="success">Timeline ready</Badge>
+              <Badge tone={hierarchyLinkCount ? "neutral" : "success"}>
+                {hierarchyLinkCount ? `${hierarchyLinkCount} context link${hierarchyLinkCount === 1 ? "" : "s"}` : "Standalone"}
+              </Badge>
+            </div>
           </div>
         ) : (
           <div className="rounded-xl border border-warning/30 bg-warning/10 p-3">
@@ -1957,6 +1998,45 @@ function OverviewTab({ submission }: { submission: SubmissionRecord }) {
             </p>
           </div>
         )}
+        {submission.entity_id ? (
+          <div className="mt-3 rounded-xl border bg-background/60 p-3">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-sm font-semibold">Hierarchy context</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  Use this to understand whether this submission belongs under a parent record, has child records beneath it, or stands alone in the project structure.
+                </p>
+              </div>
+              <Badge tone={hierarchyLinkCount ? "success" : "neutral"}>
+                {entityHierarchyLoading
+                  ? "Loading…"
+                  : hierarchyLinkCount
+                    ? `${entityHierarchy.parents.length} parent · ${entityHierarchy.children.length} child`
+                    : "No hierarchy links"}
+              </Badge>
+            </div>
+            {entityHierarchyLoading ? (
+              <p className="mt-3 text-xs text-muted-foreground">Checking related entities…</p>
+            ) : hierarchyLinkCount ? (
+              <div className="mt-3 grid gap-3 xl:grid-cols-2">
+                <HierarchyContextGroup
+                  emptyLabel="No parent records linked to this entity."
+                  items={entityHierarchy.parents}
+                  title="Parent records"
+                />
+                <HierarchyContextGroup
+                  emptyLabel="No child records linked to this entity."
+                  items={entityHierarchy.children}
+                  title="Child records"
+                />
+              </div>
+            ) : (
+              <p className="mt-3 rounded-lg border border-dashed bg-panel/40 p-3 text-sm text-muted-foreground">
+                This submission is linked to one primary entity only. No parent or child entity context is currently attached.
+              </p>
+            )}
+          </div>
+        ) : null}
         <div className="mt-3 rounded-xl border bg-background/60 p-3">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
@@ -1978,6 +2058,10 @@ function OverviewTab({ submission }: { submission: SubmissionRecord }) {
                   <div className="rounded-lg border bg-panel px-3 py-2 text-xs" key={link.id}>
                     <p className="font-mono font-semibold">{link.beneficiary_uid}</p>
                     <p className="mt-1 text-muted-foreground">{link.display_name} · {link.beneficiary_type}</p>
+                    <p className="mt-1 text-muted-foreground">
+                      {humanizeEntityLinkType(link.link_type)}
+                      {link.source_field ? ` · from ${link.source_field}` : ""}
+                    </p>
                   </div>
                 ))}
             </div>
@@ -1994,6 +2078,72 @@ function humanizeKey(value: string): string {
     .replaceAll("_", " ")
     .replaceAll("-", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function describeEntityCategoryTrail(
+  entity: {
+    beneficiary_type?: string | null;
+    profile_json?: Record<string, unknown>;
+  },
+): string | null {
+  const profile = entity.profile_json ?? {};
+  const trail = profile.entity_category_path;
+  if (typeof trail === "string" && trail.trim()) return trail;
+  const category = profile.entity_category_name;
+  if (typeof category === "string" && category.trim()) return category;
+  return entity.beneficiary_type ?? null;
+}
+
+function HierarchyContextGroup({
+  emptyLabel,
+  items,
+  title,
+}: {
+  emptyLabel: string;
+  items: EntityHierarchyRead["parents"];
+  title: string;
+}) {
+  return (
+    <div className="rounded-lg border bg-panel/40 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          {title}
+        </p>
+        <Badge tone="neutral">{items.length}</Badge>
+      </div>
+      {items.length ? (
+        <div className="mt-3 space-y-2">
+          {items.map((item) => (
+            <div className="rounded-lg border bg-background px-3 py-2 text-xs" key={item.id}>
+              <p className="font-mono font-semibold">{item.related_beneficiary.beneficiary_uid}</p>
+              <p className="mt-1 text-muted-foreground">
+                {item.related_beneficiary.display_name} · {item.related_beneficiary.beneficiary_type}
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                {describeEntityCategoryTrail(item.related_beneficiary)}
+              </p>
+              {[item.related_beneficiary.community, item.related_beneficiary.district, item.related_beneficiary.region]
+                .filter(Boolean)
+                .length ? (
+                <p className="mt-1 text-muted-foreground">
+                  {[item.related_beneficiary.community, item.related_beneficiary.district, item.related_beneficiary.region]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              ) : null}
+              <p className="mt-1 text-muted-foreground">
+                {humanizeKey(item.relationship_type)}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 rounded-lg border border-dashed bg-background p-3 text-sm text-muted-foreground">
+          {emptyLabel}
+        </p>
+      )}
+    </div>
+  );
 }
 
 function optionLabelFor(value: unknown, options?: FormFieldMeta["options"]): string {

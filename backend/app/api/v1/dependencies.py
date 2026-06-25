@@ -168,6 +168,27 @@ def require_permission(
     return dependency
 
 
+def require_any_permission(
+    *required_permissions: Permission,
+) -> Callable[[CurrentPrincipal], Awaitable[CurrentPrincipal]]:
+    async def dependency(
+        principal: Annotated[CurrentPrincipal, Depends(get_current_principal)],
+        session: Annotated[AsyncSession | None, Depends(get_session)] = None,
+    ) -> CurrentPrincipal:
+        active_access = await _active_access_from_database(principal, session)
+        if active_access is not None:
+            roles, stored_permissions = active_access
+            permissions = {permission.value for permission in permissions_for_roles(roles)} | stored_permissions
+        else:
+            roles = principal.roles
+            permissions = set(principal.permissions)
+        if not any(has_permission(roles, required_permission) or required_permission.value in permissions for required_permission in required_permissions):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permission")
+        return principal
+
+    return dependency
+
+
 def principal_scope(principal: CurrentPrincipal) -> AccessScope:
     try:
         scope_type = ScopeType(principal.scope_type)

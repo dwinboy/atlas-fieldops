@@ -1,6 +1,7 @@
 from pydantic import ValidationError
 
 from app.schemas.administration import BackupJobCreate, FeatureFlagUpsert, LocationCreate, RecoveryJobCreate
+from app.schemas.organization_governance import TeamCreate, TeamUpdate, WorkforceProfileUpdate
 from app.services.administration import api_key_material, slugify
 
 
@@ -45,6 +46,14 @@ def test_feature_flag_rollout_must_be_valid_percentage() -> None:
         raise AssertionError("expected rollout validation failure")
 
 
+def test_team_payload_normalizes_codes_for_governance_workflows() -> None:
+    payload = TeamCreate(name="North West Team", code=" TEAM NORTH WEST ")
+    updated = TeamUpdate(code="TEAM-NW")
+
+    assert payload.code == "team-north-west"
+    assert updated.code == "team-nw"
+
+
 def test_backup_and_recovery_payloads_protect_high_risk_operations() -> None:
     backup = BackupJobCreate(backup_type="Database Backup", retention_days=90)
     recovery = RecoveryJobCreate(reason="Restore is required for disaster recovery testing.")
@@ -58,3 +67,9 @@ def test_backup_and_recovery_payloads_protect_high_risk_operations() -> None:
         assert "String should have at least 10 characters" in str(exc)
     else:  # pragma: no cover - defensive assertion
         raise AssertionError("expected restore reason validation failure")
+
+
+def test_workforce_profile_update_accepts_supervisor_and_team_changes() -> None:
+    payload = WorkforceProfileUpdate(job_title="District Supervisor", team_id=None, supervisor_user_id=None)
+
+    assert payload.job_title == "District Supervisor"

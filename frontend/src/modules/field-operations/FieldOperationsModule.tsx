@@ -39,6 +39,7 @@ import {
   createOperationalTarget,
   listFieldWorkAssignments,
   listFieldWorkPlans,
+  listEntityCategories,
   listIndicators,
   listOperationalTargets,
   setFieldWorkAssignmentStatus,
@@ -71,6 +72,7 @@ import {
   type FieldOfficerRead,
   type FieldOfficerSubmissionDetailRead,
   type FieldVisitRequestRead,
+  type EntityCategoryRead,
   type FieldVisitOutcomeReview,
   type MediaEvidenceRead,
   type OperationsSummary,
@@ -163,11 +165,256 @@ const defaultInviteDraft: FieldOfficerInvite = {
   temporary_password: "",
 };
 
+type AssignmentEntitySettings = {
+  linkedToEntity: boolean;
+  entityCategoryId: string | null;
+  entityType: string;
+  createsNewEntity: boolean;
+  updatesExistingEntity: boolean;
+  requiresExistingEntity: boolean;
+  respondentIdentityMode:
+    | "existing_beneficiary"
+    | "new_registration"
+    | "existing_or_new"
+    | "anonymous_allowed"
+    | null;
+  entitySearchMode: "required" | "optional" | "disabled";
+};
+
 function generateTemporaryPassword(): string {
   const words = ["Field", "Atlas", "Green", "Swift", "Clear", "Smart", "Signal", "Survey", "Active", "Verify"];
   const word = words[Math.floor(Math.random() * words.length)];
   const digits = String(Math.floor(100000 + Math.random() * 900000));
   return `${word}${digits}!`;
+}
+
+function asPlainRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function readAssignmentEntitySettings(form: { controls_json?: unknown; name?: string } | null | undefined): AssignmentEntitySettings {
+  const controls = asPlainRecord(form?.controls_json);
+  const entityControls = asPlainRecord(controls.entity_controls);
+  const instrument = asPlainRecord(controls.instrument);
+  const respondentIdentity = asPlainRecord(
+    instrument.respondent_identity ?? controls.respondent_identity,
+  );
+  const entityType =
+    typeof entityControls.entity_type === "string" && entityControls.entity_type.trim()
+      ? entityControls.entity_type.trim()
+      : "Entity";
+  const entityCategoryId =
+    typeof entityControls.entity_category_id === "string" && entityControls.entity_category_id.trim()
+      ? entityControls.entity_category_id.trim()
+      : typeof entityControls.entityCategoryId === "string" && entityControls.entityCategoryId.trim()
+        ? entityControls.entityCategoryId.trim()
+        : null;
+  const rawRespondentIdentityMode =
+    typeof respondentIdentity.mode === "string" && respondentIdentity.mode.trim()
+      ? respondentIdentity.mode.trim()
+      : typeof entityControls.respondent_identification === "string" && entityControls.respondent_identification.trim()
+        ? entityControls.respondent_identification.trim()
+        : null;
+  let respondentIdentityMode: AssignmentEntitySettings["respondentIdentityMode"] =
+    rawRespondentIdentityMode === "existing_beneficiary"
+    || rawRespondentIdentityMode === "new_registration"
+    || rawRespondentIdentityMode === "existing_or_new"
+    || rawRespondentIdentityMode === "anonymous_allowed"
+      ? rawRespondentIdentityMode
+      : null;
+  const createsNewEntity = Boolean(entityControls.creates_new_entity);
+  const updatesExistingEntity = Boolean(entityControls.updates_existing_entity);
+  const requiresExistingEntity = Boolean(entityControls.requires_existing_entity);
+  const linkedToEntity = Boolean(
+    entityControls.linked_to_entity
+    || entityControls.is_entity_linked
+    || entityControls.linkedToEntity,
+  );
+  const allowsAnonymous = "allows_anonymous" in entityControls
+    ? Boolean(entityControls.allows_anonymous)
+    : Boolean(entityControls.allows_anonymous_submission);
+  if (respondentIdentityMode == null) {
+    if (createsNewEntity && updatesExistingEntity) {
+      respondentIdentityMode = "existing_or_new";
+    } else if (createsNewEntity) {
+      respondentIdentityMode = "new_registration";
+    } else if (requiresExistingEntity || updatesExistingEntity) {
+      respondentIdentityMode = "existing_beneficiary";
+    } else if (allowsAnonymous || !linkedToEntity) {
+      respondentIdentityMode = "anonymous_allowed";
+    }
+  }
+  const searchRequired = Boolean(respondentIdentity.beneficiary_search_required);
+  const entitySearchMode: AssignmentEntitySettings["entitySearchMode"] =
+    respondentIdentityMode === "new_registration" || respondentIdentityMode === "anonymous_allowed"
+      ? "disabled"
+      : respondentIdentityMode === "existing_or_new"
+        ? searchRequired
+          ? "required"
+          : "optional"
+        : respondentIdentityMode === "existing_beneficiary"
+          ? "required"
+          : Boolean(entityControls.requires_existing_entity)
+            ? "required"
+            : Boolean(entityControls.prefill_profile)
+              ? "optional"
+              : "disabled";
+  return {
+    linkedToEntity,
+    entityCategoryId,
+    entityType,
+    createsNewEntity,
+    updatesExistingEntity,
+    requiresExistingEntity,
+    respondentIdentityMode,
+    entitySearchMode,
+  };
+}
+
+function describeAssignmentEntityWorkflow(settings: AssignmentEntitySettings): {
+  description: string;
+  primaryBadge: string;
+  searchBadge: string | null;
+  tone: "neutral" | "warning" | "success" | "accent" | "collect";
+} {
+  const entityLabel = settings.entityType.toLowerCase();
+  if (!settings.linkedToEntity) {
+    return {
+      description: "This form collects standalone records, so officers do not need a pre-linked entity list to use it.",
+      primaryBadge: "Standalone form",
+      searchBadge: null,
+      tone: "neutral",
+    };
+  }
+  if (settings.respondentIdentityMode === "existing_beneficiary") {
+    return {
+      description: `This is a follow-up form. Field officers must search for and select an existing ${entityLabel} before collection starts. You can scope the assignment to specific records below or leave it open to the full project registry.`,
+      primaryBadge: `Follow-up on existing ${settings.entityType}`,
+      searchBadge: "Search required",
+      tone: "warning",
+    };
+  }
+  if (settings.respondentIdentityMode === "existing_or_new") {
+    return {
+      description:
+        settings.entitySearchMode === "required"
+          ? `Field officers should search for the right ${entityLabel} first. If it does not exist, they can continue and register a new ${entityLabel} from the same form.`
+          : `Field officers can either link an existing ${entityLabel} or continue without one to register a new ${entityLabel}.`,
+      primaryBadge: `Existing or new ${settings.entityType}`,
+      searchBadge: settings.entitySearchMode === "required" ? "Search first" : "Search optional",
+      tone: "collect",
+    };
+  }
+  if (settings.createsNewEntity && settings.updatesExistingEntity) {
+    return {
+      description:
+        settings.entitySearchMode === "required"
+          ? `Field officers should search for the right ${entityLabel} first. If it does not exist, they can continue and register a new ${entityLabel} from the same form.`
+          : `Field officers can either link an existing ${entityLabel} or continue without one to register a new ${entityLabel}.`,
+      primaryBadge: `Existing or new ${settings.entityType}`,
+      searchBadge: settings.entitySearchMode === "required" ? "Search first" : "Search optional",
+      tone: "collect",
+    };
+  }
+  if (settings.respondentIdentityMode === "new_registration" || settings.createsNewEntity) {
+    return {
+      description: `This is a registration form. Field officers can create new ${entityLabel} records during collection, so a fixed entity list is optional.`,
+      primaryBadge: `Creates new ${settings.entityType}`,
+      searchBadge: null,
+      tone: "success",
+    };
+  }
+  if (settings.respondentIdentityMode === "anonymous_allowed") {
+    return {
+      description: `This form can collect anonymous or unlinked records when the project does not require a tracked ${entityLabel}.`,
+      primaryBadge: "Anonymous or unlinked allowed",
+      searchBadge: null,
+      tone: "accent",
+    };
+  }
+  if (settings.updatesExistingEntity) {
+    return {
+      description: `Approved submissions update existing ${entityLabel} records, so it is best to scope the assignment to the records officers are expected to follow up.`,
+      primaryBadge: `Updates existing ${settings.entityType}`,
+      searchBadge: settings.entitySearchMode === "required" ? "Search required" : null,
+      tone: "accent",
+    };
+  }
+  return {
+    description: `This form links to ${entityLabel} records, but the collection rule still needs a manager review.`,
+    primaryBadge: "Entity-linked form",
+    searchBadge: settings.entitySearchMode === "required" ? "Search required" : settings.entitySearchMode === "optional" ? "Search optional" : null,
+    tone: "collect",
+  };
+}
+
+function resolveEntityCategory(
+  entity: BeneficiaryEntity,
+  categories: EntityCategoryRead[],
+): EntityCategoryRead | null {
+  const profile = entity.profileJson ?? {};
+  const rawCategoryId = typeof profile.entityCategoryId === "string"
+    ? profile.entityCategoryId
+    : typeof profile.entity_category_id === "string"
+      ? profile.entity_category_id
+      : null;
+  const normalizedEntityType = entity.entityType.trim().toLowerCase();
+  return (
+    (rawCategoryId ? categories.find((category) => category.id === rawCategoryId) : null)
+    ?? categories.find((category) => category.name.trim().toLowerCase() === normalizedEntityType)
+    ?? categories.find((category) => category.slug.replaceAll("-", " ").trim().toLowerCase() === normalizedEntityType)
+    ?? null
+  );
+}
+
+function entityCategoryTrail(
+  category: EntityCategoryRead,
+  categories: EntityCategoryRead[],
+): string {
+  const byId = new Map(categories.map((item) => [item.id, item]));
+  const trail: string[] = [];
+  const seen = new Set<string>();
+  let current: EntityCategoryRead | undefined = category;
+  while (current && !seen.has(current.id)) {
+    trail.unshift(current.name);
+    seen.add(current.id);
+    current = current.parent_category_id ? byId.get(current.parent_category_id) : undefined;
+  }
+  return trail.join(" / ");
+}
+
+function assignmentEntityCategoryTrail(
+  entity: BeneficiaryEntity,
+  categories: EntityCategoryRead[],
+): string | null {
+  const category = resolveEntityCategory(entity, categories);
+  return category ? entityCategoryTrail(category, categories) : null;
+}
+
+function matchesAssignmentEntityScope(
+  entity: BeneficiaryEntity,
+  settings: AssignmentEntitySettings,
+  categories: EntityCategoryRead[],
+): boolean {
+  if (!settings.linkedToEntity) return false;
+  if (settings.entityCategoryId) {
+    const category = resolveEntityCategory(entity, categories);
+    if (!category) return false;
+    if (category.id === settings.entityCategoryId) return true;
+    const byId = new Map(categories.map((item) => [item.id, item]));
+    const seen = new Set<string>();
+    let current: EntityCategoryRead | undefined = category;
+    while (current?.parent_category_id && !seen.has(current.parent_category_id)) {
+      if (current.parent_category_id === settings.entityCategoryId) return true;
+      seen.add(current.parent_category_id);
+      current = byId.get(current.parent_category_id);
+    }
+    return false;
+  }
+  if (!settings.entityType.trim()) return true;
+  return entity.entityType.trim().toLowerCase() === settings.entityType.trim().toLowerCase();
 }
 
 const defaultWorkPlanDraft: Omit<WorkPlan, "id" | "progress" | "view"> = {
@@ -1097,6 +1344,7 @@ export function FieldOperationsModule({
     null,
   );
   const [assignmentSaving, setAssignmentSaving] = useState(false);
+  const [assignmentEntitySearch, setAssignmentEntitySearch] = useState("");
   const [inviteDraft, setInviteDraft] = useState(defaultInviteDraft);
   const [workPlanDraft, setWorkPlanDraft] = useState(defaultWorkPlanDraft);
   const [targetDraft, setTargetDraft] = useState(defaultTargetDraft);
@@ -1140,6 +1388,15 @@ export function FieldOperationsModule({
     const route = fieldOperationsSections.find((item) => item.id === section)?.route;
     if (route && route !== pathname) router.push(route);
   }
+
+  const closeAssignmentModal = useCallback(() => {
+    setModalMode(null);
+    setAssignmentEditingId(null);
+    setAssignmentEntitySearch("");
+    if (requestedFormId) {
+      router.replace(fieldOperationsAssignmentRoute(), { scroll: false });
+    }
+  }, [requestedFormId, router]);
 
   const officersQuery = useQuery({
     queryKey: ["field-officers", token],
@@ -1189,6 +1446,11 @@ export function FieldOperationsModule({
   const entitiesQuery = useQuery({
     queryKey: ["field-operations", "beneficiaries", token],
     queryFn: () => listBeneficiaries(token ?? ""),
+    enabled,
+  });
+  const entityCategoriesQuery = useQuery({
+    queryKey: ["field-operations", "entity-categories", token],
+    queryFn: () => listEntityCategories(token ?? "", { include_archived: false }),
     enabled,
   });
   const usersQuery = useQuery({
@@ -1446,7 +1708,14 @@ export function FieldOperationsModule({
     [entitiesQuery.data, preview],
   );
   const casesByEntityId = useMemo(
-    () => new Map(caseEntities.map((entity) => [entity.entityId, entity])),
+    () => {
+      const map = new Map<string, BeneficiaryEntity>();
+      for (const entity of caseEntities) {
+        map.set(entity.entityId, entity);
+        map.set(entity.id, entity);
+      }
+      return map;
+    },
     [caseEntities],
   );
   const operationsSummary: OperationsSummary =
@@ -1554,6 +1823,91 @@ export function FieldOperationsModule({
     },
     [assignmentDraft.project, availableForms, availableProjects],
   );
+  const selectedAssignmentProject = useMemo(
+    () =>
+      availableProjects.find((project) => project.name === assignmentDraft.project) ?? null,
+    [assignmentDraft.project, availableProjects],
+  );
+  const selectedAssignmentForm = useMemo(
+    () =>
+      listAssignableForms(availableForms, selectedAssignmentProject ?? undefined).find(
+        (form) => form.name === assignmentDraft.form,
+      ) ?? null,
+    [assignmentDraft.form, availableForms, selectedAssignmentProject],
+  );
+  const liveFormControlsById = useMemo(
+    () =>
+      new Map(
+        (formsQuery.data ?? []).map((form) => [form.id, form.controls_json ?? null]),
+      ),
+    [formsQuery.data],
+  );
+  const selectedAssignmentEntitySettings = useMemo(
+    () =>
+      readAssignmentEntitySettings(
+        selectedAssignmentForm
+          ? {
+              ...selectedAssignmentForm,
+              controls_json: liveFormControlsById.get(selectedAssignmentForm.id) ?? undefined,
+            }
+          : null,
+      ),
+    [liveFormControlsById, selectedAssignmentForm],
+  );
+  const selectedAssignmentEntityWorkflow = useMemo(
+    () => describeAssignmentEntityWorkflow(selectedAssignmentEntitySettings),
+    [selectedAssignmentEntitySettings],
+  );
+  const entityCategories = useMemo(
+    () => entityCategoriesQuery.data ?? [],
+    [entityCategoriesQuery.data],
+  );
+  const selectedAssignmentCategoryTrail = useMemo(() => {
+    if (!selectedAssignmentEntitySettings.entityCategoryId) return null;
+    const category = entityCategories.find(
+      (item) => item.id === selectedAssignmentEntitySettings.entityCategoryId,
+    );
+    return category ? entityCategoryTrail(category, entityCategories) : null;
+  }, [entityCategories, selectedAssignmentEntitySettings.entityCategoryId]);
+  const assignmentScopedEntities = useMemo(
+    () =>
+      caseEntities
+        .filter((entity) =>
+          !selectedAssignmentProject || entity.projectId === selectedAssignmentProject.id,
+        )
+        .filter((entity) =>
+          !selectedAssignmentEntitySettings.linkedToEntity
+            ? false
+            : matchesAssignmentEntityScope(
+              entity,
+              selectedAssignmentEntitySettings,
+              entityCategories,
+            ),
+        )
+        .sort((left, right) => left.fullName.localeCompare(right.fullName)),
+    [
+      caseEntities,
+      entityCategories,
+      selectedAssignmentEntitySettings,
+      selectedAssignmentProject,
+    ],
+  );
+  const filteredAssignmentEntities = useMemo(() => {
+    const query = assignmentEntitySearch.trim().toLowerCase();
+    if (!query) return assignmentScopedEntities;
+    return assignmentScopedEntities.filter((entity) =>
+      [
+        entity.fullName,
+        entity.entityId,
+        entity.entityType,
+        assignmentEntityCategoryTrail(entity, entityCategories),
+        entity.village,
+        entity.community,
+        entity.district,
+        entity.phoneNumber,
+      ].some((value) => String(value ?? "").toLowerCase().includes(query)),
+    );
+  }, [assignmentEntitySearch, assignmentScopedEntities, entityCategories]);
 
   const buildAssignmentDraft = useCallback(
     (preferredFormId?: string): Omit<FieldAssignment, "id" | "completedCount"> => {
@@ -1577,13 +1931,17 @@ export function FieldOperationsModule({
         ...defaultAssignmentDraft,
         endDate: nextWeek.toISOString().slice(0, 10),
         form: latestForm?.name ?? formOptions[0] ?? "",
-        location: latestProject?.region ?? latestProject?.country ?? "",
+        location: preferredFormId
+          ? latestProject?.region ?? latestProject?.country ?? ""
+          : "",
         name: latestForm ? `${latestForm.name} field collection` : "",
         project:
-          latestForm?.project_name ??
-          latestProject?.name ??
-          projectOptions[0] ??
-          "",
+          preferredFormId
+            ? latestForm?.project_name ??
+              latestProject?.name ??
+              projectOptions[0] ??
+              ""
+            : "",
         startDate: today.toISOString().slice(0, 10),
         supervisor: supervisors[0]?.name ?? "",
         targetCount: 100,
@@ -1595,9 +1953,9 @@ export function FieldOperationsModule({
   useEffect(() => {
     if (modalMode !== "assignment") return;
     setAssignmentDraft((current) => {
-      const nextProjectName = projectOptions.includes(current.project)
-        ? current.project
-        : projectOptions[0] ?? "";
+      const nextProjectName = current.project
+        ? (projectOptions.includes(current.project) ? current.project : "")
+        : "";
       const nextProject = availableProjects.find(
         (project) => project.name === nextProjectName,
       );
@@ -1626,6 +1984,18 @@ export function FieldOperationsModule({
       };
     });
   }, [availableForms, availableProjects, modalMode, projectOptions]);
+
+  useEffect(() => {
+    if (modalMode !== "assignment" || !selectedAssignmentEntitySettings.linkedToEntity) return;
+    const allowedIds = new Set(assignmentScopedEntities.map((entity) => entity.id));
+    setAssignmentDraft((current) => {
+      const nextAssignedIds = (current.assignedEntityIds ?? []).filter((entityId) => allowedIds.has(entityId));
+      if (nextAssignedIds.length === (current.assignedEntityIds ?? []).length) {
+        return current;
+      }
+      return { ...current, assignedEntityIds: nextAssignedIds };
+    });
+  }, [assignmentScopedEntities, modalMode, selectedAssignmentEntitySettings.linkedToEntity]);
 
   useEffect(() => {
     if (!requestedFormId || assignmentEditingId) return;
@@ -2470,8 +2840,7 @@ export function FieldOperationsModule({
     ]);
     upsertLocalAssignment(nextAssignment);
     setAssignmentDraft(defaultAssignmentDraft);
-    setAssignmentEditingId(null);
-    setModalMode(null);
+    closeAssignmentModal();
     pushToast({
       title: deliveryErrors.length
         ? assignmentEditingId
@@ -2545,6 +2914,7 @@ export function FieldOperationsModule({
   }
 
   function openAssignmentModal(assignment?: FieldAssignment): void {
+    setAssignmentEntitySearch("");
     if (assignment) {
       setAssignmentEditingId(assignment.id);
       setAssignmentDraft(assignment);
@@ -2670,7 +3040,7 @@ export function FieldOperationsModule({
 
   return (
     <section className="space-y-3">
-      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="module-header rounded-xl p-3.5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
@@ -2938,38 +3308,34 @@ export function FieldOperationsModule({
 
       {activeSection === "assignments" ? (
         <div className="space-y-4">
-          <SectionHeader
-            action={
-              <Button
-                disabled={!assignments.length}
-                onClick={() =>
-                  downloadCsv(
-                    "atlas-field-assignments.csv",
-                    assignments.map((assignment) => ({
-                      name: assignment.name,
-                      project: assignment.project,
-                      form: assignment.form,
-                      status: assignment.status,
-                      priority: assignment.priority,
-                      field_officers: assignment.fieldOfficers.join("; "),
-                      supervisor: assignment.supervisor,
-                      location: assignment.location,
-                      start_date: assignment.startDate,
-                      end_date: assignment.endDate,
-                      target: assignment.targetCount,
-                      completed: assignment.completedCount,
-                    })),
-                  )
-                }
-                size="sm"
-                variant="secondary"
-              >
-                Export view
-              </Button>
-            }
-            description={fieldOperationsSections.find((section) => section.id === "assignments")?.description ?? ""}
-            title="Assignments management"
-          />
+          <div className="flex justify-end">
+            <Button
+              disabled={!assignments.length}
+              onClick={() =>
+                downloadCsv(
+                  "atlas-field-assignments.csv",
+                  assignments.map((assignment) => ({
+                    name: assignment.name,
+                    project: assignment.project,
+                    form: assignment.form,
+                    status: assignment.status,
+                    priority: assignment.priority,
+                    field_officers: assignment.fieldOfficers.join("; "),
+                    supervisor: assignment.supervisor,
+                    location: assignment.location,
+                    start_date: assignment.startDate,
+                    end_date: assignment.endDate,
+                    target: assignment.targetCount,
+                    completed: assignment.completedCount,
+                  })),
+                )
+              }
+              size="sm"
+              variant="secondary"
+            >
+              Export view
+            </Button>
+          </div>
           <DataTable
             columns={assignmentColumns}
             emptyAction={
@@ -2988,50 +3354,44 @@ export function FieldOperationsModule({
 
       {activeSection === "field-officers" ? (
         <div className="space-y-4">
-          <SectionHeader
-            action={
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  disabled={!canManageFieldOperations}
-                  onClick={() => setModalMode("invite")}
-                  variant="primary"
-                >
-                  <UserPlus aria-hidden="true" />
-                  Invite officer
-                </Button>
-                <Button
-                  disabled={!token || preview || importMutation.isPending}
-                  onClick={() => fileInputRef.current?.click()}
-                  variant="secondary"
-                >
-                  <UploadCloud aria-hidden="true" />
-                  {importMutation.isPending ? "Importing" : "Import CSV"}
-                </Button>
-                <Button
-                  disabled={officersQuery.isFetching}
-                  onClick={() => officersQuery.refetch()}
-                  variant="secondary"
-                >
-                  <RefreshCw aria-hidden="true" />
-                  Refresh status
-                </Button>
-                <input
-                  accept=".csv"
-                  className="sr-only"
-                  disabled={!token || preview || importMutation.isPending}
-                  onChange={(event) => {
-                    const file = event.currentTarget.files?.[0];
-                    if (file) importMutation.mutate(file);
-                    event.currentTarget.value = "";
-                  }}
-                  ref={fileInputRef}
-                  type="file"
-                />
-              </div>
-            }
-            description={fieldOperationsSections.find((section) => section.id === "field-officers")?.description ?? ""}
-            title="Field officer roster"
-          />
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              disabled={!canManageFieldOperations}
+              onClick={() => setModalMode("invite")}
+              variant="primary"
+            >
+              <UserPlus aria-hidden="true" />
+              Invite officer
+            </Button>
+            <Button
+              disabled={!token || preview || importMutation.isPending}
+              onClick={() => fileInputRef.current?.click()}
+              variant="secondary"
+            >
+              <UploadCloud aria-hidden="true" />
+              {importMutation.isPending ? "Importing" : "Import CSV"}
+            </Button>
+            <Button
+              disabled={officersQuery.isFetching}
+              onClick={() => officersQuery.refetch()}
+              variant="secondary"
+            >
+              <RefreshCw aria-hidden="true" />
+              Refresh status
+            </Button>
+            <input
+              accept=".csv"
+              className="sr-only"
+              disabled={!token || preview || importMutation.isPending}
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                if (file) importMutation.mutate(file);
+                event.currentTarget.value = "";
+              }}
+              ref={fileInputRef}
+              type="file"
+            />
+          </div>
           <div ref={officerProfileRef}>
             {selectedOfficerId ? (
               officerProfileQuery.isError && !preview ? (
@@ -3522,8 +3882,11 @@ Password:          ${lastInviteCredentials.password}`}
         description="Assign work to a project, form, supervisor, field team, location, and target."
         open={modalMode === "assignment"}
         onOpenChange={(open) => {
-          setModalMode(open ? "assignment" : null);
-          if (!open) setAssignmentEditingId(null);
+          if (open) {
+            setModalMode("assignment");
+            return;
+          }
+          closeAssignmentModal();
         }}
         title={assignmentEditingId ? "Edit assignment" : "Create assignment"}
       >
@@ -3555,12 +3918,25 @@ Password:          ${lastInviteCredentials.password}`}
                 className="mt-2"
                 value={assignmentDraft.project}
                 onChange={(event) =>
-                  setAssignmentDraft((current) => ({
-                    ...current,
-                    project: event.target.value,
-                  }))
+                  setAssignmentDraft((current) => {
+                    const nextProjectName = event.target.value;
+                    const nextProject = availableProjects.find(
+                      (project) => project.name === nextProjectName,
+                    );
+                    const nextForms = listAssignableForms(availableForms, nextProject);
+                    const nextFormName = nextForms.some((form) => form.name === current.form)
+                      ? current.form
+                      : nextForms[0]?.name ?? "";
+                    return {
+                      ...current,
+                      form: nextFormName,
+                      location: nextProject?.region ?? nextProject?.country ?? "",
+                      project: nextProjectName,
+                    };
+                  })
                 }
               >
+                <option value="">All projects with published forms</option>
                 {projectOptions.length ? (
                   projectOptions.map((project) => (
                     <option key={project} value={project}>
@@ -3581,10 +3957,31 @@ Password:          ${lastInviteCredentials.password}`}
                 className="mt-2"
                 value={assignmentDraft.form}
                 onChange={(event) =>
-                  setAssignmentDraft((current) => ({
-                    ...current,
-                    form: event.target.value,
-                  }))
+                  setAssignmentDraft((current) => {
+                    const nextFormName = event.target.value;
+                    const nextForm = listAssignableForms(availableForms).find(
+                      (form) => form.name === nextFormName,
+                    );
+                    const nextProject = nextForm
+                      ? availableProjects.find(
+                          (project) =>
+                            project.id === nextForm.project_id ||
+                            project.name === nextForm.project_name,
+                        )
+                      : null;
+                    return {
+                      ...current,
+                      form: nextFormName,
+                      location:
+                        current.project || !nextProject
+                          ? current.location
+                          : nextProject.region ?? nextProject.country ?? current.location,
+                      project:
+                        current.project || !nextProject
+                          ? current.project
+                          : nextProject.name,
+                    };
+                  })
                 }
               >
                 {formOptions.length ? (
@@ -3602,10 +3999,31 @@ Password:          ${lastInviteCredentials.password}`}
               </p>
             </label>
             <label className="text-sm font-medium">
-              Supervisor
-              <Input
+              Assignment scope
+              <Select
                 className="mt-2"
-                required
+                value={assignmentDraft.assignmentType}
+                onChange={(event) =>
+                  setAssignmentDraft((current) => ({
+                    ...current,
+                    assignmentType: event.target.value as FieldAssignment["assignmentType"],
+                  }))
+                }
+              >
+                <option value="Form only">Form only</option>
+                <option value="Form + Location">Form + Location</option>
+                <option value="Form + Entity list">Form + Entity list</option>
+                <option value="Form + Target group">Form + Target group</option>
+                <option value="Form + Event">Form + Event</option>
+              </Select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Choose whether officers should work against a location, a named record list, or a broader target group.
+              </p>
+            </label>
+            <label className="text-sm font-medium">
+              Supervisor
+              <Select
+                className="mt-2"
                 value={assignmentDraft.supervisor}
                 onChange={(event) =>
                   setAssignmentDraft((current) => ({
@@ -3613,8 +4031,33 @@ Password:          ${lastInviteCredentials.password}`}
                     supervisor: event.target.value,
                   }))
                 }
-              />
+              >
+                <option value="">No supervisor selected</option>
+                {supervisors.map((supervisor) => (
+                  <option key={supervisor.id} value={supervisor.name}>
+                    {supervisor.name}
+                  </option>
+                ))}
+              </Select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Choose the supervisor who should review field activity and follow-up work for this assignment.
+              </p>
             </label>
+            {selectedAssignmentForm ? (
+              <div className="rounded-lg border bg-background p-3 md:col-span-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={selectedAssignmentEntityWorkflow.tone}>
+                    {selectedAssignmentEntityWorkflow.primaryBadge}
+                  </Badge>
+                  {selectedAssignmentEntityWorkflow.searchBadge ? (
+                    <Badge tone="neutral">{selectedAssignmentEntityWorkflow.searchBadge}</Badge>
+                  ) : null}
+                </div>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {selectedAssignmentEntityWorkflow.description}
+                </p>
+              </div>
+            ) : null}
             <div className="text-sm font-medium">
               Field officers
               <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border bg-background p-2 product-scrollbar">
@@ -3723,6 +4166,108 @@ Password:          ${lastInviteCredentials.password}`}
                 {assignmentDraft.fieldOfficers.length} selected
               </p>
             </div>
+            {selectedAssignmentEntitySettings.linkedToEntity ? (
+              <div className="text-sm font-medium md:col-span-2">
+                Entity records for this assignment
+                <div className="mt-2 rounded-lg border bg-background p-3">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      {assignmentScopedEntities.length
+                        ? `${assignmentScopedEntities.length} ${selectedAssignmentEntitySettings.entityType.toLowerCase()} record(s) available in this project`
+                        : `No ${selectedAssignmentEntitySettings.entityType.toLowerCase()} records match this project yet`}
+                    </p>
+                    {selectedAssignmentCategoryTrail ? (
+                      <p className="text-xs text-muted-foreground">
+                        Category path: {selectedAssignmentCategoryTrail}
+                      </p>
+                    ) : null}
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        onClick={() =>
+                          setAssignmentDraft((current) => ({
+                            ...current,
+                            assignedEntityIds: filteredAssignmentEntities.map((entity) => entity.id),
+                          }))
+                        }
+                        size="sm"
+                        type="button"
+                        variant="secondary"
+                      >
+                        Select visible
+                      </Button>
+                      <Button
+                        onClick={() =>
+                          setAssignmentDraft((current) => ({
+                            ...current,
+                            assignedEntityIds: [],
+                          }))
+                        }
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                  </div>
+                  <Input
+                    className="mt-3"
+                    onChange={(event) => setAssignmentEntitySearch(event.target.value)}
+                    placeholder={`Search ${selectedAssignmentEntitySettings.entityType.toLowerCase()} by name, code, phone, or location`}
+                    value={assignmentEntitySearch}
+                  />
+                  <div className="mt-3 max-h-52 overflow-y-auto rounded-lg border bg-panel/40 p-2 product-scrollbar">
+                    {filteredAssignmentEntities.length ? (
+                      filteredAssignmentEntities.map((entity) => {
+                        const checked = assignmentDraft.assignedEntityIds?.includes(entity.id);
+                        return (
+                          <label
+                            className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-2 text-xs hover:bg-muted"
+                            key={entity.id}
+                          >
+                            <input
+                              checked={Boolean(checked)}
+                              className="mt-0.5 h-4 w-4"
+                              onChange={(event) =>
+                                setAssignmentDraft((current) => ({
+                                  ...current,
+                                  assignedEntityIds: event.target.checked
+                                    ? [...new Set([...(current.assignedEntityIds ?? []), entity.id])]
+                                    : (current.assignedEntityIds ?? []).filter((entityId) => entityId !== entity.id),
+                                }))
+                              }
+                              type="checkbox"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate font-medium">
+                                {entity.fullName || entity.entityId}
+                              </span>
+                              <span className="block truncate text-muted-foreground">
+                                {entity.entityId} · {entity.entityType} · {entity.village || entity.community || entity.district}
+                              </span>
+                              {assignmentEntityCategoryTrail(entity, entityCategories) ? (
+                                <span className="block truncate text-muted-foreground">
+                                  {assignmentEntityCategoryTrail(entity, entityCategories)}
+                                </span>
+                              ) : null}
+                            </span>
+                          </label>
+                        );
+                      })
+                    ) : (
+                      <p className="px-2 py-3 text-xs text-muted-foreground">
+                        No records match this project and search.
+                      </p>
+                    )}
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {assignmentDraft.assignedEntityIds?.length
+                      ? `${assignmentDraft.assignedEntityIds.length} record(s) selected. Only these records will sync into the officer assignment.`
+                      : "No record list selected. Officers will receive the published form and can work against the full synced project registry for this entity type."}
+                  </p>
+                </div>
+              </div>
+            ) : null}
             <label className="text-sm font-medium">
               Location
               <Input

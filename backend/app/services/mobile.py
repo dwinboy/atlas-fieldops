@@ -11,9 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.permissions import canonical_role
 from app.models.administration import PlatformReferenceList, PlatformReferenceValue
-from app.models.collection import DataForm, DataFormVersion, FieldOfficerProfile, MobileNotification, OfficerAssignment, Project
+from app.models.collection import DataForm, DataFormVersion, FieldOfficerProfile, FieldWorkAssignment, MobileNotification, OfficerAssignment, Project
 from app.models.collection import Submission
-from app.models.operations import Beneficiary, EntityCategory, MediaEvidence, WorkforceProfile
+from app.models.operations import Beneficiary, EntityCategory, EntityRelationship, MediaEvidence, WorkforceProfile
 from app.repositories.audit import AuditRepository
 from app.repositories.collection import SubmissionRepository
 from app.repositories.operations import OperationsRepository
@@ -35,17 +35,20 @@ from app.schemas.mobile import (
     MobileEntityCategoryAttributeRead,
     MobileEntityRead,
     MobileFormRead,
+    MobileFormEntitySettingsRead,
     MobileFormVersionRead,
     MobileLocationRead,
     MobileNotificationRead,
     MobileOfflineRulesRead,
     MobileOfficerProfileRead,
+    MobileOrganizationRead,
     MobilePermissionSetRead,
     MobileProjectRead,
     MobileReferenceListRead,
     MobileSubmissionRead,
     MobileSubmissionStatusRead,
     MobileSubmissionUpload,
+    MobileUserRead,
     MobileSubmissionUploadRead,
     MobileSyncPackageRead,
     MobileSyncQueueUpload,
@@ -730,6 +733,10 @@ def _polygon_question_ids(schema_json: dict[str, Any]) -> set[str]:
 def _entity_settings(controls_json: dict[str, Any]) -> dict[str, Any]:
     controls = controls_json or {}
     entity_controls = _as_dict(controls.get("entity_controls"))
+    instrument = _as_dict(controls.get("instrument"))
+    respondent_identity = _as_dict(
+        instrument.get("respondent_identity") or controls.get("respondent_identity")
+    )
     frequency = _normalize_submission_frequency(entity_controls.get("submission_frequency") or "unlimited")
     frequency_map = {
         "once_ever": "OnceEverPerEntity",
@@ -751,14 +758,73 @@ def _entity_settings(controls_json: dict[str, Any]) -> dict[str, Any]:
     duplicate_threshold = (
         int(raw_threshold) if isinstance(raw_threshold, (int, float)) and 0 <= raw_threshold <= 100 else 60
     )
+    raw_respondent_identity_mode = str(
+        respondent_identity.get("mode")
+        or entity_controls.get("respondent_identification")
+        or ""
+    ).strip()
+    respondent_identity_mode = raw_respondent_identity_mode or None
+    if respondent_identity_mode not in {
+        "existing_beneficiary",
+        "new_registration",
+        "existing_or_new",
+        "anonymous_allowed",
+        None,
+    }:
+        respondent_identity_mode = None
+    creates_new_entity = bool(entity_controls.get("creates_new_entity", False))
+    updates_existing_entity = bool(entity_controls.get("updates_existing_entity", False))
+    requires_existing_entity = bool(entity_controls.get("requires_existing_entity", False))
+    linked_to_entity = bool(
+        entity_controls.get("linked_to_entity")
+        or entity_controls.get("is_entity_linked")
+        or entity_controls.get("linkedToEntity")
+    )
+    if "allows_anonymous" in entity_controls:
+        allows_anonymous_submission = bool(entity_controls.get("allows_anonymous"))
+    elif "allows_anonymous_submission" in entity_controls:
+        allows_anonymous_submission = bool(entity_controls.get("allows_anonymous_submission"))
+    else:
+        allows_anonymous_submission = not (
+            linked_to_entity
+            or creates_new_entity
+            or updates_existing_entity
+            or requires_existing_entity
+        )
+    if respondent_identity_mode is None:
+        if creates_new_entity and updates_existing_entity:
+            respondent_identity_mode = "existing_or_new"
+        elif creates_new_entity:
+            respondent_identity_mode = "new_registration"
+        elif requires_existing_entity or updates_existing_entity:
+            respondent_identity_mode = "existing_beneficiary"
+        elif allows_anonymous_submission or not linked_to_entity:
+            respondent_identity_mode = "anonymous_allowed"
+    search_required = bool(respondent_identity.get("beneficiary_search_required"))
+    if respondent_identity_mode in {"new_registration", "anonymous_allowed"}:
+        entity_search_mode = "disabled"
+    elif respondent_identity_mode == "existing_or_new":
+        entity_search_mode = "required" if search_required else "optional"
+    elif respondent_identity_mode == "existing_beneficiary":
+        entity_search_mode = "required"
+    else:
+        entity_search_mode = (
+            "required"
+            if bool(entity_controls.get("requires_existing_entity", False))
+            else "optional"
+            if bool(entity_controls.get("prefill_profile", False))
+            else "disabled"
+        )
     return {
-        "linkedToEntity": bool(entity_controls.get("is_entity_linked", False)),
+        "linkedToEntity": linked_to_entity,
         "entityType": entity_controls.get("entity_type"),
         "entityCategoryId": str(entity_controls.get("entity_category_id")) if entity_controls.get("entity_category_id") else None,
-        "createsNewEntity": bool(entity_controls.get("creates_new_entity", False)),
-        "updatesExistingEntity": bool(entity_controls.get("updates_existing_entity", False)),
-        "requiresExistingEntity": bool(entity_controls.get("requires_existing_entity", False)),
-        "allowsAnonymousSubmission": bool(entity_controls.get("allows_anonymous_submission", True)),
+        "createsNewEntity": creates_new_entity,
+        "updatesExistingEntity": updates_existing_entity,
+        "requiresExistingEntity": requires_existing_entity,
+        "allowsAnonymousSubmission": allows_anonymous_submission,
+        "respondentIdentityMode": respondent_identity_mode,
+        "entitySearchMode": entity_search_mode,
         "frequencyRule": frequency_map.get(frequency, frequency if frequency in frequency_map.values() else "Unlimited"),
         "prefillMappings": entity_controls.get("prefill_mappings") or [],
         "duplicateMode": duplicate_mode,
@@ -772,6 +838,27 @@ def _entity_type_prefix(entity_type: str) -> str:
     if len(compact) >= 3:
         return compact[:3]
     return (compact or "ENT").ljust(3, "X")
+
+
+def _entity_selection_required(entity_settings: dict[str, Any]) -> bool:
+    mode = entity_settings.get("respondentIdentityMode")
+    if mode == "existing_beneficiary":
+        return True
+    if mode in {"existing_or_new", "new_registration", "anonymous_allowed"}:
+        return False
+    if not bool(entity_settings.get("linkedToEntity")):
+        return False
+    if bool(entity_settings.get("updatesExistingEntity")) and not bool(entity_settings.get("createsNewEntity")):
+        return True
+    if bool(entity_settings.get("createsNewEntity")):
+        return False
+    return bool(entity_settings.get("requiresExistingEntity"))
+
+
+def _normalize_scope_label(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    return re.sub(r"\s+", " ", value.strip().lower())
 
 
 class MobileService:
@@ -964,6 +1051,60 @@ class MobileService:
         )
         return list(result.scalars())
 
+    async def _entity_relationship_map(
+        self,
+        organization_id: UUID,
+        entity_ids: set[UUID],
+    ) -> dict[UUID, dict[str, list[UUID]]]:
+        if not entity_ids:
+            return {}
+        result = await self.session.execute(
+            select(EntityRelationship).where(
+                EntityRelationship.organization_id == organization_id,
+                EntityRelationship.deleted_at.is_(None),
+                (EntityRelationship.parent_beneficiary_id.in_(entity_ids))
+                | (EntityRelationship.child_beneficiary_id.in_(entity_ids)),
+            )
+        )
+        relationship_map: dict[UUID, dict[str, list[UUID]]] = {
+            entity_id: {"parents": [], "children": []} for entity_id in entity_ids
+        }
+        for relationship in result.scalars():
+            if relationship.child_beneficiary_id in relationship_map:
+                relationship_map[relationship.child_beneficiary_id]["parents"].append(
+                    relationship.parent_beneficiary_id
+                )
+            if relationship.parent_beneficiary_id in relationship_map:
+                relationship_map[relationship.parent_beneficiary_id]["children"].append(
+                    relationship.child_beneficiary_id
+                )
+        return relationship_map
+
+    async def _field_work_assignment_entity_scope(
+        self,
+        organization_id: UUID,
+        officer_id: UUID,
+    ) -> dict[tuple[UUID, UUID | None], set[UUID]]:
+        result = await self.session.execute(
+            select(FieldWorkAssignment).where(
+                FieldWorkAssignment.organization_id == organization_id,
+                FieldWorkAssignment.deleted_at.is_(None),
+            )
+        )
+        scopes: dict[tuple[UUID, UUID | None], set[UUID]] = {}
+        for record in result.scalars():
+            if record.status in {"Cancelled", "Completed"}:
+                continue
+            if str(officer_id) not in {str(item) for item in record.officer_ids_json}:
+                continue
+            entity_ids = {
+                UUID(str(entity_id))
+                for entity_id in record.assigned_entity_ids_json
+                if str(entity_id).strip()
+            }
+            scopes[(record.project_id, record.form_id)] = entity_ids
+        return scopes
+
     async def _reference_lists(self, organization_id: UUID) -> list[MobileReferenceListRead]:
         result = await self.session.execute(
             select(PlatformReferenceList)
@@ -1124,21 +1265,21 @@ class MobileService:
     ) -> MobileBootstrapRead:
         now = datetime.now(UTC)
         return MobileBootstrapRead(
-            user={
-                "id": principal.user_id,
-                "email": principal.email,
-                "full_name": principal.full_name,
-                "roles": principal.roles,
-                "permissions": principal.permissions,
-            },
-            organization={
-                "id": principal.organization_id,
-                "name": principal.organization_name,
-                "slug": principal.organization_slug,
-                "default_language": "English",
-                "timezone": "UTC",
-                "branding": {"logoUrl": None, "brandColor": None},
-            },
+            user=MobileUserRead(
+                id=principal.user_id,
+                email=principal.email,
+                full_name=principal.full_name,
+                roles=principal.roles,
+                permissions=principal.permissions,
+            ),
+            organization=MobileOrganizationRead(
+                id=principal.organization_id,
+                name=principal.organization_name,
+                slug=principal.organization_slug,
+                default_language="English",
+                timezone="UTC",
+                branding={"logo_url": None, "brand_color": None},
+            ),
             field_officer_profile=self._officer_read(officer, principal),
             supervisor=None,
             permission_set=self._permission_set(principal),
@@ -1166,6 +1307,7 @@ class MobileService:
 
         assignments = await self._assignments(organization_id, officer.id)
         controlled_forms = await self._forms_for_officer_access(organization_id, officer.id, officer.user_id)
+        explicit_entity_scopes = await self._field_work_assignment_entity_scope(organization_id, officer.id)
         assignment_keys = {
             (assignment.project_id, assignment.form_id)
             for assignment in assignments
@@ -1222,6 +1364,7 @@ class MobileService:
             for project in projects
         ]
         assignment_reads = []
+        allowed_entity_ids: set[UUID] = set()
         for assignment in assignments:
             project_forms = forms_by_project.get(assignment.project_id, [])
             selected_form = forms_by_id.get(assignment.form_id) if assignment.form_id else None
@@ -1229,20 +1372,29 @@ class MobileService:
                 selected_form = project_forms[0] if project_forms else None
             selected_version = versions_by_form.get(selected_form.id) if selected_form else None
             project_entities = [entity for entity in entities if entity.project_id == assignment.project_id]
+            explicit_entity_ids = explicit_entity_scopes.get((assignment.project_id, assignment.form_id))
+            scoped_entities = (
+                [entity for entity in project_entities if entity.id in explicit_entity_ids]
+                if explicit_entity_ids
+                else project_entities
+            )
+            allowed_entity_ids.update(entity.id for entity in scoped_entities)
             assignment_reads.append(
                 MobileAssignmentRead(
                     id=str(assignment.id),
                     project_id=str(assignment.project_id),
                     form_id=str(selected_form.id) if selected_form else None,
                     form_version_id=str(selected_version.id) if selected_version else None,
-                    entity_ids=[str(entity.id) for entity in project_entities],
+                    entity_ids=[str(entity.id) for entity in scoped_entities],
                     location_ids=[assignment.region] if assignment.region else [],
-                    target_count=max(len(project_entities), 0),
+                    target_count=max(len(scoped_entities), 0),
                     completed_count=completion_counts.get(assignment.id, 0),
                     status=_assignment_status(assignment.is_active),
                     priority="Normal",
                 )
             )
+        if not assignment_reads:
+            allowed_entity_ids.update(entity.id for entity in entities)
 
         form_reads = [
             MobileFormRead(
@@ -1263,54 +1415,84 @@ class MobileService:
                 published_at=version.published_at,
                 offline_compatible=version.offline_compatible,
                 sections=_schema_sections(version.schema_json, next((form.controls_json for form in forms if form.id == version.form_id), {})),
-                entity_settings=_entity_settings(next((form.controls_json for form in forms if form.id == version.form_id), {})),
+                entity_settings=MobileFormEntitySettingsRead.model_validate(
+                    _entity_settings(next((form.controls_json for form in forms if form.id == version.form_id), {}))
+                ),
             )
             for version in versions
-        ]
-        entity_reads = [
-            MobileEntityRead(
-                id=str(entity.id),
-                entity_uid=entity.beneficiary_uid,
-                entity_type=entity.beneficiary_type,
-                name=entity.display_name,
-                phone=entity.phone_number,
-                national_id=entity.profile_json.get("national_id"),
-                household_id=entity.profile_json.get("household_id"),
-                gender=entity.sex,
-                date_of_birth=str(entity.profile_json.get("date_of_birth")) if entity.profile_json.get("date_of_birth") else None,
-                location={
-                    "country": entity.profile_json.get("country"),
-                    "region": entity.region,
-                    "district": entity.district,
-                    "community": entity.community,
-                    "village": entity.profile_json.get("village"),
-                },
-                gps={"latitude": entity.latitude, "longitude": entity.longitude, "accuracy": None},
-                status=entity.enrollment_status.title(),
-                project_ids=[str(entity.project_id)] if entity.project_id else [],
-                assigned_form_ids=[str(form.id) for form in forms if form.project_id == entity.project_id],
-                profile=entity.profile_json or {},
-            )
-            for entity in entities
         ]
         project_ids = {project.id for project in projects}
         active_categories = await self.operations_repo.list_entity_categories(
             organization_id=organization_id,
             include_archived=False,
         )
+        categories_for_projects = [
+            category for category in active_categories if category.project_id is None or category.project_id in project_ids
+        ]
         category_attributes = await self.operations_repo.list_entity_attributes(
             organization_id=organization_id,
-            category_ids={category.id for category in active_categories},
+            category_ids={category.id for category in categories_for_projects},
         )
-        category_reads: list[MobileEntityCategoryRead] = []
-        for category in active_categories:
-            if category.project_id is not None and category.project_id not in project_ids:
+        versions_by_form_id = {version.form_id: version for version in versions}
+        relationship_map = await self._entity_relationship_map(
+            organization_id,
+            {entity.id for entity in entities},
+        )
+        entity_reads: list[MobileEntityRead] = []
+        for entity in entities:
+            if allowed_entity_ids and entity.id not in allowed_entity_ids:
                 continue
+            entity_category_id = self._resolve_entity_category_id(
+                entity=entity,
+                categories=categories_for_projects,
+            )
+            hierarchy = relationship_map.get(entity.id, {"parents": [], "children": []})
+            entity_reads.append(
+                MobileEntityRead(
+                    id=str(entity.id),
+                    entity_uid=entity.beneficiary_uid,
+                    entity_type=entity.beneficiary_type,
+                    entity_category_id=entity_category_id,
+                    parent_entity_ids=[str(parent_id) for parent_id in hierarchy["parents"]],
+                    child_entity_ids=[str(child_id) for child_id in hierarchy["children"]],
+                    name=entity.display_name,
+                    phone=entity.phone_number,
+                    national_id=entity.profile_json.get("national_id"),
+                    household_id=entity.profile_json.get("household_id"),
+                    gender=entity.sex,
+                    date_of_birth=str(entity.profile_json.get("date_of_birth")) if entity.profile_json.get("date_of_birth") else None,
+                    location={
+                        "country": entity.profile_json.get("country"),
+                        "region": entity.region,
+                        "district": entity.district,
+                        "community": entity.community,
+                        "village": entity.profile_json.get("village"),
+                    },
+                    gps={"latitude": entity.latitude, "longitude": entity.longitude, "accuracy": None},
+                    status=entity.enrollment_status.title(),
+                    project_ids=[str(entity.project_id)] if entity.project_id else [],
+                    assigned_form_ids=[
+                        str(form.id)
+                        for form in forms
+                        if self._form_targets_entity(
+                            form=form,
+                            version=versions_by_form_id.get(form.id),
+                            entity=entity,
+                            entity_category_id=entity_category_id,
+                            categories=categories_for_projects,
+                        )
+                    ],
+                    profile=entity.profile_json or {},
+                )
+            )
+        category_reads: list[MobileEntityCategoryRead] = []
+        for category in categories_for_projects:
             attributes = category_attributes.get(category.id, [])
             category_reads.append(
                 MobileEntityCategoryRead(
                     id=str(category.id),
                     project_id=str(category.project_id) if category.project_id else None,
+                    parent_category_id=str(category.parent_category_id) if category.parent_category_id else None,
                     name=category.name,
                     slug=category.slug,
                     sector=category.sector,
@@ -1421,6 +1603,9 @@ class MobileService:
             id=str(notification.id),
             title=notification.title,
             body=notification.body,
+            event_type=notification.event_type,
+            resource_type=notification.resource_type,
+            resource_id=str(notification.resource_id) if notification.resource_id is not None else None,
             read_at=notification.read_at,
             created_by_server_at=notification.created_by_server_at,
         )
@@ -1564,6 +1749,9 @@ class MobileService:
         entity_id = UUID(payload.entity_id) if payload.entity_id else None
         entity_type = payload.entity_type
         entity_settings = _entity_settings(form.controls_json or {})
+        if entity_id is None and _entity_selection_required(entity_settings) and not bool(entity_settings.get("allowsAnonymousSubmission")):
+            entity_label = await self._entity_type_from_settings(organization_id, entity_settings, payload.entity_type)
+            raise ValueError(f"Select an existing {entity_label.lower()} before syncing this submission.")
         if entity_id is None and bool(entity_settings.get("createsNewEntity")):
             entity_type = await self._entity_type_from_settings(organization_id, entity_settings, payload.entity_type)
         now = datetime.now(UTC)
@@ -1673,6 +1861,59 @@ class MobileService:
             except (TypeError, ValueError):
                 pass
         return str(entity_settings.get("entityType") or fallback or "Entity")
+
+    def _resolve_entity_category_id(
+        self,
+        *,
+        entity: Beneficiary,
+        categories: list[EntityCategory],
+    ) -> str | None:
+        profile = entity.profile_json or {}
+        raw_category_id = profile.get("entityCategoryId") or profile.get("entity_category_id")
+        if isinstance(raw_category_id, str) and raw_category_id.strip():
+            normalized = raw_category_id.strip()
+            if any(str(category.id) == normalized for category in categories):
+                return normalized
+
+        normalized_type = _normalize_scope_label(entity.beneficiary_type)
+        for category in categories:
+            if category.project_id not in {None, entity.project_id}:
+                continue
+            if _normalize_scope_label(category.name) == normalized_type:
+                return str(category.id)
+        return None
+
+    def _form_targets_entity(
+        self,
+        *,
+        form: DataForm,
+        version: DataFormVersion | None,
+        entity: Beneficiary,
+        entity_category_id: str | None,
+        categories: list[EntityCategory],
+    ) -> bool:
+        if version is None or form.project_id != entity.project_id:
+            return False
+        settings = _entity_settings(form.controls_json or {})
+        if not bool(settings.get("linkedToEntity")):
+            return False
+        if bool(settings.get("createsNewEntity")) and not bool(settings.get("requiresExistingEntity")) and not bool(
+            settings.get("updatesExistingEntity")
+        ):
+            return False
+
+        form_category_id = settings.get("entityCategoryId")
+        if isinstance(form_category_id, str) and form_category_id and entity_category_id:
+            return form_category_id == entity_category_id
+
+        entity_type = _normalize_scope_label(entity.beneficiary_type)
+        if isinstance(form_category_id, str) and form_category_id:
+            category = next((item for item in categories if str(item.id) == form_category_id), None)
+            if category is not None:
+                return _normalize_scope_label(category.name) == entity_type
+
+        configured_type = _normalize_scope_label(settings.get("entityType"))
+        return not configured_type or configured_type == entity_type
 
     async def upload_attachment(
         self,

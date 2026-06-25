@@ -31,6 +31,10 @@ from app.services.sector_packs import apply_sector_pack, get_sector_pack, list_s
 def _as_dict(value: object) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
+
+def _as_list(value: object) -> list[Any]:
+    return value if isinstance(value, list) else []
+
 class ProjectNotFoundError(Exception):
     pass
 
@@ -646,19 +650,60 @@ class ProjectsService:
         recommended = _as_dict(pack.get("recommended_settings"))
         beneficiary = _as_dict(recommended.get("beneficiary"))
         creates_entity = bool(form_definition.get("creates_entity"))
+        updates_entity = bool(form_definition.get("updates_entity"))
         requires_existing_entity = bool(form_definition.get("requires_existing_entity"))
+        respondent_identity_mode = (
+            "existing_or_new"
+            if creates_entity and updates_entity
+            else "new_registration"
+            if creates_entity
+            else "existing_beneficiary"
+            if requires_existing_entity
+            else "existing_or_new"
+            if updates_entity
+            else "anonymous_allowed"
+        )
+        search_required = respondent_identity_mode == "existing_beneficiary"
+        questions = [
+            question
+            for question in _as_list(form_definition.get("questions"))
+            if isinstance(question, dict)
+        ]
+        question_ids_by_variable = {
+            str(question.get("variableName") or question.get("code") or question.get("id")).strip().lower(): str(question.get("id"))
+            for question in questions
+            if str(question.get("id") or "").strip()
+        }
+        prefill_source_fields = {
+            "entity_name": "name",
+            "phone_number": "phone",
+            "gps_location": "gps",
+            "location_name": "village",
+        }
+        prefill_mappings = [
+            {
+                "sourceEntityField": source_field,
+                "targetQuestionId": question_ids_by_variable[variable_name],
+                "lockBehavior": "ReadOnly"
+                if beneficiary.get("profileUpdateRule", "Require review for sensitive changes") == "Require review for sensitive changes"
+                else "EditableWithReason",
+            }
+            for variable_name, source_field in prefill_source_fields.items()
+            if variable_name in question_ids_by_variable
+        ]
         return {
             "entity_controls": {
                 "linked_to_entity": True,
                 "entity_type": form_definition.get("entity_type") or beneficiary.get("primaryEntityType", "Beneficiary"),
-                "creates_new_entity": creates_entity,
-                "updates_existing_entity": bool(form_definition.get("updates_entity")),
+                "creates_new_entity": creates_entity or respondent_identity_mode == "existing_or_new",
+                "updates_existing_entity": updates_entity,
                 "requires_existing_entity": requires_existing_entity,
                 "allows_anonymous": False,
                 "submission_frequency": form_definition.get("submission_frequency") or ("once_per_project" if "Baseline" in form_name or "Registration" in form_name else "monthly"),
                 "matching_fields": beneficiary.get("duplicateFields", ["Phone", "Name + Village", "GPS"]),
                 "duplicate_action": "review",
-                "prefill_profile": True,
+                "prefill_profile": respondent_identity_mode in {"existing_beneficiary", "existing_or_new"},
+                "prefill_mappings": prefill_mappings,
                 "profile_update_mode": beneficiary.get("profileUpdateRule", "Require review for sensitive changes"),
             },
             "governance": pack.get("governance_defaults", {}),
@@ -667,6 +712,12 @@ class ProjectsService:
             "beneficiary_mapping": form_definition.get("profile_mappings", {}),
             "indicator_mapping": form_definition.get("indicator_mappings", []),
             "instrument": {
+                "respondent_identity": {
+                    "allow_anonymous": respondent_identity_mode == "anonymous_allowed",
+                    "allow_new_registration": respondent_identity_mode in {"new_registration", "existing_or_new"},
+                    "beneficiary_search_required": search_required,
+                    "mode": respondent_identity_mode,
+                },
                 "sector_pack": {
                     "id": pack["id"],
                     "name": pack["name"],

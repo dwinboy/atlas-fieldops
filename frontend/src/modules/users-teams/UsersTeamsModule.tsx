@@ -3,12 +3,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
+  AlertTriangle,
+  ArrowLeft,
+  Briefcase,
   Building2,
   CheckCircle2,
   Download,
   FileUp,
   KeyRound,
   Lock,
+  MapPin,
   Pencil,
   Plus,
   RotateCcw,
@@ -21,6 +25,7 @@ import {
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import { useContextualBack } from "@/hooks/useContextualBack";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,12 +33,15 @@ import { ActionMenu } from "@/components/ui/dropdown-menu";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
+import { TabPanel, Tabs } from "@/components/ui/tabs";
 import { UserProfileLink } from "@/components/ui/user-link";
 import {
+  ApiError,
+  addUserRoleAssignment,
   createRole,
   createTeam,
   createUser,
-  addUserRoleAssignment,
+  createWorkforceProfile,
   deactivateUserRoleAssignment,
   getAccessCatalog,
   getOrganizationContext,
@@ -53,6 +61,7 @@ import {
   updateTeam,
   updateUser,
   updateUserRoleAssignment,
+  updateWorkforceProfile,
   type AccessCatalog,
   type AccessSimulationRead,
   type CurrentPrincipal,
@@ -89,11 +98,16 @@ import {
   formatDateTime,
   groupPermissions,
   initials,
+  matchesUserSetupFilter,
   normalizeRoleLabel,
+  normalizeTeamCode,
   profileForUser,
+  resolveTeamCode,
   statusTone,
   teamName,
   toCsv,
+  type UserSetupFilter,
+  userSetupIssues,
 } from "@/modules/users-teams/utils";
 import { useWorkspaceStore } from "@/stores/workspace";
 
@@ -106,9 +120,13 @@ type ModalMode = "access-test" | "edit-team" | "edit-user" | "import-users" | "r
 type AccessEditDraft = {
   geography_id: string;
   is_active: boolean;
+  job_title: string;
+  profile_id: string | null;
   project_id: string;
   role_name: string;
   scope_type: string;
+  supervisor_user_id: string;
+  team_id: string;
   user: UserRead | null;
 };
 type RoleAssignmentDraft = {
@@ -122,7 +140,8 @@ type RoleAssignmentDraft = {
   team_id: string;
   user: UserRead | null;
 };
-type RoleProfileTab = "overview" | "responsibilities" | "scope" | "team" | "workload" | "quality" | "governance" | "mobile";
+type RoleProfileTab = "overview" | "access" | "team" | "activity";
+type AccessCenterTab = "users" | "roles" | "teams" | "permissions";
 
 const defaultUserDraft: UserCreate = {
   email: "",
@@ -176,13 +195,9 @@ const fallbackAssignableRoles: [string, string][] = [
 
 const roleProfileTabs: { id: RoleProfileTab; label: string }[] = [
   { id: "overview", label: "Overview" },
-  { id: "responsibilities", label: "Responsibilities" },
-  { id: "scope", label: "Access Scope" },
-  { id: "team", label: "Team & Supervisor" },
-  { id: "workload", label: "Workload" },
-  { id: "quality", label: "Data Quality" },
-  { id: "governance", label: "Governance" },
-  { id: "mobile", label: "Mobile Readiness" },
+  { id: "access", label: "Access & Roles" },
+  { id: "team", label: "Team & Workforce" },
+  { id: "activity", label: "Activity" },
 ];
 
 type RolesTabView = "list" | "architecture" | "matrix";
@@ -193,13 +208,24 @@ const rolesTabViews: { id: RolesTabView; label: string }[] = [
   { id: "matrix", label: "Permission matrix" },
 ];
 
+const accessCenterTabs: { id: AccessCenterTab; label: string; hint: string }[] = [
+  { id: "users", label: "Users", hint: "Create people and open their access records." },
+  { id: "roles", label: "Roles", hint: "Define permission bundles before assigning them." },
+  { id: "teams", label: "Teams", hint: "Group staff by supervision, geography, or function." },
+  { id: "permissions", label: "Permission checks", hint: "Confirm who can upload, clean, and review data." },
+];
+
 const emptyAccessCatalog = { roles: [], permissions: [], scope_types: [], workflow_actions: [] };
 const defaultAccessEditDraft: AccessEditDraft = {
   geography_id: "",
   is_active: true,
+  job_title: "",
+  profile_id: null,
   project_id: "",
   role_name: "field_officer",
   scope_type: "own",
+  supervisor_user_id: "",
+  team_id: "",
   user: null,
 };
 const defaultRoleAssignmentDraft: RoleAssignmentDraft = {
@@ -218,9 +244,50 @@ function isPreview(token: string | null): boolean {
   return !token || token === "preview-token";
 }
 
+function messageFromApiError(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    try {
+      const parsed = JSON.parse(error.message) as { detail?: unknown };
+      if (typeof parsed.detail === "string") return parsed.detail;
+      if (Array.isArray(parsed.detail)) {
+        return parsed.detail
+          .map((item) => {
+            const location = Array.isArray(item?.loc)
+              ? item.loc.filter((part: unknown) => part !== "body").join(".")
+              : "";
+            const message = item?.msg ?? "Invalid field";
+            return location ? `${location}: ${message}` : message;
+          })
+          .join(" ");
+      }
+    } catch {
+      return error.message;
+    }
+    return error.message;
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
+
 function hasAnyPermission(principal: CurrentPrincipal | null | undefined, permissions: string[]): boolean {
   if (!principal || principal.platform_admin) return true;
   return permissions.some((permission) => principal.permissions?.includes(permission));
+}
+
+function scopeSetupHint(scopeType?: string | null): string {
+  if (scopeType === "field_team") {
+    return "Field team scope uses the field-team boundary from your organization structure. Use the team selector separately when you also want this person tied to one named operational team.";
+  }
+  if (scopeType === "project") {
+    return "Project scope keeps the role inside one project. Choose the project below before saving.";
+  }
+  if (scopeType === "country" || scopeType === "region" || scopeType === "district") {
+    return "Choose the matching location boundary below so the person only sees work in that area.";
+  }
+  if (scopeType === "own") {
+    return "Own scope keeps the user to their own records and directly assigned work.";
+  }
+  return "Choose the main boundary where this role should operate.";
 }
 
 function downloadCsv(filename: string, rows: Record<string, string | number | boolean | null | undefined>[]): void {
@@ -344,9 +411,11 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [activeSection, setActiveSection] = useState<UsersTeamsSection>(() => usersTeamsSectionFromPath(pathname));
+  const [accessCenterTab, setAccessCenterTab] = useState<AccessCenterTab>("users");
   const [rolesView, setRolesView] = useState<RolesTabView>("list");
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [selectedRoleProfileUserId, setSelectedRoleProfileUserId] = useState<string | null>(null);
+  useContextualBack(Boolean(selectedRoleProfileUserId));
   const [selectedRoleProfileType, setSelectedRoleProfileType] = useState<string | null>(null);
   const [userDraft, setUserDraft] = useState(defaultUserDraft);
   const [teamDraft, setTeamDraft] = useState(defaultTeamDraft);
@@ -364,7 +433,7 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   const enabled = Boolean(token && !preview);
   const canManageUsers = hasAnyPermission(principal, ["users.create", "users.manage"]);
   const canManageRoles = hasAnyPermission(principal, ["roles.manage"]);
-  const canManageTeams = hasAnyPermission(principal, ["officers.manage", "users.manage"]);
+  const canManageTeams = hasAnyPermission(principal, ["officers.manage", "users.manage", "organization.hierarchy.manage"]);
 
   const usersQuery = useQuery({ queryKey: ["users-teams", "users", token], queryFn: () => listUsers(token ?? ""), enabled });
   const rolesQuery = useQuery({ queryKey: ["users-teams", "roles", token], queryFn: () => listRoles(token ?? ""), enabled });
@@ -450,6 +519,17 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   }, [activeSection, pathname, selectedRoleProfileUserId]);
 
   useEffect(() => {
+    if (
+      activeSection === "users" ||
+      activeSection === "roles" ||
+      activeSection === "teams" ||
+      activeSection === "permissions"
+    ) {
+      setAccessCenterTab(activeSection);
+    }
+  }, [activeSection]);
+
+  useEffect(() => {
     if (modalMode !== "user" || !roleOptions.length) return;
     if (!roleOptions.some(([value]) => value === userDraft.role_name)) {
       setUserDraft((current) => ({ ...current, role_name: roleOptions[0]?.[0] ?? defaultUserDraft.role_name }));
@@ -518,12 +598,17 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   function openEditUserAccess(user: UserRead): void {
     const roleName = user.role_name ?? defaultAssignableRole;
     const role = roleCatalogByName.get(roleName);
+    const workforceProfile = profileForUser(profiles, user.id);
     setAccessEditDraft({
       geography_id: user.geography_id ?? "",
       is_active: user.is_active,
+      job_title: workforceProfile?.job_title ?? "",
+      profile_id: workforceProfile?.id ?? null,
       project_id: user.project_id ?? "",
       role_name: roleName,
       scope_type: user.scope_type ?? role?.scope_type ?? "own",
+      supervisor_user_id: workforceProfile?.supervisor_user_id ?? "",
+      team_id: workforceProfile?.team_id ?? "",
       user,
     });
     setModalMode("edit-user");
@@ -567,7 +652,12 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
       await invalidateUsersTeams();
       pushToast({ title: "User created", description: `${user.full_name} can now access this organization.`, tone: "success" });
     },
-    onError: () => pushToast({ title: "Could not create user", description: "Check the email, password length, role, and your permissions.", tone: "danger" }),
+    onError: (error) =>
+      pushToast({
+        title: "Could not create user",
+        description: messageFromApiError(error, "Check the email, temporary password, selected role, scope, and your user management permission."),
+        tone: "danger",
+      }),
   });
 
   function submitUser(): void {
@@ -613,7 +703,7 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   const createTeamMutation = useMutation({
     mutationFn: () =>
       createTeam(token ?? "", {
-        code: teamDraft.code,
+        code: resolveTeamCode(teamDraft.name, teamDraft.code),
         manager_user_id: teamDraft.manager_user_id || null,
         name: teamDraft.name,
         organization_unit_id: teamDraft.organization_unit_id || null,
@@ -626,13 +716,18 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
       await invalidateUsersTeams();
       pushToast({ title: "Team created", description: `${team.name} is ready for assignments.`, tone: "success" });
     },
-    onError: () => pushToast({ title: "Could not create team", description: "Check the team code and your team management permission.", tone: "danger" }),
+    onError: (error) =>
+      pushToast({
+        title: "Could not create team",
+        description: messageFromApiError(error, "Check the team name, code, and your team management permission."),
+        tone: "danger",
+      }),
   });
 
   const updateTeamMutation = useMutation({
     mutationFn: () =>
       updateTeam(token ?? "", editTeamDraft.id, {
-        code: editTeamDraft.code,
+        code: resolveTeamCode(editTeamDraft.name, editTeamDraft.code),
         is_active: editTeamDraft.is_active,
         manager_user_id: editTeamDraft.manager_user_id || null,
         name: editTeamDraft.name,
@@ -646,7 +741,12 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
       await invalidateUsersTeams();
       pushToast({ title: "Team updated", description: `${team.name} has been updated.`, tone: "success" });
     },
-    onError: () => pushToast({ title: "Could not update team", description: "Check the team code and your team management permission.", tone: "danger" }),
+    onError: (error) =>
+      pushToast({
+        title: "Could not update team",
+        description: messageFromApiError(error, "Check the team name, code, and your team management permission."),
+        tone: "danger",
+      }),
   });
 
   const createRoleMutation = useMutation({
@@ -669,7 +769,17 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   const updateUserStatusMutation = useMutation({
     mutationFn: ({ is_active, user }: { is_active: boolean; user: UserRead }) =>
       updateUser(token ?? "", user.id, { is_active, full_name: user.full_name, role_name: user.role_name ?? undefined }),
-    onSuccess: async () => {
+    onSuccess: async (_result, variables) => {
+      setAccessEditDraft((current) =>
+        current.user?.id === variables.user.id
+          ? { ...current, is_active: variables.is_active, user: { ...current.user, is_active: variables.is_active } }
+          : current,
+      );
+      setRoleAssignmentDraft((current) =>
+        current.user?.id === variables.user.id
+          ? { ...current, user: { ...current.user, is_active: variables.is_active } }
+          : current,
+      );
       await invalidateUsersTeams();
       pushToast({ title: "User status updated", description: "Access changes are now reflected across the organization.", tone: "success" });
     },
@@ -679,13 +789,36 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   const updateUserAccessMutation = useMutation({
     mutationFn: () => {
       if (!accessEditDraft.user) throw new Error("Choose a user");
-      return updateUser(token ?? "", accessEditDraft.user.id, {
-        full_name: accessEditDraft.user.full_name,
+      const currentUser = accessEditDraft.user;
+      return updateUser(token ?? "", currentUser.id, {
+        full_name: currentUser.full_name,
         geography_id: accessEditDraft.geography_id || null,
         is_active: accessEditDraft.is_active,
         project_id: accessEditDraft.project_id || null,
         role_name: accessEditDraft.role_name,
         scope_type: accessEditDraft.scope_type,
+      }).then(async () => {
+        const hasWorkforceDetails = Boolean(
+          accessEditDraft.profile_id ||
+          accessEditDraft.team_id ||
+          accessEditDraft.supervisor_user_id ||
+          accessEditDraft.job_title.trim(),
+        );
+        if (!hasWorkforceDetails) return null;
+        const workforcePayload = {
+          job_title: accessEditDraft.job_title.trim() || null,
+          supervisor_user_id: accessEditDraft.supervisor_user_id || null,
+          team_id: accessEditDraft.team_id || null,
+        };
+        if (accessEditDraft.profile_id) {
+          return updateWorkforceProfile(token ?? "", accessEditDraft.profile_id, workforcePayload);
+        }
+        return createWorkforceProfile(token ?? "", {
+          user_id: currentUser.id,
+          job_title: accessEditDraft.job_title.trim() || "Team member",
+          supervisor_user_id: accessEditDraft.supervisor_user_id || null,
+          team_id: accessEditDraft.team_id || null,
+        });
       });
     },
     onSuccess: async () => {
@@ -805,6 +938,26 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
       render: (user) => <span className="capitalize">{(user.scope_type ?? "organization").replace("_", " ")}</span>,
     },
     {
+      key: "setup",
+      header: "Setup",
+      value: (user) => userSetupIssues(user, profileForUser(profiles, user.id)).join(" "),
+      render: (user) => {
+        const issues = userSetupIssues(user, profileForUser(profiles, user.id));
+        return issues.length ? (
+          <div className="space-y-1">
+            <Badge tone="warning">Needs setup ({issues.length})</Badge>
+            <p className="text-xs text-muted-foreground">{issues.slice(0, 2).join(" · ")}</p>
+            <Button onClick={() => openEditUserAccess(user)} size="sm" variant="ghost">
+              <Pencil aria-hidden="true" />
+              Fix setup
+            </Button>
+          </div>
+        ) : (
+          <Badge tone="success">Ready</Badge>
+        );
+      },
+    },
+    {
       key: "status",
       header: "Status",
       value: (user) => (user.is_active ? "active" : "inactive"),
@@ -815,10 +968,19 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
       header: "Actions",
       align: "right",
       render: (user) => (
-        <div className="flex justify-end gap-1.5">
+        <div className="flex flex-wrap justify-end gap-1.5">
           <Button onClick={() => openRoleProfile(user)} size="sm" variant="secondary">
             <UserCog aria-hidden="true" />
             View profile
+          </Button>
+          <Button
+            disabled={preview || !canManageUsers || saveRoleAssignmentMutation.isPending}
+            onClick={() => openRoleAssignments(user)}
+            size="sm"
+            variant="secondary"
+          >
+            <ShieldCheck aria-hidden="true" />
+            Manage access
           </Button>
           <ActionMenu
             label={`More actions for ${user.full_name}`}
@@ -831,24 +993,16 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
                 onSelect: () => resetPasswordMutation.mutate(user.id),
               },
               {
-                key: "manage-roles",
-                label: "Manage roles",
-                icon: <ShieldCheck aria-hidden="true" />,
-                disabled: preview || !canManageUsers || saveRoleAssignmentMutation.isPending,
-                onSelect: () => openRoleAssignments(user),
-              },
-              {
                 key: "edit-scope",
-                label: "Edit access scope",
+                label: "Edit default role and scope",
                 icon: <KeyRound aria-hidden="true" />,
                 disabled: preview || !canManageUsers || updateUserAccessMutation.isPending,
                 onSelect: () => openEditUserAccess(user),
               },
               {
-                key: "toggle-status",
-                label: user.is_active ? "Deactivate account" : "Activate account",
+                key: "toggle-access",
+                label: user.is_active ? "Turn off sign-in" : "Turn on sign-in",
                 icon: user.is_active ? <Lock aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />,
-                tone: user.is_active ? "danger" : "default",
                 disabled: preview || !canManageUsers || updateUserStatusMutation.isPending,
                 onSelect: () => updateUserStatusMutation.mutate({ is_active: !user.is_active, user }),
               },
@@ -931,7 +1085,7 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
 
   return (
     <section className="space-y-3">
-      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="module-header rounded-xl p-3.5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
@@ -948,6 +1102,10 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button onClick={() => selectSection("access-center")} variant="primary">
+              <ShieldCheck aria-hidden="true" />
+              Open Access Center
+            </Button>
             <Button onClick={() => setModalMode("access-test")} variant="secondary">
               <SearchCheck aria-hidden="true" />
               Test access
@@ -969,12 +1127,16 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
             </button>
           ))}
         </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Project owners usually start in Access Center, then open the deeper pages only when they need detailed admin work.
+        </p>
       </div>
 
       {selectedRoleProfileUser ? (
         <RoleSpecificProfileWorkspace
           activityLogs={activityLogs}
           canManage={canManageUsers}
+          catalog={catalog}
           onClose={closeRoleProfile}
           onOpenAccess={() => openEditUserAccess(selectedRoleProfileUser)}
           onOpenRoles={() => openRoleAssignments(selectedRoleProfileUser)}
@@ -985,10 +1147,12 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
           profiles={selectedRoleProfileProfiles}
           projects={projects}
           resettingPassword={resetPasswordMutation.isPending}
+          roles={roles}
           sessions={sessions}
           teams={teams}
           togglingStatus={updateUserStatusMutation.isPending}
           user={selectedRoleProfileUser}
+          users={users}
           workforceProfile={profileForUser(profiles, selectedRoleProfileUser.id)}
         />
       ) : null}
@@ -1006,44 +1170,61 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
         />
       ) : null}
 
+      {!selectedRoleProfileUser && activeSection === "access-center" ? (
+        <AccessCenterSection
+          accessCenterTab={accessCenterTab}
+          canManageRoles={canManageRoles}
+          canManageTeams={canManageTeams}
+          canManageUsers={canManageUsers}
+          catalog={catalog}
+          onCreateRole={() => setModalMode("role")}
+          onCreateTeam={() => setModalMode("team")}
+          onCreateUser={openCreateUserModal}
+          onEditTeam={openEditTeam}
+          onOpenDefaultAccess={openEditUserAccess}
+          onOpenAccessTest={() => setModalMode("access-test")}
+          onOpenOrganizations={() => selectSection("organizations")}
+          onOpenRoleAssignments={openRoleAssignments}
+          onOpenRoleProfile={openRoleProfile}
+          onToggleUserStatus={(user) => updateUserStatusMutation.mutate({ is_active: !user.is_active, user })}
+          onSetAccessCenterTab={setAccessCenterTab}
+          permissionGroups={permissionGroups}
+          preview={preview}
+          profiles={profiles}
+          roles={roles}
+          teams={teams}
+          users={users}
+        />
+      ) : null}
+
       {!selectedRoleProfileUser && activeSection === "users" ? (
         <section className="space-y-4">
-          <SectionHeader
-            action={
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={() => downloadCsv("atlas-users.csv", users.map((user) => ({ email: user.email, full_name: user.full_name, role: user.role_name ?? "", status: user.is_active ? "active" : "inactive", scope: user.scope_type ?? "" })))} variant="secondary">
-                  <Download aria-hidden="true" />
-                  Export
-                </Button>
-                <Button disabled={preview || !canManageUsers} onClick={() => setModalMode("import-users")} variant="secondary">
-                  <FileUp aria-hidden="true" />
-                  Import CSV
-                </Button>
-                <Button disabled={!canManageUsers || !roleOptions.length} onClick={openCreateUserModal} variant="primary">
-                  <Plus aria-hidden="true" />
-                  Create user
-                </Button>
-              </div>
-            }
-            description="Create, invite, activate, deactivate, assign roles, and reset access for organization users."
-            title="User Management"
-          />
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button onClick={() => downloadCsv("atlas-users.csv", users.map((user) => ({ email: user.email, full_name: user.full_name, role: user.role_name ?? "", status: user.is_active ? "active" : "inactive", scope: user.scope_type ?? "" })))} variant="secondary">
+              <Download aria-hidden="true" />
+              Export
+            </Button>
+            <Button disabled={preview || !canManageUsers} onClick={() => setModalMode("import-users")} variant="secondary">
+              <FileUp aria-hidden="true" />
+              Import CSV
+            </Button>
+            <Button disabled={!canManageUsers || !roleOptions.length} onClick={openCreateUserModal} variant="primary">
+              <Plus aria-hidden="true" />
+              Create user
+            </Button>
+          </div>
           <DataTable columns={userColumns} emptyLabel="No users have been created yet" rows={users} searchLabel="Search users, email, role, team" title="Users" />
         </section>
       ) : null}
 
       {!selectedRoleProfileUser && activeSection === "roles" ? (
         <section className="space-y-4">
-          <SectionHeader
-            action={
-              <Button disabled={preview || !canManageRoles} onClick={() => setModalMode("role")} variant="primary">
-                <Plus aria-hidden="true" />
-                Create role
-              </Button>
-            }
-            description="Define role templates and permission sets by module, feature, action, and access scope."
-            title="Role Management"
-          />
+          <div className="flex justify-end">
+            <Button disabled={preview || !canManageRoles} onClick={() => setModalMode("role")} variant="primary">
+              <Plus aria-hidden="true" />
+              Create role
+            </Button>
+          </div>
           <div className="flex gap-1.5 overflow-x-auto product-scrollbar">
             {rolesTabViews.map((view) => (
               <button
@@ -1069,16 +1250,12 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
 
       {!selectedRoleProfileUser && activeSection === "teams" ? (
         <section className="space-y-4">
-          <SectionHeader
-            action={
-              <Button disabled={preview || !canManageTeams} onClick={() => setModalMode("team")} variant="primary">
-                <Plus aria-hidden="true" />
-                Create team
-              </Button>
-            }
-            description="Organize supervisors, field officers, data quality officers, analysts, and operational teams."
-            title="Team Management"
-          />
+          <div className="flex justify-end">
+            <Button disabled={preview || !canManageTeams} onClick={() => setModalMode("team")} variant="primary">
+              <Plus aria-hidden="true" />
+              Create team
+            </Button>
+          </div>
           <DataTable columns={teamColumns} emptyLabel="No operational teams have been created yet" rows={teams} searchLabel="Search teams, regions, project, lead" title="Teams" />
         </section>
       ) : null}
@@ -1108,16 +1285,12 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
 
       {!selectedRoleProfileUser && activeSection === "activity-logs" ? (
         <section className="space-y-4">
-          <SectionHeader
-            action={
-              <Button onClick={() => downloadCsv("atlas-user-activity.csv", activityLogs.map((log) => ({ action: log.action, user: log.user_label ?? "System", resource: log.resource_type, status: log.status, created_at: log.created_at })))} variant="secondary">
-                <Download aria-hidden="true" />
-                Export
-              </Button>
-            }
-            description="Monitor login, account, permission, team, and identity changes. Audit administration remains in Governance."
-            title="Activity Logs"
-          />
+          <div className="flex justify-end">
+            <Button onClick={() => downloadCsv("atlas-user-activity.csv", activityLogs.map((log) => ({ action: log.action, user: log.user_label ?? "System", resource: log.resource_type, status: log.status, created_at: log.created_at })))} variant="secondary">
+              <Download aria-hidden="true" />
+              Export
+            </Button>
+          </div>
           <DataTable columns={activityColumns} emptyLabel="No identity or access activity has been recorded yet" rows={activityLogs} searchLabel="Search activity, user, status" title="Recent Activity" />
         </section>
       ) : null}
@@ -1151,21 +1324,33 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
         roleCatalogByName={roleCatalogByName}
         roleOptions={roleOptions}
         saving={updateUserAccessMutation.isPending}
+        teams={teams}
         units={units}
+        users={users}
       />
       <RoleAssignmentsModal
         canSubmit={!preview && canManageUsers && Boolean(roleAssignmentDraft.user) && !saveRoleAssignmentMutation.isPending}
+        canManage={canManageUsers}
         draft={roleAssignmentDraft}
         onChange={setRoleAssignmentDraft}
         onDeactivate={(assignment, user) => deactivateRoleAssignmentMutation.mutate({ assignment, user })}
         onEdit={editRoleAssignment}
+        onOpenDefaultAccess={() => roleAssignmentDraft.user && openEditUserAccess(roleAssignmentDraft.user)}
         onOpenChange={(open) => setModalMode(open ? "role-assignment" : null)}
+        onResetPassword={() => roleAssignmentDraft.user && resetPasswordMutation.mutate(roleAssignmentDraft.user.id)}
         onSubmit={() => saveRoleAssignmentMutation.mutate()}
+        onToggleStatus={() =>
+          roleAssignmentDraft.user &&
+          updateUserStatusMutation.mutate({ is_active: !roleAssignmentDraft.user.is_active, user: roleAssignmentDraft.user })
+        }
         open={modalMode === "role-assignment"}
         projects={projects}
+        resettingPassword={resetPasswordMutation.isPending}
         roleCatalogByName={roleCatalogByName}
         roleOptions={roleOptions}
         saving={saveRoleAssignmentMutation.isPending}
+        teams={teams}
+        togglingStatus={updateUserStatusMutation.isPending}
         units={units}
       />
       <ImportUsersModal
@@ -1177,7 +1362,7 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
         open={modalMode === "import-users"}
       />
       <CreateTeamModal
-        canSubmit={!preview && canManageTeams && Boolean(teamDraft.name && teamDraft.code) && !createTeamMutation.isPending}
+        canSubmit={!preview && canManageTeams && Boolean(teamDraft.name.trim()) && !createTeamMutation.isPending}
         draft={teamDraft}
         onChange={setTeamDraft}
         onOpenChange={(open) => setModalMode(open ? "team" : null)}
@@ -1187,7 +1372,7 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
         users={users}
       />
       <EditTeamModal
-        canSubmit={!preview && canManageTeams && Boolean(editTeamDraft.name && editTeamDraft.code) && !updateTeamMutation.isPending}
+        canSubmit={!preview && canManageTeams && Boolean(editTeamDraft.name.trim()) && !updateTeamMutation.isPending}
         draft={editTeamDraft}
         onChange={setEditTeamDraft}
         onOpenChange={(open) => setModalMode(open ? "edit-team" : null)}
@@ -1288,6 +1473,7 @@ function RoleProfileSignal({ label, value }: { label: string; value: React.React
 function RoleSpecificProfileWorkspace({
   activityLogs,
   canManage,
+  catalog,
   onClose,
   onOpenAccess,
   onOpenRoles,
@@ -1298,14 +1484,17 @@ function RoleSpecificProfileWorkspace({
   profiles,
   projects,
   resettingPassword,
+  roles,
   sessions,
   teams,
   togglingStatus,
   user,
+  users,
   workforceProfile,
 }: {
   activityLogs: UsersTeamsActivityLogRead[];
   canManage: boolean;
+  catalog: AccessCatalog;
   onClose: () => void;
   onOpenAccess: () => void;
   onOpenRoles: () => void;
@@ -1316,10 +1505,12 @@ function RoleSpecificProfileWorkspace({
   profiles: UserOperationalProfileRead[];
   projects: { id: string; name: string; project_code: string }[];
   resettingPassword: boolean;
+  roles: RoleRead[];
   sessions: SessionLogRead[];
   teams: TeamRead[];
   togglingStatus: boolean;
   user: UserRead;
+  users: UserRead[];
   workforceProfile?: WorkforceProfileRead;
 }) {
   const [tab, setTab] = useState<RoleProfileTab>("overview");
@@ -1330,16 +1521,24 @@ function RoleSpecificProfileWorkspace({
     : activeAssignments[0];
   const project = projects.find((item) => item.id === (profile?.primary_project_id ?? currentAssignment?.project_id ?? user.project_id));
   const team = teams.find((item) => item.id === (profile?.primary_team_id ?? currentAssignment?.team_id ?? workforceProfile?.team_id));
-  const supervisor = workforceProfile?.supervisor_user_id ? "Assigned in workforce profile" : "Not assigned";
+  const supervisor = workforceProfile?.supervisor_user_id
+    ? (users.find((candidate) => candidate.id === workforceProfile.supervisor_user_id)?.full_name ?? "Assigned in workforce profile")
+    : "Not assigned";
+  const scopeLabel = (currentAssignment?.scope_type ?? user.scope_type ?? "organization").replace(/_/g, " ");
+  const roleLabel = profile?.display_name ?? normalizeRoleLabel(user.role_name);
   const userSessions = sessions.filter((session) => session.user_id === user.id);
   const userActivity = activityLogs.filter((log) => log.user_id === user.id || log.user_label === user.full_name);
   const profileOptions = profiles.length ? profiles : profilesForUser(user);
-  const metricEntries = Object.entries(profile?.metrics_json ?? {});
+  const setupIssues = userSetupIssues(user, workforceProfile);
+  const effectivePermissions = useMemo(
+    () => [...permissionsForUser(user, roles, catalog)].sort(),
+    [catalog, roles, user],
+  );
 
   const assignmentRows = (user.role_assignments ?? []).map((assignment) => ({
     id: assignment.id,
     role: assignment.role_label || normalizeRoleLabel(assignment.role_name),
-    scope: assignment.scope_type.replace("_", " "),
+    scope: assignment.scope_type.replace(/_/g, " "),
     project: projects.find((item) => item.id === assignment.project_id)?.name ?? assignment.project_id ?? "Not restricted",
     geography: assignment.geography_id ?? "Not restricted",
     status: assignment.is_active ? "Active" : "Inactive",
@@ -1347,7 +1546,7 @@ function RoleSpecificProfileWorkspace({
 
   const assignmentColumns: TableColumn<(typeof assignmentRows)[number]>[] = [
     { key: "role", header: "Role", value: (row) => row.role, render: (row) => <span className="font-medium">{row.role}</span> },
-    { key: "scope", header: "Scope", value: (row) => row.scope, render: (row) => row.scope },
+    { key: "scope", header: "Scope", value: (row) => row.scope, render: (row) => <span className="capitalize">{row.scope}</span> },
     { key: "project", header: "Project", value: (row) => row.project, render: (row) => row.project },
     { key: "geography", header: "Location", value: (row) => row.geography, render: (row) => row.geography },
     { key: "status", header: "Status", value: (row) => row.status, render: (row) => <Badge tone={statusTone(row.status)}>{row.status}</Badge> },
@@ -1360,67 +1559,100 @@ function RoleSpecificProfileWorkspace({
     { key: "date", header: "Date", value: (row) => row.created_at, render: (row) => formatDateTime(row.created_at) },
   ];
 
+  const sessionRows = userSessions.map((session) => ({
+    id: session.id,
+    device: session.device_id ?? "Unknown device",
+    location: session.location_hint ?? session.ip_address ?? "Unknown",
+    status: session.status,
+    started: session.created_at,
+  }));
+  const sessionColumns: TableColumn<(typeof sessionRows)[number]>[] = [
+    { key: "device", header: "Device", value: (row) => row.device, render: (row) => <span className="font-medium">{row.device}</span> },
+    { key: "location", header: "Location / IP", value: (row) => row.location, render: (row) => row.location },
+    { key: "status", header: "Status", value: (row) => row.status, render: (row) => <Badge tone={statusTone(row.status)}>{row.status}</Badge> },
+    { key: "started", header: "Started", value: (row) => row.started, render: (row) => formatDateTime(row.started) },
+  ];
+
   return (
-    <section className="space-y-3">
-      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex items-start gap-3">
-            <span className="grid size-11 shrink-0 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-              {initials(user.full_name)}
-            </span>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-xl font-semibold">{user.full_name}</h2>
-                <Badge tone={user.is_active ? "success" : "danger"}>{user.is_active ? "Active account" : "Inactive account"}</Badge>
-                {profile ? <Badge tone="admin">{profile.display_name}</Badge> : null}
+    <section className="space-y-4">
+      {/* Header: identity, status, and every primary action in one expected place */}
+      <div className="overflow-hidden rounded-2xl border bg-panel shadow-line">
+        <div className="bg-gradient-to-r from-primary/12 via-primary/[0.06] to-transparent p-4">
+          <button
+            className="mb-3 inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-muted-foreground transition hover:text-foreground"
+            onClick={onClose}
+            type="button"
+          >
+            <ArrowLeft aria-hidden="true" size={14} />
+            Back to all users
+          </button>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex items-start gap-3.5">
+              <span
+                className={cn(
+                  "grid size-14 shrink-0 place-items-center rounded-2xl text-base font-semibold text-primary-foreground shadow-sm",
+                  user.is_active ? "bg-primary" : "bg-muted-foreground",
+                )}
+              >
+                {initials(user.full_name)}
+              </span>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-2xl font-semibold tracking-tight">{user.full_name}</h2>
+                  <Badge tone={user.is_active ? "success" : "danger"}>{user.is_active ? "Active" : "Inactive"}</Badge>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">{user.email}</p>
+                <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                  <Badge tone="accent">{roleLabel}</Badge>
+                  <Badge tone="neutral"><ShieldCheck aria-hidden="true" className="mr-1 size-3" />{scopeLabel} scope</Badge>
+                  <Badge tone="support"><UsersRound aria-hidden="true" className="mr-1 size-3" />{team?.name ?? teamName(teams, workforceProfile?.team_id)}</Badge>
+                </div>
               </div>
-              <p className="mt-1 text-sm text-muted-foreground">{user.email}</p>
-              <p className="mt-1 max-w-4xl text-sm text-muted-foreground">{guidance.focus}</p>
+            </div>
+            <div className="flex flex-wrap gap-2 lg:justify-end">
+              <Button disabled={!canManage} onClick={onOpenAccess} variant="primary">
+                <Pencil aria-hidden="true" />
+                Edit user
+              </Button>
+              <Button disabled={!canManage} onClick={onOpenRoles} variant="secondary">
+                <ShieldCheck aria-hidden="true" />
+                Manage roles
+              </Button>
+              <Button disabled={!canManage || resettingPassword} onClick={onResetPassword} variant="secondary">
+                <RotateCcw aria-hidden="true" />
+                Reset password
+              </Button>
+              <Button disabled={!canManage || togglingStatus} onClick={onToggleStatus} variant={user.is_active ? "danger" : "primary"}>
+                {user.is_active ? <Lock aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
+                {user.is_active ? "Deactivate" : "Activate"}
+              </Button>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button disabled={!canManage} onClick={onOpenRoles} variant="secondary">
-              <ShieldCheck aria-hidden="true" />
-              Manage role assignments
-            </Button>
-            <Button disabled={!canManage} onClick={onOpenAccess} variant="secondary">
-              <KeyRound aria-hidden="true" />
-              Edit primary scope
-            </Button>
-            <Button disabled={!canManage || resettingPassword} onClick={onResetPassword} variant="secondary">
-              <RotateCcw aria-hidden="true" />
-              Reset password
-            </Button>
-            <Button disabled={!canManage || togglingStatus} onClick={onToggleStatus} variant={user.is_active ? "danger" : "secondary"}>
-              {user.is_active ? <Lock aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
-              {user.is_active ? "Deactivate account" : "Activate account"}
-            </Button>
-            <Button onClick={onClose} variant="ghost">Close profile</Button>
-          </div>
+          {profileOptions.length > 1 ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground">Profiles:</span>
+              {profileOptions.map((item) => (
+                <button
+                  className={cn(
+                    "rounded-full border px-2.5 py-1 text-xs font-medium transition",
+                    profile?.profile_type === item.profile_type ? "border-primary bg-primary text-primary-foreground" : "bg-background/80 hover:bg-muted",
+                  )}
+                  key={item.id}
+                  onClick={() => onSelectProfile(item.profile_type)}
+                  type="button"
+                >
+                  {item.display_name.replace(" Profile", "")}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
-
-        <div className="mt-3 flex flex-wrap gap-2">
-          {profileOptions.map((item) => (
-            <button
-              className={cn(
-                "rounded-full border px-2.5 py-1 text-xs font-medium transition",
-                profile?.profile_type === item.profile_type ? "border-primary bg-primary text-primary-foreground" : "bg-background hover:bg-muted",
-              )}
-              key={item.id}
-              onClick={() => onSelectProfile(item.profile_type)}
-              type="button"
-            >
-              {item.display_name.replace(" Profile", "")}
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-3 flex gap-1.5 overflow-x-auto product-scrollbar">
+        <div className="flex gap-1.5 overflow-x-auto border-t bg-muted/20 px-3 py-2 product-scrollbar">
           {roleProfileTabs.map((item) => (
             <button
               className={cn(
-                "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
-                tab === item.id ? "border-primary bg-primary text-primary-foreground" : "bg-panel hover:bg-muted",
+                "shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition",
+                tab === item.id ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
               key={item.id}
               onClick={() => setTab(item.id)}
@@ -1432,18 +1664,41 @@ function RoleSpecificProfileWorkspace({
         </div>
       </div>
 
+      {/* Setup banner: surfaces what is still required to operate, with a one-click fix */}
+      {setupIssues.length ? (
+        <div className="flex flex-col gap-2 rounded-xl border border-warning/40 bg-warning/10 p-3.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning" />
+            <div>
+              <p className="text-sm font-semibold">Setup needs attention</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{setupIssues.join(" · ")}</p>
+            </div>
+          </div>
+          {canManage ? (
+            <Button onClick={onOpenAccess} size="sm" variant="secondary">
+              <Pencil aria-hidden="true" />
+              Fix setup
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
       {tab === "overview" ? (
         <div className="space-y-3">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-            <RoleProfileSignal label="Operational role" value={profile?.display_name ?? normalizeRoleLabel(user.role_name)} />
-            <RoleProfileSignal label="Architecture group" value={String(profile?.metadata_json?.architecture_group ?? "Operational")} />
-            <RoleProfileSignal label="Access scope" value={(currentAssignment?.scope_type ?? user.scope_type ?? "organization").replace("_", " ")} />
-            <RoleProfileSignal label="Project" value={project?.name ?? profile?.primary_project_id ?? user.project_id ?? "Not restricted"} />
-            <RoleProfileSignal label="Team" value={team?.name ?? teamName(teams, workforceProfile?.team_id)} />
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <ProfileFactCard icon={ShieldCheck} label="Operational role" value={roleLabel} hint={String(profile?.metadata_json?.architecture_group ?? "Operational")} />
+            <ProfileFactCard icon={KeyRound} label="Access scope" value={scopeLabel} hint="Determines what data this user can see" />
+            <ProfileFactCard icon={Building2} label="Project" value={project?.name ?? user.project_id ?? "Not restricted"} hint="Active project context" />
+            <ProfileFactCard icon={UsersRound} label="Team" value={team?.name ?? teamName(teams, workforceProfile?.team_id)} hint={team?.team_type?.replace(/_/g, " ") ?? "No team type"} />
+            <ProfileFactCard icon={UserCog} label="Supervisor" value={supervisor} hint="Reports to" />
+            <ProfileFactCard icon={Briefcase} label="Job title" value={workforceProfile?.job_title ?? roleLabel} hint={workforceProfile?.employee_code ? `Employee ${workforceProfile.employee_code}` : "No employee code"} />
           </div>
-          <div className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="grid gap-3 lg:grid-cols-[1fr_1fr]">
             <div className="rounded-xl border bg-panel p-3.5 shadow-line">
-              <h3 className="text-sm font-semibold">Priority actions</h3>
+              <div className="flex items-center gap-2">
+                <Sparkles aria-hidden="true" className="size-4 text-primary" />
+                <h3 className="text-sm font-semibold">What this user should focus on</h3>
+              </div>
               <div className="mt-3 space-y-2">
                 {guidance.priorityActions.map((item) => (
                   <div className="flex gap-2 rounded-lg border bg-background p-2.5 text-sm" key={item}>
@@ -1454,102 +1709,134 @@ function RoleSpecificProfileWorkspace({
               </div>
             </div>
             <div className="rounded-xl border bg-panel p-3.5 shadow-line">
-              <h3 className="text-sm font-semibold">Profile metrics</h3>
+              <h3 className="text-sm font-semibold">At a glance</h3>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                {(metricEntries.length ? metricEntries : [["Assignments", activeAssignments.length], ["Recent activity", userActivity.length], ["Active sessions", userSessions.length], ["Profiles", profiles.length]]).map(([key, value]) => (
-                  <RoleProfileSignal key={String(key)} label={String(key).replaceAll("_", " ")} value={String(value ?? 0)} />
-                ))}
+                <RoleProfileSignal label="Active role assignments" value={activeAssignments.length} />
+                <RoleProfileSignal label="Effective permissions" value={effectivePermissions.length} />
+                <RoleProfileSignal label="Active sessions" value={userSessions.length} />
+                <RoleProfileSignal label="Recent activity" value={userActivity.length} />
               </div>
             </div>
           </div>
         </div>
       ) : null}
 
-      {tab === "responsibilities" ? (
-        <div className="grid gap-3 lg:grid-cols-2">
+      {tab === "access" ? (
+        <div className="space-y-3">
           <div className="rounded-xl border bg-panel p-3.5 shadow-line">
-            <h3 className="text-sm font-semibold">Responsibilities from role profile</h3>
-            <div className="mt-3 space-y-2">
-              {(profile?.responsibilities_json.length ? profile.responsibilities_json : guidance.priorityActions).map((item) => (
-                <div className="rounded-lg border bg-background p-3 text-sm" key={item}>{item}</div>
-              ))}
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold">Default role &amp; scope</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">The primary access this account signs in with.</p>
+              </div>
+              {canManage ? (
+                <Button onClick={onOpenAccess} size="sm" variant="secondary">
+                  <KeyRound aria-hidden="true" />
+                  Edit role &amp; scope
+                </Button>
+              ) : null}
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <RoleProfileSignal label="Role" value={roleLabel} />
+              <RoleProfileSignal label="Scope" value={<span className="capitalize">{scopeLabel}</span>} />
+              <RoleProfileSignal label="Location" value={user.geography_id ?? currentAssignment?.geography_id ?? "Not restricted"} />
+              <RoleProfileSignal label="Project" value={project?.name ?? user.project_id ?? "Not restricted"} />
             </div>
           </div>
+
           <div className="rounded-xl border bg-panel p-3.5 shadow-line">
-            <h3 className="text-sm font-semibold">Recommended management checks</h3>
-            <div className="mt-3 space-y-2">
-              {guidance.priorityActions.map((item) => (
-                <div className="rounded-lg border bg-background p-3 text-sm" key={item}>{item}</div>
-              ))}
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold">Role assignments</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">Additional scoped roles layered on top of the default access.</p>
+              </div>
+              {canManage ? (
+                <Button onClick={onOpenRoles} size="sm" variant="secondary">
+                  <ShieldCheck aria-hidden="true" />
+                  Manage roles
+                </Button>
+              ) : null}
+            </div>
+            <div className="mt-3">
+              <DataTable columns={assignmentColumns} emptyLabel="Only the default role applies. Use Manage roles to add scoped access." rows={assignmentRows} searchLabel="Search role scope" title="Assigned roles" />
+            </div>
+          </div>
+
+          <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <h3 className="text-sm font-semibold">Effective permissions</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">{effectivePermissions.length} permission(s) granted across all active roles.</p>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {effectivePermissions.length ? (
+                effectivePermissions.map((permission) => (
+                  <Badge key={permission} tone="neutral">{permission}</Badge>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">No permissions resolved yet. Assign a role with permissions to grant access.</p>
+              )}
             </div>
           </div>
         </div>
-      ) : null}
-
-      {tab === "scope" ? (
-        <DataTable columns={assignmentColumns} emptyLabel="No role assignments are available for this user." rows={assignmentRows} searchLabel="Search role scope" title="Role and scope assignments" />
       ) : null}
 
       {tab === "team" ? (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <RoleProfileSignal label="Team" value={team?.name ?? "Unassigned"} />
-          <RoleProfileSignal label="Team type" value={team?.team_type?.replace("_", " ") ?? "Not set"} />
-          <RoleProfileSignal label="Region" value={team?.region ?? profile?.primary_geography_id ?? currentAssignment?.geography_id ?? "Not restricted"} />
-          <RoleProfileSignal label="Supervisor" value={supervisor} />
-          <RoleProfileSignal label="Employee code" value={workforceProfile?.employee_code ?? "Not set"} />
-          <RoleProfileSignal label="Job title" value={workforceProfile?.job_title ?? profile?.display_name ?? normalizeRoleLabel(user.role_name)} />
-          <RoleProfileSignal label="Clearance" value={workforceProfile?.clearance_level ?? "Not set"} />
-          <RoleProfileSignal label="Performance score" value={workforceProfile?.performance_score ?? "Not measured"} />
+        <div className="space-y-3">
+          <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold">Team &amp; workforce</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">Where this person sits operationally and who they report to.</p>
+              </div>
+              {canManage ? (
+                <Button onClick={onOpenAccess} size="sm" variant="secondary">
+                  <UsersRound aria-hidden="true" />
+                  Assign team &amp; supervisor
+                </Button>
+              ) : null}
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <ProfileFactCard icon={UsersRound} label="Team" value={team?.name ?? "Unassigned"} hint={team?.team_type?.replace(/_/g, " ") ?? "No team type"} />
+              <ProfileFactCard icon={MapPin} label="Region" value={team?.region ?? profile?.primary_geography_id ?? currentAssignment?.geography_id ?? "Not restricted"} hint="Operating area" />
+              <ProfileFactCard icon={UserCog} label="Supervisor" value={supervisor} hint="Reports to" />
+              <ProfileFactCard icon={Briefcase} label="Job title" value={workforceProfile?.job_title ?? roleLabel} hint="Workforce role" />
+              <RoleProfileSignal label="Employee code" value={workforceProfile?.employee_code ?? "Not set"} />
+              <RoleProfileSignal label="Clearance" value={workforceProfile?.clearance_level ?? "Not set"} />
+              <RoleProfileSignal label="Performance score" value={workforceProfile?.performance_score ?? "Not measured"} />
+              <RoleProfileSignal label="Lifecycle" value={workforceProfile?.lifecycle_status ?? "Active"} />
+            </div>
+          </div>
         </div>
       ) : null}
 
-      {tab === "workload" ? (
-        <div className="grid gap-3 lg:grid-cols-[0.8fr_1.2fr]">
-          <div className="rounded-xl border bg-panel p-3.5 shadow-line">
-            <h3 className="text-sm font-semibold">Workload signals</h3>
-            <div className="mt-3 grid gap-2">
-              <RoleProfileSignal label="Active role assignments" value={activeAssignments.length} />
-              <RoleProfileSignal label="Active sessions" value={userSessions.length} />
-              <RoleProfileSignal label="Recent activity events" value={userActivity.length} />
-            </div>
-          </div>
+      {tab === "activity" ? (
+        <div className="space-y-3">
+          <DataTable columns={sessionColumns} emptyLabel="No active or recent sessions for this user." rows={sessionRows} searchLabel="Search sessions" title="Sessions" />
           <DataTable columns={activityColumns} emptyLabel="No recent activity for this user." rows={userActivity} searchLabel="Search activity" title="Recent activity" />
         </div>
       ) : null}
-
-      {tab === "quality" ? (
-        <div className="grid gap-3 lg:grid-cols-2">
-          {guidance.qualityControls.map((item) => (
-            <div className="rounded-xl border bg-panel p-3.5 shadow-line" key={item}>
-              <Badge tone="warning">Quality check</Badge>
-              <p className="mt-3 text-sm font-medium">{item}</p>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {tab === "governance" ? (
-        <div className="grid gap-3 lg:grid-cols-2">
-          {guidance.governanceControls.map((item) => (
-            <div className="rounded-xl border bg-panel p-3.5 shadow-line" key={item}>
-              <Badge tone="admin">Governance</Badge>
-              <p className="mt-3 text-sm font-medium">{item}</p>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {tab === "mobile" ? (
-        <div className="grid gap-3 lg:grid-cols-2">
-          {guidance.mobileReadiness.map((item) => (
-            <div className="rounded-xl border bg-panel p-3.5 shadow-line" key={item}>
-              <Badge tone={profile?.profile_type === "field_officer" ? "success" : "neutral"}>Mobile readiness</Badge>
-              <p className="mt-3 text-sm font-medium">{item}</p>
-            </div>
-          ))}
-        </div>
-      ) : null}
     </section>
+  );
+}
+
+function ProfileFactCard({
+  hint,
+  icon: Icon,
+  label,
+  value,
+}: {
+  hint?: string;
+  icon: typeof UsersRound;
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border bg-background p-3">
+      <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <Icon aria-hidden="true" className="size-3.5 text-primary/70" />
+        {label}
+      </div>
+      <p className="mt-1.5 truncate text-sm font-semibold capitalize" title={typeof value === "string" ? value : undefined}>{value}</p>
+      {hint ? <p className="mt-0.5 truncate text-xs text-muted-foreground">{hint}</p> : null}
+    </div>
   );
 }
 
@@ -1584,7 +1871,7 @@ function DashboardSection({
     <div className="space-y-3">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         {cards.map((card) => (
-          <button className="rounded-xl border bg-panel p-3 text-left shadow-line transition hover:-translate-y-0.5 hover:shadow-elevated" key={card.label} onClick={() => onOpenSection(card.label === "Teams" ? "teams" : card.label === "Roles" ? "roles" : "users")} type="button">
+          <button className="rounded-xl border bg-panel p-3 text-left shadow-line transition hover:-translate-y-0.5 hover:shadow-elevated" key={card.label} onClick={() => onOpenSection(card.label === "Active Sessions" ? "activity-logs" : "access-center")} type="button">
             <card.icon aria-hidden="true" className="text-primary" size={18} />
             <p className="mt-4 text-2xl font-semibold">{card.value}</p>
             <p className="text-xs text-muted-foreground">{card.label}</p>
@@ -1627,6 +1914,470 @@ function DashboardSection({
         <InsightCard icon={Sparkles} title="Recent user activity" items={[`${summary.recent_activity} audit events`, `${summary.pending_invitations} pending invitation(s)`, `${summary.inactive_users} inactive account(s)`]} />
       </div>
     </div>
+  );
+}
+
+function AccessCenterSection({
+  accessCenterTab,
+  canManageRoles,
+  canManageTeams,
+  canManageUsers,
+  catalog,
+  onCreateRole,
+  onCreateTeam,
+  onCreateUser,
+  onEditTeam,
+  onOpenDefaultAccess,
+  onOpenAccessTest,
+  onOpenOrganizations,
+  onOpenRoleAssignments,
+  onOpenRoleProfile,
+  onToggleUserStatus,
+  onSetAccessCenterTab,
+  permissionGroups,
+  preview,
+  profiles,
+  roles,
+  teams,
+  users,
+}: {
+  accessCenterTab: AccessCenterTab;
+  canManageRoles: boolean;
+  canManageTeams: boolean;
+  canManageUsers: boolean;
+  catalog: AccessCatalog;
+  onCreateRole: () => void;
+  onCreateTeam: () => void;
+  onCreateUser: () => void;
+  onEditTeam: (team: TeamRead) => void;
+  onOpenDefaultAccess: (user: UserRead) => void;
+  onOpenAccessTest: () => void;
+  onOpenOrganizations: () => void;
+  onOpenRoleAssignments: (user: UserRead) => void;
+  onOpenRoleProfile: (user: UserRead) => void;
+  onToggleUserStatus: (user: UserRead) => void;
+  onSetAccessCenterTab: (tab: AccessCenterTab) => void;
+  permissionGroups: ReturnType<typeof groupPermissions>;
+  preview: boolean;
+  profiles: WorkforceProfileRead[];
+  roles: RoleRead[];
+  teams: TeamRead[];
+  users: UserRead[];
+}) {
+  const [userSetupFilter, setUserSetupFilter] = useState<UserSetupFilter>("all");
+  const userRows = users.map((user) => {
+    const workforceProfile = profileForUser(profiles, user.id);
+    const stackedRoles = (user.role_assignments ?? []).filter((assignment) => assignment.is_active);
+    const assignmentTeamId = stackedRoles.find((assignment) => assignment.team_id)?.team_id;
+    const issues = userSetupIssues(user, workforceProfile);
+    return {
+      access: stackedRoles.length > 1 ? `${stackedRoles.length} active roles` : normalizeRoleLabel(user.role_name),
+      issues,
+      scope: (user.scope_type ?? "organization").replace("_", " "),
+      team: teamName(teams, workforceProfile?.team_id ?? assignmentTeamId),
+      user,
+    };
+  });
+  const filteredUserRows = userRows.filter((row) => matchesUserSetupFilter(row.issues, row.user.is_active, userSetupFilter));
+  const usersNeedingSetup = userRows.filter((row) => row.issues.length).length;
+  const readyUsers = userRows.filter((row) => !row.issues.length).length;
+  const inactiveUsers = userRows.filter((row) => !row.user.is_active).length;
+  const userColumns: TableColumn<(typeof userRows)[number]>[] = [
+    {
+      key: "user",
+      header: "User",
+      value: (row) => `${row.user.full_name} ${row.user.email}`,
+      render: (row) => (
+        <button className="text-left" onClick={() => onOpenRoleProfile(row.user)} type="button">
+          <span className="block font-medium text-primary hover:underline">{row.user.full_name}</span>
+          <span className="block text-xs text-muted-foreground">{row.user.email}</span>
+        </button>
+      ),
+    },
+    {
+      key: "access",
+      header: "Current Access",
+      value: (row) => `${row.access} ${row.scope}`,
+      render: (row) => (
+        <div className="space-y-1">
+          <Badge tone="accent">{row.access}</Badge>
+          <p className="text-xs capitalize text-muted-foreground">{row.scope}</p>
+        </div>
+      ),
+    },
+    {
+      key: "team",
+      header: "Team",
+      value: (row) => row.team,
+      render: (row) => (
+        <span className={cn("text-sm", row.team === "Unassigned" ? "text-muted-foreground" : "")}>
+          {row.team}
+        </span>
+      ),
+    },
+    {
+      key: "setup",
+      header: "Setup",
+      value: (row) => row.issues.join(" "),
+      render: (row) =>
+        row.issues.length ? (
+          <div className="space-y-1">
+            <Badge tone="warning">Needs setup</Badge>
+            <p className="text-xs text-muted-foreground">{row.issues.slice(0, 2).join(" · ")}</p>
+            <Button onClick={() => onOpenDefaultAccess(row.user)} size="sm" variant="ghost">
+              <Pencil aria-hidden="true" />
+              Fix setup
+            </Button>
+          </div>
+        ) : (
+          <Badge tone="success">Ready</Badge>
+        ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      value: (row) => (row.user.is_active ? "active" : "inactive"),
+      render: (row) => <Badge tone={statusTone(row.user.is_active)}>{row.user.is_active ? "Active" : "Inactive"}</Badge>,
+    },
+    {
+      key: "actions",
+      header: "Manage",
+      align: "right",
+      render: (row) => (
+        <div className="flex flex-wrap justify-end gap-1.5">
+          <Button disabled={preview || !canManageUsers} onClick={() => onOpenRoleAssignments(row.user)} size="sm" variant="secondary">
+            <ShieldCheck aria-hidden="true" />
+            Manage access
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const roleColumns: TableColumn<RoleRead>[] = [
+    {
+      key: "role",
+      header: "Role",
+      value: (role) => `${role.label || role.name} ${role.description ?? ""}`,
+      render: (role) => (
+        <div>
+          <p className="font-medium">{role.label || normalizeRoleLabel(role.name)}</p>
+          <p className="text-xs text-muted-foreground">{role.description || "Custom organization role"}</p>
+        </div>
+      ),
+    },
+    {
+      key: "scope",
+      header: "Default Scope",
+      value: (role) => role.scope_type ?? "organization",
+      render: (role) => <span className="capitalize">{(role.scope_type ?? "organization").replace("_", " ")}</span>,
+    },
+    {
+      key: "permissions",
+      header: "Permissions",
+      value: (role) => String(role.permissions.length),
+      render: (role) => <Badge tone="neutral">{role.permissions.length} permissions</Badge>,
+    },
+    {
+      key: "type",
+      header: "Type",
+      value: (role) => (role.is_system ? "system" : "custom"),
+      render: (role) => <Badge tone={role.is_system ? "admin" : "success"}>{role.is_system ? "System" : "Custom"}</Badge>,
+    },
+  ];
+
+  const teamColumns: TableColumn<TeamRead>[] = [
+    {
+      key: "team",
+      header: "Team",
+      value: (team) => `${team.name} ${team.code}`,
+      render: (team) => (
+        <div>
+          <p className="font-medium">{team.name}</p>
+          <p className="text-xs text-muted-foreground">{team.code}</p>
+        </div>
+      ),
+    },
+    {
+      key: "type",
+      header: "Type",
+      value: (team) => team.team_type,
+      render: (team) => <span className="capitalize">{team.team_type.replace("_", " ")}</span>,
+    },
+    {
+      key: "region",
+      header: "Region",
+      value: (team) => team.region ?? "",
+      render: (team) => team.region ?? "All regions",
+    },
+    {
+      key: "members",
+      header: "Members",
+      value: (team) => String(profiles.filter((profile) => profile.team_id === team.id).length),
+      render: (team) => <Badge tone="neutral">{profiles.filter((profile) => profile.team_id === team.id).length} members</Badge>,
+    },
+    {
+      key: "status",
+      header: "Status",
+      value: (team) => (team.is_active ? "active" : "inactive"),
+      render: (team) => <Badge tone={statusTone(team.is_active)}>{team.is_active ? "Active" : "Inactive"}</Badge>,
+    },
+    {
+      key: "actions",
+      header: "Manage",
+      align: "right",
+      render: (team) => (
+        <Button disabled={preview || !canManageTeams} onClick={() => onEditTeam(team)} size="sm" variant="secondary">
+          <Pencil aria-hidden="true" />
+          Edit
+        </Button>
+      ),
+    },
+  ];
+
+  const stepCards = [
+    {
+      id: "roles" as const,
+      label: "1. Confirm role templates",
+      note: "Define the permission bundle people can receive.",
+      badge: `${roles.length}`,
+    },
+    {
+      id: "teams" as const,
+      label: "2. Organize teams",
+      note: "Group staff by supervisor, function, or location.",
+      badge: `${teams.length}`,
+    },
+    {
+      id: "users" as const,
+      label: "3. Assign people",
+      note: "Create users and attach the right role and scope.",
+      badge: `${users.length}`,
+    },
+    {
+      id: "permissions" as const,
+      label: "4. Verify access",
+      note: "Check who can upload, clean, and review data.",
+      badge: `${catalog.permissions.length}`,
+    },
+  ];
+
+  const primaryAction =
+    accessCenterTab === "users" ? (
+      <div className="flex flex-wrap gap-2">
+        <Button disabled={!canManageUsers} onClick={onCreateUser} variant="primary">
+          <Plus aria-hidden="true" />
+          Create user
+        </Button>
+      </div>
+    ) : accessCenterTab === "roles" ? (
+      <div className="flex flex-wrap gap-2">
+        <Button disabled={preview || !canManageRoles} onClick={onCreateRole} variant="primary">
+          <Plus aria-hidden="true" />
+          Create role
+        </Button>
+      </div>
+    ) : accessCenterTab === "teams" ? (
+      <div className="flex flex-wrap gap-2">
+        <Button disabled={preview || !canManageTeams} onClick={onCreateTeam} variant="primary">
+          <Plus aria-hidden="true" />
+          Create team
+        </Button>
+        <Button onClick={onOpenOrganizations} variant="secondary">
+          <Building2 aria-hidden="true" />
+          Open structure
+        </Button>
+      </div>
+    ) : (
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={onOpenAccessTest} variant="primary">
+          <SearchCheck aria-hidden="true" />
+          Test access
+        </Button>
+      </div>
+    );
+
+  return (
+    <section className="space-y-4">
+      <SectionHeader
+        action={primaryAction}
+        description="Everything a project owner needs for access, roles, teams, and permission checks is grouped here in one guided workspace."
+        title="Access Center"
+      />
+      <div className="grid gap-4 xl:grid-cols-[0.78fr_1.22fr]">
+        <div className="space-y-4">
+          <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold">Recommended order</h3>
+              <Badge tone="support">Owner workflow</Badge>
+            </div>
+            <div className="mt-3 space-y-2">
+              {stepCards.map((step) => (
+                <button
+                  className={cn(
+                    "w-full rounded-lg border p-3 text-left transition",
+                    accessCenterTab === step.id
+                      ? "border-primary bg-primary/5"
+                      : "bg-background hover:bg-muted/40",
+                  )}
+                  key={step.id}
+                  onClick={() => onSetAccessCenterTab(step.id)}
+                  type="button"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold">{step.label}</p>
+                    <Badge tone={accessCenterTab === step.id ? "accent" : "neutral"}>{step.badge}</Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{step.note}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <h3 className="text-sm font-semibold">What to do here</h3>
+            <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+              <p>Roles decide what a person is allowed to do.</p>
+              <p>Teams decide who works together and who supervises whom.</p>
+              <p>Users receive the correct role and scope for their job.</p>
+              <p>Permission checks confirm the setup before live work starts.</p>
+            </div>
+          </div>
+        </div>
+        <div className="space-y-4">
+          <Tabs
+            ariaLabel="Access center tabs"
+            items={accessCenterTabs.map((item) => ({
+              value: item.id,
+              label: item.label,
+              hint: item.hint,
+              badge:
+                item.id === "users" ? <Badge tone="neutral">{users.length}</Badge> :
+                item.id === "roles" ? <Badge tone="neutral">{roles.length}</Badge> :
+                item.id === "teams" ? <Badge tone="neutral">{teams.length}</Badge> :
+                <Badge tone="neutral">{catalog.permissions.length}</Badge>,
+            }))}
+            onChange={onSetAccessCenterTab}
+            value={accessCenterTab}
+          />
+          <TabPanel active={accessCenterTab === "users"}>
+            <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+              <p className="text-sm font-semibold">Users and access assignments</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Use Manage access for role assignments, sign-in control, password reset, and permission checks. Use Default role and scope only when you need to change the user&apos;s base access record.
+              </p>
+              <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                {[
+                  ["Manage access", "Open the main control window for sign-in, permissions, and stacked access."],
+                  ["Default role and scope", "Change the user&apos;s base role, project, team, or location scope."],
+                  ["Teams", "Group people under the right supervisor or function."],
+                  ["Turn off access", "Stop login immediately without removing history."],
+                ].map(([label, detail]) => (
+                  <div className="rounded-lg border bg-background/70 p-3" key={label}>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+                    <p className="mt-1 text-sm text-foreground">{detail}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Badge tone={usersNeedingSetup ? "warning" : "success"}>
+                  {usersNeedingSetup ? `${usersNeedingSetup} people still need setup` : "All listed people are ready"}
+                </Badge>
+                <Badge tone="neutral">{userRows.length} total users</Badge>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {[
+                  { id: "all" as const, label: "All users", count: userRows.length },
+                  { id: "needs_setup" as const, label: "Needs setup", count: usersNeedingSetup },
+                  { id: "ready" as const, label: "Ready", count: readyUsers },
+                  { id: "inactive" as const, label: "Sign-in off", count: inactiveUsers },
+                ].map((filter) => (
+                  <Button
+                    key={filter.id}
+                    onClick={() => setUserSetupFilter(filter.id)}
+                    size="sm"
+                    variant={userSetupFilter === filter.id ? "primary" : "secondary"}
+                  >
+                    {filter.label}
+                    <span className="ml-1 rounded-full bg-background/80 px-1.5 py-0.5 text-[10px] font-semibold text-foreground">
+                      {filter.count}
+                    </span>
+                  </Button>
+                ))}
+              </div>
+              <div className="mt-3">
+                <DataTable
+                  columns={userColumns}
+                  emptyDescription={
+                    userSetupFilter === "needs_setup"
+                      ? "Everyone currently visible already has the minimum access setup in place."
+                      : userSetupFilter === "ready"
+                        ? "No users are fully ready yet. Finish team, supervisor, or scope setup first."
+                        : userSetupFilter === "inactive"
+                          ? "All visible users can currently sign in."
+                          : undefined
+                  }
+                  emptyLabel={
+                    userSetupFilter === "needs_setup"
+                      ? "No users are waiting for setup"
+                      : userSetupFilter === "ready"
+                        ? "No ready users yet"
+                        : userSetupFilter === "inactive"
+                          ? "No inactive users"
+                          : "No users have been created yet"
+                  }
+                  rows={filteredUserRows}
+                  searchLabel="Search users, role, team"
+                  title="People ready for access setup"
+                />
+              </div>
+            </div>
+          </TabPanel>
+          <TabPanel active={accessCenterTab === "roles"}>
+            <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+              <p className="text-sm font-semibold">Role templates</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Define the permission bundle once, then assign it many times with the right project, location, team, or own-record scope.
+              </p>
+              <div className="mt-3">
+                <DataTable
+                  columns={roleColumns}
+                  emptyLabel="No roles have been configured yet"
+                  rows={roles}
+                  searchLabel="Search roles or permissions"
+                  title="Roles ready for delegation"
+                />
+              </div>
+            </div>
+          </TabPanel>
+          <TabPanel active={accessCenterTab === "teams"}>
+            <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+              <p className="text-sm font-semibold">Operational teams</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Teams keep supervision, field work, and escalation paths understandable before you start assigning forms or project responsibilities.
+              </p>
+              <div className="mt-3">
+                <DataTable
+                  columns={teamColumns}
+                  emptyLabel="No operational teams have been created yet"
+                  rows={teams}
+                  searchLabel="Search teams, region, type"
+                  title="Teams ready for assignment"
+                />
+              </div>
+            </div>
+          </TabPanel>
+          <TabPanel active={accessCenterTab === "permissions"}>
+            <UserPermissionControlPanel
+              catalog={catalog}
+              onOpenUserProfile={onOpenRoleProfile}
+              roles={roles}
+              users={users}
+            />
+            <PermissionMatrix groups={permissionGroups} roles={roles} />
+          </TabPanel>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -2126,6 +2877,7 @@ function CreateUserModal({ canManageRoles, canSubmit, draft, onChange, onCreateC
   const scopedUnits = units.filter((unit) => unit.unit_type === draft.scope_type);
   const needsProjectScope = draft.scope_type === "project";
   const needsGeographyScope = ["country", "region", "district", "field_team"].includes(draft.scope_type ?? "");
+  const scopeHint = scopeSetupHint(draft.scope_type);
   return (
     <Modal description="Create an account, choose its role, and define the default access scope." onOpenChange={onOpenChange} open={open} title="Create user" contentClassName="max-w-2xl">
       <div className="grid gap-4 overflow-y-auto p-5 product-scrollbar">
@@ -2179,6 +2931,7 @@ function CreateUserModal({ canManageRoles, canSubmit, draft, onChange, onCreateC
               >
                 {["organization", "country", "region", "district", "field_team", "project", "own"].map((scope) => <option key={scope} value={scope}>{scope.replace("_", " ")}</option>)}
               </Select>
+              <span className="text-[11px] font-normal text-muted-foreground">{scopeHint}</span>
             </label>
             {needsProjectScope ? (
               <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
@@ -2203,7 +2956,7 @@ function CreateUserModal({ canManageRoles, canSubmit, draft, onChange, onCreateC
             ) : null}
             {needsGeographyScope ? (
               <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-                Location/team access
+                {draft.scope_type === "field_team" ? "Field-team boundary" : "Location access"}
                 <Select
                   value={draft.geography_ids?.[0] ?? ""}
                   onChange={(event) =>
@@ -2265,7 +3018,9 @@ function EditUserAccessModal({
   roleCatalogByName,
   roleOptions,
   saving,
+  teams,
   units,
+  users,
 }: {
   canSubmit: boolean;
   draft: AccessEditDraft;
@@ -2277,12 +3032,17 @@ function EditUserAccessModal({
   roleCatalogByName: Map<string, AccessCatalog["roles"][number]>;
   roleOptions: [string, string][];
   saving: boolean;
+  teams: TeamRead[];
   units: { id: string; name: string; code: string; unit_type: string; region: string | null }[];
+  users: UserRead[];
 }) {
   const selectedRole = roleCatalogByName.get(draft.role_name);
   const needsProjectScope = draft.scope_type === "project";
   const needsGeographyScope = ["country", "region", "district", "field_team"].includes(draft.scope_type);
   const scopedUnits = units.filter((unit) => unit.unit_type === draft.scope_type);
+  const scopeHint = scopeSetupHint(draft.scope_type);
+  const availableTeams = teams.filter((team) => team.is_active && (!draft.project_id || !team.project_id || team.project_id === draft.project_id));
+  const availableSupervisors = users.filter((user) => user.is_active && user.id !== draft.user?.id);
   return (
     <Modal
       contentClassName="max-w-2xl"
@@ -2334,6 +3094,7 @@ function EditUserAccessModal({
                 <option key={scope} value={scope}>{scope.replace("_", " ")}</option>
               ))}
             </Select>
+            <span className="text-[11px] font-normal text-muted-foreground">{scopeHint}</span>
           </label>
           {needsProjectScope ? (
             <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
@@ -2350,7 +3111,7 @@ function EditUserAccessModal({
           ) : null}
           {needsGeographyScope ? (
             <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-              Location/team
+              {draft.scope_type === "field_team" ? "Field-team boundary" : "Location boundary"}
               <Select value={draft.geography_id} onChange={(event) => onChange({ ...draft, geography_id: event.target.value })}>
                 <option value="">Select {draft.scope_type.replace("_", " ")}</option>
                 {scopedUnits.map((unit) => (
@@ -2369,6 +3130,45 @@ function EditUserAccessModal({
             />
             Account active
           </label>
+        </div>
+        <div className="rounded-xl border bg-muted/20 p-3">
+          <p className="text-sm font-semibold">Team and supervisor</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Define who this person reports to and which field team they belong to. This helps assignments, supervision, and mobile visibility stay aligned.
+          </p>
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+              Team
+              <Select value={draft.team_id} onChange={(event) => onChange({ ...draft, team_id: event.target.value })}>
+                <option value="">No team assigned</option>
+                {availableTeams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                    {team.region ? ` · ${team.region}` : ""}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+              Supervisor
+              <Select value={draft.supervisor_user_id} onChange={(event) => onChange({ ...draft, supervisor_user_id: event.target.value })}>
+                <option value="">No supervisor assigned</option>
+                {availableSupervisors.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.full_name}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+              Job title
+              <Input
+                placeholder="Field Officer"
+                value={draft.job_title}
+                onChange={(event) => onChange({ ...draft, job_title: event.target.value })}
+              />
+            </label>
+          </div>
         </div>
         <div className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground">
           <p className="font-semibold text-foreground">{selectedRole?.label ?? normalizeRoleLabel(draft.role_name)}</p>
@@ -2395,32 +3195,46 @@ function EditUserAccessModal({
 }
 
 function RoleAssignmentsModal({
+  canManage,
   canSubmit,
   draft,
   onChange,
   onDeactivate,
   onEdit,
+  onOpenDefaultAccess,
   onOpenChange,
+  onResetPassword,
   onSubmit,
+  onToggleStatus,
   open,
   projects,
+  resettingPassword,
   roleCatalogByName,
   roleOptions,
   saving,
+  teams,
+  togglingStatus,
   units,
 }: {
+  canManage: boolean;
   canSubmit: boolean;
   draft: RoleAssignmentDraft;
   onChange: (draft: RoleAssignmentDraft) => void;
   onDeactivate: (assignment: UserRoleAssignmentRead, user: UserRead) => void;
   onEdit: (user: UserRead, assignment: UserRoleAssignmentRead) => void;
+  onOpenDefaultAccess: () => void;
   onOpenChange: (open: boolean) => void;
+  onResetPassword: () => void;
   onSubmit: () => void;
+  onToggleStatus: () => void;
   open: boolean;
   projects: { id: string; name: string; project_code: string }[];
+  resettingPassword: boolean;
   roleCatalogByName: Map<string, AccessCatalog["roles"][number]>;
   roleOptions: [string, string][];
   saving: boolean;
+  teams: TeamRead[];
+  togglingStatus: boolean;
   units: { id: string; name: string; code: string; unit_type: string; region: string | null }[];
 }) {
   const selectedRole = roleCatalogByName.get(draft.role_name);
@@ -2429,13 +3243,15 @@ function RoleAssignmentsModal({
   const needsProjectScope = draft.scope_type === "project";
   const needsGeographyScope = ["country", "region", "district", "field_team"].includes(draft.scope_type);
   const scopedUnits = units.filter((unit) => unit.unit_type === draft.scope_type);
+  const availableTeams = teams.filter((team) => team.is_active && (!draft.project_id || !team.project_id || team.project_id === draft.project_id));
+  const scopeHint = scopeSetupHint(draft.scope_type);
   return (
     <Modal
       contentClassName="max-w-4xl"
-      description="Add more than one role to the same person. Each role keeps its own project, location, team, or own-record scope."
+      description="Choose the person's permission bundle, then decide where that access applies: project, location, team, or own records."
       onOpenChange={onOpenChange}
       open={open}
-      title="Access assignments"
+      title="Manage access"
     >
       <div className="grid gap-4 p-5 lg:grid-cols-[1.05fr_0.95fr]">
         <section className="rounded-xl border bg-muted/20 p-3">
@@ -2444,7 +3260,45 @@ function RoleAssignmentsModal({
               <p className="text-sm font-semibold">{draft.user?.full_name ?? "Selected user"}</p>
               <p className="mt-1 text-xs text-muted-foreground">{draft.user?.email}</p>
             </div>
-            <Badge tone="admin">{assignments.filter((assignment) => assignment.is_active).length} active</Badge>
+            <div className="flex flex-col items-end gap-2">
+              <Badge tone={draft.user?.is_active ? "success" : "danger"}>{draft.user?.is_active ? "Sign-in allowed" : "Sign-in blocked"}</Badge>
+              <Badge tone="admin">{assignments.filter((assignment) => assignment.is_active).length} active</Badge>
+            </div>
+          </div>
+          <div className="mt-3 rounded-lg border bg-panel p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Default role and sign-in</p>
+                <p className="mt-1 text-sm font-semibold">
+                  {normalizeRoleLabel(draft.user?.role_name)}
+                  <span className="ml-2 text-xs font-normal capitalize text-muted-foreground">
+                    {(draft.user?.scope_type ?? "organization").replace("_", " ")}
+                  </span>
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Use this area when you need to block login, reset the password, or update the main role and scope record.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button disabled={!canManage} onClick={onOpenDefaultAccess} size="sm" variant="secondary">
+                  <KeyRound aria-hidden="true" />
+                  Default role and scope
+                </Button>
+                <Button disabled={!canManage || resettingPassword} onClick={onResetPassword} size="sm" variant="secondary">
+                  <RotateCcw aria-hidden="true" />
+                  Reset password
+                </Button>
+                <Button
+                  disabled={!canManage || togglingStatus}
+                  onClick={onToggleStatus}
+                  size="sm"
+                  variant={draft.user?.is_active ? "danger" : "secondary"}
+                >
+                  {draft.user?.is_active ? <Lock aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
+                  {draft.user?.is_active ? "Turn off sign-in" : "Turn on sign-in"}
+                </Button>
+              </div>
+            </div>
           </div>
           <div className="mt-3 space-y-2">
             {assignments.length ? assignments.map((assignment) => (
@@ -2456,6 +3310,7 @@ function RoleAssignmentsModal({
                       {assignment.scope_type.replace("_", " ")}
                       {assignment.project_id ? ` · Project ${assignment.project_id}` : ""}
                       {assignment.geography_id ? ` · ${assignment.geography_id}` : ""}
+                      {assignment.team_id ? ` · ${teamName(teams, assignment.team_id)}` : ""}
                     </p>
                   </div>
                   <Badge tone={assignment.is_active ? "success" : "neutral"}>{assignment.is_active ? "Active" : "Inactive"}</Badge>
@@ -2511,8 +3366,8 @@ function RoleAssignmentsModal({
         <section className="rounded-xl border bg-panel p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h3 className="text-sm font-semibold">{draft.assignment_id ? "Edit assignment" : "Add assignment"}</h3>
-              <p className="mt-1 text-xs text-muted-foreground">Choose the role, then restrict what data it covers.</p>
+              <h3 className="text-sm font-semibold">{draft.assignment_id ? "Edit permission access" : "Add permission access"}</h3>
+              <p className="mt-1 text-xs text-muted-foreground">Choose the permission bundle first, then restrict which data area it covers.</p>
             </div>
             {draft.assignment_id ? (
               <Button onClick={() => onChange({ ...defaultRoleAssignmentDraft, role_name: draft.role_name, scope_type: draft.scope_type, user: draft.user })} size="sm" variant="ghost">New</Button>
@@ -2548,6 +3403,7 @@ function RoleAssignmentsModal({
                   <option key={scope} value={scope}>{scope.replace("_", " ")}</option>
                 ))}
               </Select>
+              <span className="text-[11px] font-normal text-muted-foreground">{scopeHint}</span>
             </label>
             {needsProjectScope ? (
               <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
@@ -2560,13 +3416,28 @@ function RoleAssignmentsModal({
             ) : null}
             {needsGeographyScope ? (
               <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-                Location or team
+                {draft.scope_type === "field_team" ? "Field-team boundary" : "Location boundary"}
                 <Select value={draft.geography_id} onChange={(event) => onChange({ ...draft, geography_id: event.target.value })}>
                   <option value="">Select {draft.scope_type.replace("_", " ")}</option>
                   {scopedUnits.map((unit) => <option key={unit.id} value={unit.code}>{unit.name} · {unit.code}</option>)}
                 </Select>
               </label>
             ) : null}
+            <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+              Team
+              <Select value={draft.team_id} onChange={(event) => onChange({ ...draft, team_id: event.target.value })}>
+                <option value="">No team restriction</option>
+                {availableTeams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                    {team.region ? ` · ${team.region}` : ""}
+                  </option>
+                ))}
+              </Select>
+              <span className="text-[11px] font-normal text-muted-foreground">
+                Recommended when the person belongs to one field team or supervisor line.
+              </span>
+            </label>
             <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
               Reason
               <Textarea
@@ -2644,7 +3515,18 @@ function CreateTeamModal({ canSubmit, draft, onChange, onOpenChange, onSubmit, o
       <div className="grid gap-4 p-5">
         <Input placeholder="Team name" value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} />
         <div className="grid gap-3 md:grid-cols-2">
-          <Input placeholder="Team code" value={draft.code} onChange={(event) => onChange({ ...draft, code: event.target.value.toUpperCase() })} />
+          <label className="text-sm font-medium">
+            Team code
+            <Input
+              className="mt-2"
+              placeholder={resolveTeamCode(draft.name, draft.code)}
+              value={draft.code}
+              onChange={(event) => onChange({ ...draft, code: normalizeTeamCode(event.target.value) })}
+            />
+            <span className="mt-1 block text-xs font-normal text-muted-foreground">
+              Leave this blank and Atlas will generate a safe code from the team name.
+            </span>
+          </label>
           <Input placeholder="Region or location" value={draft.region} onChange={(event) => onChange({ ...draft, region: event.target.value })} />
         </div>
         <div className="grid gap-3 md:grid-cols-2">
@@ -2702,7 +3584,18 @@ function EditTeamModal({ canSubmit, draft, onChange, onOpenChange, onSubmit, ope
       <div className="grid gap-4 p-5">
         <Input placeholder="Team name" value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} />
         <div className="grid gap-3 md:grid-cols-2">
-          <Input placeholder="Team code" value={draft.code} onChange={(event) => onChange({ ...draft, code: event.target.value.toUpperCase() })} />
+          <label className="text-sm font-medium">
+            Team code
+            <Input
+              className="mt-2"
+              placeholder={resolveTeamCode(draft.name, draft.code)}
+              value={draft.code}
+              onChange={(event) => onChange({ ...draft, code: normalizeTeamCode(event.target.value) })}
+            />
+            <span className="mt-1 block text-xs font-normal text-muted-foreground">
+              Leave this blank and Atlas will keep using the generated code from the team name.
+            </span>
+          </label>
           <Input placeholder="Region or location" value={draft.region} onChange={(event) => onChange({ ...draft, region: event.target.value })} />
         </div>
         <div className="grid gap-3 md:grid-cols-2">

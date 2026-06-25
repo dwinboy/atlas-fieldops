@@ -49,6 +49,7 @@ class EntityCategory(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base)
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
     project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    parent_category_id: Mapped[UUID | None] = mapped_column(ForeignKey("entity_categories.id"), index=True, nullable=True)
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     slug: Mapped[str] = mapped_column(String(120), nullable=False)
     sector: Mapped[str | None] = mapped_column(String(80), index=True, nullable=True)
@@ -60,6 +61,25 @@ class EntityCategory(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
     statuses_json: Mapped[list[str]] = mapped_column(JsonType, default=list)
     workflow_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+
+
+class EntityRelationship(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "entity_relationships"
+    __table_args__ = (
+        UniqueConstraint(
+            "organization_id",
+            "parent_beneficiary_id",
+            "child_beneficiary_id",
+            "relationship_type",
+        ),
+    )
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    parent_beneficiary_id: Mapped[UUID] = mapped_column(ForeignKey("beneficiaries.id"), index=True)
+    child_beneficiary_id: Mapped[UUID] = mapped_column(ForeignKey("beneficiaries.id"), index=True)
+    relationship_type: Mapped[str] = mapped_column(String(80), index=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
 
 
 class EntityAttribute(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):

@@ -95,6 +95,16 @@ class OrganizationGovernanceRepository:
         await self.session.flush()
         return row
 
+    async def get_workforce_profile(self, organization_id: UUID, profile_id: UUID) -> WorkforceProfile | None:
+        result = await self.session.execute(
+            select(WorkforceProfile).where(
+                WorkforceProfile.organization_id == organization_id,
+                WorkforceProfile.id == profile_id,
+                WorkforceProfile.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def list_workforce_profiles(self, organization_id: UUID) -> list[WorkforceProfile]:
         result = await self.session.execute(
             select(WorkforceProfile)
@@ -102,6 +112,12 @@ class OrganizationGovernanceRepository:
             .order_by(WorkforceProfile.lifecycle_status, WorkforceProfile.job_title)
         )
         return list(result.scalars())
+
+    async def update_workforce_profile(self, profile: WorkforceProfile, values: dict[str, object]) -> WorkforceProfile:
+        for key, value in values.items():
+            setattr(profile, key, value)
+        await self.session.flush()
+        return profile
 
     async def create_delegation(self, organization_id: UUID, values: dict[str, object]) -> AccessDelegation:
         row = AccessDelegation(organization_id=organization_id, **values)

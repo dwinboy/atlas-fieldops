@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
+import { useContextualBack } from "@/hooks/useContextualBack";
 import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
@@ -235,6 +236,7 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
   const router = useRouter();
   const [activeSection, setActiveSection] = useState<DataQualitySection>(() => dataQualitySectionFromPath(pathname));
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
+  useContextualBack(Boolean(selectedIssueId));
   const [activeIssueTab, setActiveIssueTab] = useState<IssueDetailTab>("Overview");
   const [actionResult, setActionResult] = useState("");
   const [reconciliationFilter, setReconciliationFilter] = useState<ReconciliationFocusFilter>("all");
@@ -453,7 +455,7 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
 
   return (
     <section className="space-y-3">
-      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="module-header rounded-xl p-3.5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
@@ -938,12 +940,12 @@ function QualityDashboard({ issues, onOpenIssue, scores }: { issues: QualityIssu
 
   return (
     <div className="space-y-3">
-      <SectionHeader
-        action={<Button onClick={exportDashboard} type="button"><Download aria-hidden="true" /> Export dashboard</Button>}
-        description="Executive quality overview with KPI cards, trend charts, severity breakdowns, heatmaps, ranking tables, and resolution progress."
-        route="/data-quality/dashboard"
-        title="Quality Dashboard"
-      />
+      <div className="flex justify-end">
+        <Button onClick={exportDashboard} type="button">
+          <Download aria-hidden="true" />
+          Export dashboard
+        </Button>
+      </div>
       <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
         <Panel title="Issue Severity Breakdown">
           <div className="grid gap-3 md:grid-cols-4">

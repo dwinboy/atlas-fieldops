@@ -9,7 +9,7 @@ from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from jose import jwt
 
-from app.api.v1.dependencies import get_current_principal, require_permission, require_role
+from app.api.v1.dependencies import get_current_principal, require_any_permission, require_permission, require_role
 from app.core.permissions import (
     AccessScope,
     Permission,
@@ -242,6 +242,23 @@ async def test_require_permission_rejects_missing_permission() -> None:
 
     with pytest.raises(HTTPException) as exc_info:
         await require_permission(Permission.USER_MANAGE)(principal)
+
+    assert exc_info.value.status_code == 403
+
+
+async def test_require_any_permission_accepts_any_matching_permission() -> None:
+    principal = CurrentPrincipal(user_id="user-1", organization_id="org-1", roles=["data_manager"])
+
+    authorized = await require_any_permission(Permission.OFFICER_MANAGE, Permission.USER_READ)(principal)
+
+    assert authorized == principal
+
+
+async def test_require_any_permission_rejects_when_none_match() -> None:
+    principal = CurrentPrincipal(user_id="user-1", organization_id="org-1", roles=["donor_viewer"])
+
+    with pytest.raises(HTTPException) as exc_info:
+        await require_any_permission(Permission.OFFICER_MANAGE, Permission.USER_MANAGE)(principal)
 
     assert exc_info.value.status_code == 403
 

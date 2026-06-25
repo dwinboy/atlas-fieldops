@@ -19,6 +19,13 @@ function readEntityField(entity: MobileEntity, sourceField: string): unknown {
     district: entity.location.district,
     region: entity.location.region,
     country: entity.location.country,
+    gps: entity.gps.latitude != null && entity.gps.longitude != null
+      ? {
+          latitude: entity.gps.latitude,
+          longitude: entity.gps.longitude,
+          accuracy: entity.gps.accuracy,
+        }
+      : null,
     latitude: entity.gps.latitude,
     longitude: entity.gps.longitude,
   };
@@ -28,9 +35,14 @@ function readEntityField(entity: MobileEntity, sourceField: string): unknown {
 export class PrefillService {
   createPrefill(entity: MobileEntity, formVersion: MobileFormVersion): PrefillResult {
     const mappings = formVersion.entitySettings.prefillMappings;
+    const variableNames = new Map(
+      formVersion.sections.flatMap((section) =>
+        section.questions.map((question) => [question.id, question.variableName] as const),
+      ),
+    );
     const responses = mappings.map((mapping: PrefillMapping) => ({
       questionId: mapping.targetQuestionId,
-      variableName: mapping.targetQuestionId,
+      variableName: variableNames.get(mapping.targetQuestionId) ?? mapping.targetQuestionId,
       value: readEntityField(entity, mapping.sourceEntityField),
       updatedAt: nowIso(),
     }));

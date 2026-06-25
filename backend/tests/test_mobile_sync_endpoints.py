@@ -7,9 +7,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models.audit import AuditLog
 from app.models.base import Base
-from app.models.collection import DataForm, DataFormVersion, FieldOfficerProfile, OfficerAssignment, Project, Survey
+from app.models.collection import DataForm, DataFormVersion, FieldOfficerProfile, FieldWorkAssignment, OfficerAssignment, Project, Submission, Survey
 from app.models.identity import Organization, User
-from app.models.operations import EntityAttribute, EntityCategory, MediaEvidence
+from app.models.operations import Beneficiary, EntityAttribute, EntityCategory, EntityRelationship, MediaEvidence
 from app.repositories.collection import FormRepository
 from app.schemas.auth import CurrentPrincipal
 from app.schemas.mobile import (
@@ -69,6 +69,26 @@ async def _seed_org_and_form(session):
                 slug="sync-form",
                 status="published",
                 current_version=1,
+                controls_json={
+                    "entity_controls": {
+                        "linked_to_entity": True,
+                        "entity_category_id": str(category_id),
+                        "entity_type": "Water Point",
+                        "creates_new_entity": True,
+                        "updates_existing_entity": True,
+                        "requires_existing_entity": False,
+                        "prefill_profile": True,
+                        "submission_frequency": "once_per_project",
+                    },
+                    "instrument": {
+                        "respondent_identity": {
+                            "mode": "existing_or_new",
+                            "beneficiary_search_required": False,
+                            "allow_new_registration": True,
+                            "allow_anonymous": False,
+                        }
+                    },
+                },
             ),
             DataFormVersion(
                 id=version_id,
@@ -184,6 +204,9 @@ async def test_mobile_sync_keeps_published_version_until_new_version_is_publishe
         assert [version.version for version in package.form_versions] == [1]
         assert package.assignments[0].form_version_id == str(seed["version_id"])
         assert package.form_versions[0].sections[0]["questions"][0]["id"] == "q_name"
+        assert package.form_versions[0].entity_settings.respondent_identity_mode == "existing_or_new"
+        assert package.form_versions[0].entity_settings.entity_search_mode == "optional"
+        assert package.form_versions[0].entity_settings.entity_category_id == str(seed["category_id"])
         assert package.entity_categories[0].id == str(seed["category_id"])
         assert package.entity_categories[0].name == "Water Point"
         serialized_category = package.entity_categories[0].model_dump(mode="json", by_alias=True)
@@ -204,6 +227,185 @@ async def test_mobile_sync_keeps_published_version_until_new_version_is_publishe
         assert [version.version for version in promoted_package.form_versions] == [2]
         assert promoted_package.assignments[0].form_version_id == promoted_package.form_versions[0].id
         assert promoted_package.form_versions[0].sections[0]["questions"][0]["id"] == "q_new"
+
+
+async def test_mobile_sync_limits_entities_to_explicit_field_work_assignment_scope() -> None:
+    session = await _build_session()
+    async with session as db:
+        seed = await _seed_org_and_form(db)
+        entity_one_id = uuid4()
+        entity_two_id = uuid4()
+        db.add_all(
+            [
+                OfficerAssignment(
+                    organization_id=seed["organization_id"],
+                    officer_id=seed["officer_id"],
+                    project_id=seed["project_id"],
+                    form_id=seed["form_id"],
+                    is_active=True,
+                ),
+                Beneficiary(
+                    id=entity_one_id,
+                    organization_id=seed["organization_id"],
+                    project_id=seed["project_id"],
+                    beneficiary_uid="WP-2026-000001",
+                    beneficiary_type="Water Point",
+                    display_name="Well A",
+                    enrollment_status="active",
+                ),
+                Beneficiary(
+                    id=entity_two_id,
+                    organization_id=seed["organization_id"],
+                    project_id=seed["project_id"],
+                    beneficiary_uid="WP-2026-000002",
+                    beneficiary_type="Water Point",
+                    display_name="Well B",
+                    enrollment_status="active",
+                ),
+                FieldWorkAssignment(
+                    organization_id=seed["organization_id"],
+                    project_id=seed["project_id"],
+                    form_id=seed["form_id"],
+                    created_by_user_id=seed["officer_user_id"],
+                    name="Scoped follow-up",
+                    description="Only one water point assigned",
+                    assignment_type="Form only",
+                    officer_ids_json=[str(seed["officer_id"])],
+                    assigned_entity_ids_json=[str(entity_one_id)],
+                    target_count=1,
+                    completed_count=0,
+                    priority="Normal",
+                    status="Assigned",
+                ),
+            ]
+        )
+        await db.commit()
+
+        principal = _principal_for(seed["organization_id"], seed["officer_user_id"])
+        package = await MobileService(db).sync_package(principal)
+
+        assert len(package.assignments) == 1
+        assert package.assignments[0].entity_ids == [str(entity_one_id)]
+        assert [entity.id for entity in package.entities] == [str(entity_one_id)]
+        assert package.entities[0].entity_category_id == str(seed["category_id"])
+
+
+async def test_mobile_sync_includes_entity_hierarchy_and_category_parents() -> None:
+    session = await _build_session()
+    async with session as db:
+        seed = await _seed_org_and_form(db)
+        parent_category_id = uuid4()
+        parent_entity_id = uuid4()
+        child_entity_id = uuid4()
+        db.add_all(
+            [
+                OfficerAssignment(
+                    organization_id=seed["organization_id"],
+                    officer_id=seed["officer_id"],
+                    project_id=seed["project_id"],
+                    form_id=seed["form_id"],
+                    is_active=True,
+                ),
+                EntityCategory(
+                    id=parent_category_id,
+                    organization_id=seed["organization_id"],
+                    project_id=seed["project_id"],
+                    name="Facility",
+                    slug="facility",
+                    sector="wash",
+                    status="active",
+                    statuses_json=["active", "inactive"],
+                    workflow_json={},
+                ),
+            ]
+        )
+        category = await db.get(EntityCategory, seed["category_id"])
+        assert category is not None
+        category.parent_category_id = parent_category_id
+        db.add_all(
+            [
+                Beneficiary(
+                    id=parent_entity_id,
+                    organization_id=seed["organization_id"],
+                    project_id=seed["project_id"],
+                    beneficiary_uid="FAC-2026-000001",
+                    beneficiary_type="Facility",
+                    display_name="North Hub",
+                    enrollment_status="active",
+                ),
+                Beneficiary(
+                    id=child_entity_id,
+                    organization_id=seed["organization_id"],
+                    project_id=seed["project_id"],
+                    beneficiary_uid="WP-2026-000010",
+                    beneficiary_type="Water Point",
+                    display_name="Pump A",
+                    enrollment_status="active",
+                ),
+                EntityRelationship(
+                    organization_id=seed["organization_id"],
+                    project_id=seed["project_id"],
+                    parent_beneficiary_id=parent_entity_id,
+                    child_beneficiary_id=child_entity_id,
+                    relationship_type="located_in",
+                    metadata_json={},
+                ),
+            ]
+        )
+        await db.commit()
+
+        principal = _principal_for(seed["organization_id"], seed["officer_user_id"])
+        package = await MobileService(db).sync_package(principal)
+
+        categories_by_id = {category.id: category for category in package.entity_categories}
+        entities_by_id = {entity.id: entity for entity in package.entities}
+
+        assert categories_by_id[str(seed["category_id"])].parent_category_id == str(parent_category_id)
+        assert entities_by_id[str(child_entity_id)].parent_entity_ids == [str(parent_entity_id)]
+        assert entities_by_id[str(parent_entity_id)].child_entity_ids == [str(child_entity_id)]
+
+
+async def test_mobile_sync_allows_existing_or_new_submission_without_selected_entity() -> None:
+    session = await _build_session()
+    async with session as db:
+        seed = await _seed_org_and_form(db)
+        principal = _principal_for(seed["organization_id"], seed["officer_user_id"])
+
+        submission = await MobileService(db).upload_submission(
+            principal=principal,
+            payload=MobileSubmissionUpload(
+                local_id="mobile-existing-or-new-001",
+                project_id=str(seed["project_id"]),
+                form_id=str(seed["form_id"]),
+                form_version_id=str(seed["version_id"]),
+                entity_type="Water Point",
+                responses=[
+                    {
+                        "questionId": "q_name",
+                        "variableName": "name",
+                        "value": "Pump C",
+                        "updatedAt": seed["now"],
+                    }
+                ],
+                location={"latitude": 5.9, "longitude": 10.1, "accuracy": 8, "timestamp": seed["now"]},
+                device_id="android-test",
+                app_version="1.0.0-test",
+                created_at=seed["now"],
+                submitted_at=seed["now"],
+            ),
+        )
+
+        assert submission.status == "synced"
+        synced = (
+            await db.execute(
+                select(Submission).where(
+                    Submission.organization_id == seed["organization_id"],
+                    Submission.source_submission_id == "mobile-existing-or-new-001",
+                )
+            )
+        ).scalar_one()
+        assert synced.form_id == seed["form_id"]
+        assert synced.entity_id is None
 
 
 async def test_upload_audit_events_persists_audit_log() -> None:

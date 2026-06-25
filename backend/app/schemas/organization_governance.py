@@ -1,7 +1,15 @@
 from datetime import date, datetime
+import re
+from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+def normalize_team_code_value(value: Any) -> str:
+    text = str(value or "").strip().lower().replace("_", "-")
+    text = re.sub(r"[^a-z0-9-]+", "-", text)
+    return text.strip("-")
 
 
 class DepartmentCreate(BaseModel):
@@ -34,6 +42,11 @@ class TeamCreate(BaseModel):
     region: str | None = Field(default=None, max_length=160)
     project_id: UUID | None = None
 
+    @field_validator("code", mode="before")
+    @classmethod
+    def normalize_code(cls, value: Any) -> str:
+        return normalize_team_code_value(value)
+
 
 class TeamUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=200)
@@ -45,6 +58,14 @@ class TeamUpdate(BaseModel):
     region: str | None = Field(default=None, max_length=160)
     project_id: UUID | None = None
     is_active: bool | None = None
+
+    @field_validator("code", mode="before")
+    @classmethod
+    def normalize_optional_code(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        text = normalize_team_code_value(value)
+        return text or None
 
 
 class TeamRead(BaseModel):
@@ -74,6 +95,18 @@ class WorkforceProfileCreate(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     clearance_level: str = Field(default="standard", max_length=80)
+
+
+class WorkforceProfileUpdate(BaseModel):
+    employee_code: str | None = Field(default=None, max_length=80)
+    job_title: str | None = Field(default=None, max_length=160)
+    department_id: UUID | None = None
+    team_id: UUID | None = None
+    supervisor_user_id: UUID | None = None
+    lifecycle_status: str | None = Field(default=None, max_length=40)
+    start_date: date | None = None
+    end_date: date | None = None
+    clearance_level: str | None = Field(default=None, max_length=80)
 
 
 class WorkforceProfileRead(BaseModel):

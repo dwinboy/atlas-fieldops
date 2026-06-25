@@ -1581,6 +1581,30 @@ export type BeneficiaryRead = {
   profile_json?: Record<string, unknown>;
 };
 
+export type EntityRelationshipDirection = "parent" | "child";
+
+export type EntityRelationshipRead = {
+  id: string;
+  direction: EntityRelationshipDirection;
+  relationship_type: string;
+  related_beneficiary: BeneficiaryRead;
+  metadata_json?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type EntityHierarchyRead = {
+  parents: EntityRelationshipRead[];
+  children: EntityRelationshipRead[];
+};
+
+export type EntityRelationshipCreate = {
+  related_beneficiary_id: string;
+  related_role: EntityRelationshipDirection;
+  relationship_type: string;
+  metadata_json?: Record<string, unknown>;
+};
+
 export type BeneficiaryCreate = {
   beneficiary_uid: string;
   beneficiary_type: string;
@@ -1630,6 +1654,7 @@ export type EntityCategoryCreate = {
   name: string;
   slug?: string | null;
   project_id?: string | null;
+  parent_category_id?: string | null;
   sector?: string | null;
   description?: string | null;
   icon?: string;
@@ -1646,6 +1671,7 @@ export type EntityCategoryRead = Required<Omit<EntityCategoryCreate, "attributes
   id: string;
   slug: string;
   project_id: string | null;
+  parent_category_id: string | null;
   attributes: (EntityAttributeCreate & {
     id: string;
     category_id: string;
@@ -2312,11 +2338,17 @@ export type OperationalActivityReportRead = {
 };
 
 export const FORM_TYPES = [
-  "registration",
-  "monitoring",
-  "follow_up",
-  "verification",
   "assessment",
+  "attendance",
+  "baseline",
+  "case_update",
+  "complaint",
+  "distribution",
+  "endline",
+  "follow_up",
+  "monitoring",
+  "registration",
+  "verification",
   "custom",
 ] as const;
 
@@ -2489,6 +2521,11 @@ export type FormEntityControlSettings = {
   duplicate_threshold: number;
   duplicate_action: "block" | "warn" | "review";
   prefill_profile: boolean;
+  prefill_mappings?: Array<{
+    sourceEntityField: string;
+    targetQuestionId: string;
+    lockBehavior: "ReadOnly" | "Editable" | "EditableWithReason";
+  }>;
   lock_prefilled_fields: boolean;
   editable_with_reason: boolean;
   profile_update_mode: string;
@@ -2812,6 +2849,10 @@ async function request<T>(
   if (!response.ok) {
     const detail = await response.text();
     throw new ApiError(detail || response.statusText, response.status);
+  }
+
+  if (response.status === 204) {
+    return null as T;
   }
 
   return response.json() as Promise<T>;
@@ -3434,6 +3475,20 @@ export async function createWorkforceProfile(token: string, payload: {
   return request<WorkforceProfileRead>("/organization-governance/workforce-profiles", { method: "POST", token, bodyJson: payload });
 }
 
+export async function updateWorkforceProfile(token: string, profileId: string, payload: {
+  employee_code?: string | null;
+  job_title?: string | null;
+  department_id?: string | null;
+  team_id?: string | null;
+  supervisor_user_id?: string | null;
+  lifecycle_status?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  clearance_level?: string | null;
+}): Promise<WorkforceProfileRead> {
+  return request<WorkforceProfileRead>(`/organization-governance/workforce-profiles/${profileId}`, { method: "PATCH", token, bodyJson: payload });
+}
+
 export async function listDelegations(token: string): Promise<DelegationRead[]> {
   return request<DelegationRead[]>("/organization-governance/delegations", { token });
 }
@@ -3986,6 +4041,37 @@ export async function updateBeneficiary(
     method: "PATCH",
     token,
     bodyJson: payload,
+  });
+}
+
+export async function getEntityHierarchy(
+  token: string,
+  beneficiaryId: string,
+): Promise<EntityHierarchyRead> {
+  return request<EntityHierarchyRead>(`/operations/beneficiaries/${beneficiaryId}/relationships`, {
+    token,
+  });
+}
+
+export async function createEntityRelationship(
+  token: string,
+  beneficiaryId: string,
+  payload: EntityRelationshipCreate,
+): Promise<EntityRelationshipRead> {
+  return request<EntityRelationshipRead>(`/operations/beneficiaries/${beneficiaryId}/relationships`, {
+    method: "POST",
+    token,
+    bodyJson: payload,
+  });
+}
+
+export async function deleteEntityRelationship(
+  token: string,
+  relationshipId: string,
+): Promise<void> {
+  await request<null>(`/operations/entity-relationships/${relationshipId}`, {
+    method: "DELETE",
+    token,
   });
 }
 

@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
+import { useContextualBack } from "@/hooks/useContextualBack";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
@@ -471,6 +472,7 @@ export function ReportsModule({ token }: ReportsModuleProps) {
     () => (preview ? previewReports : (reportsQuery.data ?? []).map((row) => mapApiReport(row, terminology.reportOwnerRole))),
     [preview, reportsQuery.data, terminology.reportOwnerRole],
   );
+  useContextualBack(Boolean(selectedReportId));
 
   const generateReportMutation = useMutation({
     mutationFn: (reportId: string) => generateReport(token ?? "", reportId),
@@ -597,7 +599,7 @@ export function ReportsModule({ token }: ReportsModuleProps) {
 
   return (
     <section className="space-y-3">
-      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="module-header rounded-xl p-3.5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
@@ -1284,6 +1286,8 @@ function DashboardsSection({
   const [crossFilter, setCrossFilter] = useState<DashboardCrossFilter | null>(null);
   const [exporting, setExporting] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
+
+  useContextualBack(Boolean(builderOpen));
 
   useEffect(() => {
     setCrossFilter(null);
