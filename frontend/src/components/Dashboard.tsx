@@ -1266,9 +1266,9 @@ export function Dashboard({ token, principal }: DashboardProps) {
                 label="About the command dashboard"
                 title="Command dashboard"
               >
-                The first screen follows the platform architecture: projects,
-                forms, submissions, reviews, data quality, field activity,
-                metrics, alerts, approvals, and map readiness.
+                Your starting point: a live overview of projects, forms,
+                submissions, reviews, data quality, field activity, metrics,
+                alerts, approvals, and map readiness.
               </HelpHint>
             </div>
           </div>

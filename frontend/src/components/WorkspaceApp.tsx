@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { LifeBuoy, Megaphone, RotateCcw } from "lucide-react";
+import { LifeBuoy, Loader2, Megaphone, RotateCcw } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -21,10 +21,6 @@ import {
 import { NotificationCenter } from "@/components/NotificationCenter";
 import { PlatformConsole } from "@/components/PlatformConsole";
 import { ProductHelpCenter } from "@/components/ProductHelpCenter";
-import {
-  ModuleWorkspace,
-  type ModuleWorkspaceAction,
-} from "@/components/shared/ModuleWorkspace";
 import { SurveyManagement } from "@/components/SurveyManagement";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -211,14 +207,10 @@ export function WorkspaceApp() {
   if (token === undefined) {
     return (
       <>
-        <section className="flex min-h-screen items-center justify-center bg-background px-6 text-center">
-          <div className="max-w-sm rounded-2xl border bg-panel p-6 shadow-line">
-            <p className="text-sm font-semibold">Opening workspace</p>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Atlas is restoring your secure session and loading the selected module.
-            </p>
-          </div>
-        </section>
+        <WorkspaceLoadingScreen
+          hint="Restoring your secure session…"
+          title="Opening workspace"
+        />
         <NotificationCenter />
       </>
     );
@@ -241,17 +233,10 @@ export function WorkspaceApp() {
   if (!isPreviewToken && principalQuery.isLoading) {
     return (
       <>
-        <section className="flex min-h-screen items-center justify-center bg-background px-6 text-center">
-          <div className="max-w-sm rounded-2xl border bg-panel p-6 shadow-line">
-            <p className="text-sm font-semibold">
-              Checking your workspace access
-            </p>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Atlas is confirming your account, organization, role, and menu
-              permissions before opening the workspace.
-            </p>
-          </div>
-        </section>
+        <WorkspaceLoadingScreen
+          hint="Confirming your access…"
+          title="Preparing your workspace"
+        />
         <NotificationCenter />
       </>
     );
@@ -280,29 +265,6 @@ export function WorkspaceApp() {
       }}
     />
   );
-  function moduleWorkspace(
-    view: WorkspaceView,
-    child: React.ReactNode,
-    actions: ModuleWorkspaceAction[] = [],
-    showSections = true,
-  ): React.ReactNode {
-    const item = getNavigationItemByView(view);
-    if (!item) return child;
-    return (
-      <ModuleWorkspace actions={actions} item={item} showSections={showSections}>
-        {child}
-      </ModuleWorkspace>
-    );
-  }
-
-  function openWorkspaceShortcut(view: WorkspaceView): void {
-    setActiveView(view);
-    const route = workspaceAppRouteForView(view);
-    if (route && route !== pathname) {
-      router.push(route);
-    }
-  }
-
   if (isPlatformConsoleMode) {
     return (
       <>
@@ -379,23 +341,7 @@ export function WorkspaceApp() {
     surveys: <SurveyManagement token={token} />,
     beneficiaries: <BeneficiariesModule token={token} principal={principalQuery.data} />,
     indicators: <IndicatorsModule token={token} principal={principalQuery.data} />,
-    organizations: moduleWorkspace(
-      "organizations",
-      <UsersTeamsModule token={token} principal={principalQuery.data} />,
-      [
-        {
-          label: "Open field teams",
-          description: "Manage assignments and field execution.",
-          onClick: () => openWorkspaceShortcut("officers"),
-        },
-        {
-          label: "Audit trail",
-          description: "Review immutable governance events.",
-          onClick: () => openWorkspaceShortcut("governance"),
-        },
-      ],
-      false,
-    ),
+    organizations: <UsersTeamsModule token={token} principal={principalQuery.data} />,
     officers: <FieldOperationsModule token={token} principal={principalQuery.data} />,
     templates: <FormTemplateLibrary token={token} />,
     forms: <FormsModule token={token} principal={principalQuery.data} />,
@@ -488,5 +434,25 @@ export function WorkspaceApp() {
         </motion.div>
       </AnimatePresence>
     </AppShell>
+  );
+}
+
+function WorkspaceLoadingScreen({ hint, title }: { hint: string; title: string }) {
+  return (
+    <section className="flex min-h-screen items-center justify-center bg-background px-6">
+      <div className="flex w-full max-w-sm animate-[view-fade-up_0.4s_ease] flex-col items-center gap-5 text-center">
+        <span className="flex size-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary">
+          <Loader2 aria-hidden="true" className="size-6 animate-spin" />
+        </span>
+        <div className="space-y-1">
+          <p className="text-base font-semibold tracking-tight">{title}</p>
+          <p className="text-sm text-muted-foreground">{hint}</p>
+        </div>
+        <div className="w-full space-y-2" aria-hidden="true">
+          <div className="h-2.5 w-3/4 mx-auto rounded-full bg-muted animate-pulse" />
+          <div className="h-2.5 w-1/2 mx-auto rounded-full bg-muted/70 animate-pulse" />
+        </div>
+      </div>
+    </section>
   );
 }

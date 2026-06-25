@@ -8,6 +8,7 @@ import {
   Briefcase,
   Building2,
   CheckCircle2,
+  Copy,
   Download,
   FileUp,
   KeyRound,
@@ -15,15 +16,18 @@ import {
   MapPin,
   Pencil,
   Plus,
+  QrCode,
   RotateCcw,
   SearchCheck,
   ShieldCheck,
+  Smartphone,
   Sparkles,
   UserCog,
   UsersRound,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import QRCode from "qrcode";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useContextualBack } from "@/hooks/useContextualBack";
 import { DataTable, type TableColumn } from "@/components/DataTable";
@@ -44,10 +48,12 @@ import {
   createWorkforceProfile,
   deactivateUserRoleAssignment,
   getAccessCatalog,
+  getFieldOfficerProfile,
   getOrganizationContext,
   getOrganizationGovernanceSummary,
   getUsersTeamsSummary,
   importUsers,
+  listFieldOfficers,
   listOrganizationUnits,
   listProjects,
   listRoles,
@@ -65,6 +71,7 @@ import {
   type AccessCatalog,
   type AccessSimulationRead,
   type CurrentPrincipal,
+  type FieldOfficerProfileDetailRead,
   type RoleCreate,
   type RoleRead,
   type SessionLogRead,
@@ -140,7 +147,7 @@ type RoleAssignmentDraft = {
   team_id: string;
   user: UserRead | null;
 };
-type RoleProfileTab = "overview" | "access" | "team" | "activity";
+type RoleProfileTab = "overview" | "access" | "team" | "login" | "activity";
 type AccessCenterTab = "users" | "roles" | "teams" | "permissions";
 
 const defaultUserDraft: UserCreate = {
@@ -195,8 +202,9 @@ const fallbackAssignableRoles: [string, string][] = [
 
 const roleProfileTabs: { id: RoleProfileTab; label: string }[] = [
   { id: "overview", label: "Overview" },
-  { id: "access", label: "Access & Roles" },
+  { id: "access", label: "Roles & Permissions" },
   { id: "team", label: "Team & Workforce" },
+  { id: "login", label: "Login & Device" },
   { id: "activity", label: "Activity" },
 ];
 
@@ -427,6 +435,8 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   const [accessResult, setAccessResult] = useState<AccessSimulationRead | null>(null);
   const [localUsers, setLocalUsers] = useState<UserRead[]>([]);
   const [selectedImportFile, setSelectedImportFile] = useState<File | null>(null);
+  const [passwordResult, setPasswordResult] = useState<{ name: string; password: string } | null>(null);
+  const passwordResetTargetName = useRef("the user");
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const queryClient = useQueryClient();
   const preview = isPreview(token);
@@ -447,6 +457,25 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   const activityQuery = useQuery({ queryKey: ["users-teams", "activity", token], queryFn: () => listUsersTeamsActivityLogs(token ?? ""), enabled });
   const organizationQuery = useQuery({ queryKey: ["users-teams", "organization", token], queryFn: () => getOrganizationContext(token ?? ""), enabled });
   const projectsQuery = useQuery({ queryKey: ["users-teams", "projects", token], queryFn: () => listProjects(token ?? ""), enabled });
+  // Field-officer profile carries the mobile QR login, credential/security state, and
+  // the granular permission list — fetched lazily only while a user profile is open.
+  const fieldOfficersQuery = useQuery({
+    queryKey: ["users-teams", "field-officers", token],
+    queryFn: () => listFieldOfficers(token ?? ""),
+    enabled: enabled && Boolean(selectedRoleProfileUserId),
+  });
+  const selectedOfficerId = useMemo(
+    () => fieldOfficersQuery.data?.find((officer) => officer.user_id === selectedRoleProfileUserId)?.id ?? null,
+    [fieldOfficersQuery.data, selectedRoleProfileUserId],
+  );
+  const fieldOfficerDetailQuery = useQuery({
+    queryKey: ["users-teams", "field-officer-detail", token, selectedOfficerId],
+    queryFn: () => getFieldOfficerProfile(token ?? "", selectedOfficerId ?? ""),
+    enabled: enabled && Boolean(selectedOfficerId),
+  });
+  const fieldOfficerDetail: FieldOfficerProfileDetailRead | null = preview
+    ? null
+    : (fieldOfficerDetailQuery.data ?? null);
 
   const users = preview ? [...localUsers, ...previewUsers] : (usersQuery.data ?? []);
   const roles = useMemo(() => (preview ? previewRoles : (rolesQuery.data ?? [])), [preview, rolesQuery.data]);
@@ -762,9 +791,17 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
 
   const resetPasswordMutation = useMutation({
     mutationFn: (userId: string) => resetUserPassword(token ?? "", userId),
-    onSuccess: (result) => pushToast({ title: "Temporary password created", description: `Temporary password: ${result.temporary_password}`, tone: "success" }),
+    onSuccess: (result) => {
+      setPasswordResult({ name: passwordResetTargetName.current, password: result.temporary_password });
+      pushToast({ title: "Temporary password created", description: "Share it securely — it is shown once.", tone: "success" });
+    },
     onError: () => pushToast({ title: "Password reset failed", description: "You need user management permission to reset another account.", tone: "danger" }),
   });
+
+  function resetPasswordForUser(target: UserRead): void {
+    passwordResetTargetName.current = target.full_name;
+    resetPasswordMutation.mutate(target.id);
+  }
 
   const updateUserStatusMutation = useMutation({
     mutationFn: ({ is_active, user }: { is_active: boolean; user: UserRead }) =>
@@ -990,7 +1027,7 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
                 label: "Reset password",
                 icon: <RotateCcw aria-hidden="true" />,
                 disabled: preview || !canManageUsers || resetPasswordMutation.isPending,
-                onSelect: () => resetPasswordMutation.mutate(user.id),
+                onSelect: () => resetPasswordForUser(user),
               },
               {
                 key: "edit-scope",
@@ -1102,9 +1139,9 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => selectSection("access-center")} variant="primary">
-              <ShieldCheck aria-hidden="true" />
-              Open Access Center
+            <Button disabled={!canManageUsers || !roleOptions.length} onClick={openCreateUserModal} variant="primary">
+              <Plus aria-hidden="true" />
+              Create user
             </Button>
             <Button onClick={() => setModalMode("access-test")} variant="secondary">
               <SearchCheck aria-hidden="true" />
@@ -1127,9 +1164,6 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
             </button>
           ))}
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Project owners usually start in Access Center, then open the deeper pages only when they need detailed admin work.
-        </p>
       </div>
 
       {selectedRoleProfileUser ? (
@@ -1137,10 +1171,11 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
           activityLogs={activityLogs}
           canManage={canManageUsers}
           catalog={catalog}
+          fieldOfficerDetail={fieldOfficerDetail}
           onClose={closeRoleProfile}
           onOpenAccess={() => openEditUserAccess(selectedRoleProfileUser)}
           onOpenRoles={() => openRoleAssignments(selectedRoleProfileUser)}
-          onResetPassword={() => resetPasswordMutation.mutate(selectedRoleProfileUser.id)}
+          onResetPassword={() => resetPasswordForUser(selectedRoleProfileUser)}
           onSelectProfile={setSelectedRoleProfileType}
           onToggleStatus={() => updateUserStatusMutation.mutate({ is_active: !selectedRoleProfileUser.is_active, user: selectedRoleProfileUser })}
           profile={selectedRoleProfile}
@@ -1167,33 +1202,6 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
           teams={teams}
           users={users}
           onOpenSection={selectSection}
-        />
-      ) : null}
-
-      {!selectedRoleProfileUser && activeSection === "access-center" ? (
-        <AccessCenterSection
-          accessCenterTab={accessCenterTab}
-          canManageRoles={canManageRoles}
-          canManageTeams={canManageTeams}
-          canManageUsers={canManageUsers}
-          catalog={catalog}
-          onCreateRole={() => setModalMode("role")}
-          onCreateTeam={() => setModalMode("team")}
-          onCreateUser={openCreateUserModal}
-          onEditTeam={openEditTeam}
-          onOpenDefaultAccess={openEditUserAccess}
-          onOpenAccessTest={() => setModalMode("access-test")}
-          onOpenOrganizations={() => selectSection("organizations")}
-          onOpenRoleAssignments={openRoleAssignments}
-          onOpenRoleProfile={openRoleProfile}
-          onToggleUserStatus={(user) => updateUserStatusMutation.mutate({ is_active: !user.is_active, user })}
-          onSetAccessCenterTab={setAccessCenterTab}
-          permissionGroups={permissionGroups}
-          preview={preview}
-          profiles={profiles}
-          roles={roles}
-          teams={teams}
-          users={users}
         />
       ) : null}
 
@@ -1337,7 +1345,7 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
         onEdit={editRoleAssignment}
         onOpenDefaultAccess={() => roleAssignmentDraft.user && openEditUserAccess(roleAssignmentDraft.user)}
         onOpenChange={(open) => setModalMode(open ? "role-assignment" : null)}
-        onResetPassword={() => roleAssignmentDraft.user && resetPasswordMutation.mutate(roleAssignmentDraft.user.id)}
+        onResetPassword={() => roleAssignmentDraft.user && resetPasswordForUser(roleAssignmentDraft.user)}
         onSubmit={() => saveRoleAssignmentMutation.mutate()}
         onToggleStatus={() =>
           roleAssignmentDraft.user &&
@@ -1404,7 +1412,55 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
         result={preview ? { allowed: true, decision: "allow", matched_roles: ["regional_manager"], matched_scope: "region", reasons: ["Preview mode uses sample access evaluation."] } : accessResult}
         users={users}
       />
+      <PasswordResultModal result={passwordResult} onClose={() => setPasswordResult(null)} />
     </section>
+  );
+}
+
+function PasswordResultModal({
+  onClose,
+  result,
+}: {
+  onClose: () => void;
+  result: { name: string; password: string } | null;
+}) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Modal
+      contentClassName="max-w-md"
+      description="Share this one-time password securely. The user must change it at first sign-in."
+      onOpenChange={(open) => {
+        if (!open) {
+          setCopied(false);
+          onClose();
+        }
+      }}
+      open={Boolean(result)}
+      title="Temporary password created"
+    >
+      <div className="space-y-4 p-5">
+        <p className="text-sm text-muted-foreground">
+          A new temporary password was generated for <span className="font-semibold text-foreground">{result?.name}</span>. It is shown only once.
+        </p>
+        <div className="flex items-center justify-between gap-3 rounded-xl border bg-muted/30 px-3 py-2.5">
+          <code className="select-all break-all font-mono text-sm font-semibold">{result?.password}</code>
+          <Button
+            onClick={() => {
+              void navigator.clipboard?.writeText(result?.password ?? "");
+              setCopied(true);
+            }}
+            size="sm"
+            variant="secondary"
+          >
+            {copied ? <CheckCircle2 aria-hidden="true" /> : <Copy aria-hidden="true" />}
+            {copied ? "Copied" : "Copy"}
+          </Button>
+        </div>
+        <div className="flex justify-end">
+          <Button onClick={onClose} variant="primary">Done</Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -1474,6 +1530,7 @@ function RoleSpecificProfileWorkspace({
   activityLogs,
   canManage,
   catalog,
+  fieldOfficerDetail,
   onClose,
   onOpenAccess,
   onOpenRoles,
@@ -1495,6 +1552,7 @@ function RoleSpecificProfileWorkspace({
   activityLogs: UsersTeamsActivityLogRead[];
   canManage: boolean;
   catalog: AccessCatalog;
+  fieldOfficerDetail: FieldOfficerProfileDetailRead | null;
   onClose: () => void;
   onOpenAccess: () => void;
   onOpenRoles: () => void;
@@ -1573,6 +1631,32 @@ function RoleSpecificProfileWorkspace({
     { key: "started", header: "Started", value: (row) => row.started, render: (row) => formatDateTime(row.started) },
   ];
 
+  // Login & device data comes from the field-officer profile when this user is an officer.
+  const security = fieldOfficerDetail?.security ?? null;
+  const qrPayload = security?.mobile_qr_login_payload ?? null;
+  const [qrImageUrl, setQrImageUrl] = useState<string | null>(null);
+  const [qrCopied, setQrCopied] = useState(false);
+  useEffect(() => {
+    setQrCopied(false);
+    if (!qrPayload) {
+      setQrImageUrl(null);
+      return;
+    }
+    let cancelled = false;
+    QRCode.toDataURL(qrPayload, { margin: 1, width: 220 })
+      .then((url) => {
+        if (!cancelled) setQrImageUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setQrImageUrl(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [qrPayload]);
+  const officerPermissions = fieldOfficerDetail?.permissions ?? [];
+  const devices = fieldOfficerDetail?.devices ?? [];
+
   return (
     <section className="space-y-4">
       {/* Header: identity, status, and every primary action in one expected place */}
@@ -1647,12 +1731,12 @@ function RoleSpecificProfileWorkspace({
             </div>
           ) : null}
         </div>
-        <div className="flex gap-1.5 overflow-x-auto border-t bg-muted/20 px-3 py-2 product-scrollbar">
+        <div className="flex gap-2 overflow-x-auto border-t bg-muted/20 px-3 py-2.5 product-scrollbar">
           {roleProfileTabs.map((item) => (
             <button
               className={cn(
-                "shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition",
-                tab === item.id ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
+                tab === item.id ? "border-primary bg-primary text-primary-foreground" : "bg-panel hover:bg-muted",
               )}
               key={item.id}
               onClick={() => setTab(item.id)}
@@ -1686,7 +1770,7 @@ function RoleSpecificProfileWorkspace({
       {tab === "overview" ? (
         <div className="space-y-3">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <ProfileFactCard icon={ShieldCheck} label="Operational role" value={roleLabel} hint={String(profile?.metadata_json?.architecture_group ?? "Operational")} />
+            <ProfileFactCard icon={ShieldCheck} label="Role" value={roleLabel} hint="What this person does on the platform" />
             <ProfileFactCard icon={KeyRound} label="Access scope" value={scopeLabel} hint="Determines what data this user can see" />
             <ProfileFactCard icon={Building2} label="Project" value={project?.name ?? user.project_id ?? "Not restricted"} hint="Active project context" />
             <ProfileFactCard icon={UsersRound} label="Team" value={team?.name ?? teamName(teams, workforceProfile?.team_id)} hint={team?.team_type?.replace(/_/g, " ") ?? "No team type"} />
@@ -1763,17 +1847,41 @@ function RoleSpecificProfileWorkspace({
           </div>
 
           <div className="rounded-xl border bg-panel p-3.5 shadow-line">
-            <h3 className="text-sm font-semibold">Effective permissions</h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">{effectivePermissions.length} permission(s) granted across all active roles.</p>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {effectivePermissions.length ? (
-                effectivePermissions.map((permission) => (
-                  <Badge key={permission} tone="neutral">{permission}</Badge>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground">No permissions resolved yet. Assign a role with permissions to grant access.</p>
-              )}
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold">Permissions</h3>
+                <p className="mt-0.5 max-w-xl text-xs text-muted-foreground">
+                  Permissions are granted by the roles above — add or remove a role to change what this user can do. {effectivePermissions.length} permission(s) are currently active.
+                </p>
+              </div>
+              {canManage ? (
+                <Button onClick={onOpenRoles} size="sm" variant="secondary">
+                  <ShieldCheck aria-hidden="true" />
+                  Change via roles
+                </Button>
+              ) : null}
             </div>
+            {officerPermissions.length ? (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {officerPermissions.map((permission) => (
+                  <div className="flex items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2" key={permission.key}>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{permission.label}</p>
+                      <p className="truncate text-xs text-muted-foreground">{permission.source}</p>
+                    </div>
+                    <Badge tone={permission.enabled ? "success" : "neutral"}>{permission.enabled ? "Allowed" : "Off"}</Badge>
+                  </div>
+                ))}
+              </div>
+            ) : effectivePermissions.length ? (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {effectivePermissions.map((permission) => (
+                  <Badge key={permission} tone="neutral">{permission}</Badge>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-muted-foreground">No permissions resolved yet. Assign a role with permissions to grant access.</p>
+            )}
           </div>
         </div>
       ) : null}
@@ -1803,6 +1911,103 @@ function RoleSpecificProfileWorkspace({
               <RoleProfileSignal label="Performance score" value={workforceProfile?.performance_score ?? "Not measured"} />
               <RoleProfileSignal label="Lifecycle" value={workforceProfile?.lifecycle_status ?? "Active"} />
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {tab === "login" ? (
+        <div className="space-y-3">
+          {/* Credentials & password */}
+          <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold">Sign-in credentials</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">How this person signs in, and the controls to manage their access.</p>
+              </div>
+              {canManage ? (
+                <Button disabled={resettingPassword} onClick={onResetPassword} size="sm" variant="secondary">
+                  <RotateCcw aria-hidden="true" />
+                  Reset password
+                </Button>
+              ) : null}
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <ProfileFactCard icon={KeyRound} label="Username" value={security?.username ?? user.email} hint="Used to sign in" />
+              <ProfileFactCard icon={ShieldCheck} label="Account status" value={security?.account_status ?? (user.is_active ? "Active" : "Inactive")} hint="Sign-in availability" />
+              <RoleProfileSignal label="Last login" value={security?.last_login_at ? formatDateTime(security.last_login_at) : "Never"} />
+              <RoleProfileSignal label="Password changed" value={security?.password_last_changed_at ? formatDateTime(security.password_last_changed_at) : "Never"} />
+              <RoleProfileSignal label="Temporary password" value={security?.temporary_password_issued ? "Pending first sign-in" : "Not pending"} />
+              <RoleProfileSignal label="Failed sign-ins" value={security?.failed_login_attempts ?? 0} />
+            </div>
+          </div>
+
+          {/* Mobile QR login (field officers) */}
+          <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <div className="flex items-start gap-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <QrCode aria-hidden="true" className="size-5" />
+              </span>
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold">Mobile app login (QR code)</h3>
+                <p className="mt-0.5 max-w-2xl text-xs leading-5 text-muted-foreground">
+                  Field officers scan this from the Atlas FieldOps app instead of typing a password. It never contains the password and stops working after a password reset, suspension, or deactivation.
+                </p>
+              </div>
+            </div>
+            {qrPayload ? (
+              <div className="mt-3 flex flex-col gap-4 rounded-xl border bg-muted/20 p-3.5 sm:flex-row sm:items-center">
+                {qrImageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img alt={`Mobile login QR for ${user.full_name}`} className="size-44 shrink-0 rounded-lg border bg-white p-2" src={qrImageUrl} />
+                ) : (
+                  <div className="flex size-44 shrink-0 items-center justify-center rounded-lg border bg-panel text-center text-xs text-muted-foreground">Generating QR…</div>
+                )}
+                <div className="min-w-0 space-y-2 text-sm">
+                  <Badge tone={security?.mobile_qr_login_enabled ? "success" : "warning"}>
+                    {security?.mobile_qr_login_enabled ? "Ready for mobile login" : "QR login unavailable"}
+                  </Badge>
+                  <p className="text-muted-foreground">In the app, choose <span className="font-medium text-foreground">Scan QR code</span> and point the camera here. If scanning isn&apos;t possible, reset the password and share temporary credentials instead.</p>
+                  <Button
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(qrPayload);
+                      setQrCopied(true);
+                    }}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    {qrCopied ? <CheckCircle2 aria-hidden="true" /> : <Copy aria-hidden="true" />}
+                    {qrCopied ? "Copied" : "Copy QR token"}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-3 rounded-lg border border-dashed bg-muted/20 px-3 py-2.5 text-sm text-muted-foreground">
+                {fieldOfficerDetail
+                  ? "QR login appears once the officer account, membership, and field officer profile are all active."
+                  : "Mobile QR login is available for field officers. This user does not have a field officer profile."}
+              </p>
+            )}
+          </div>
+
+          {/* Devices */}
+          <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <h3 className="text-sm font-semibold">Registered devices</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">Phones and tablets this person has signed in from.</p>
+            {devices.length ? (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {devices.map((device, index) => (
+                  <div className="flex items-center gap-2.5 rounded-lg border bg-background px-3 py-2" key={device.device_id ?? index}>
+                    <Smartphone aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{device.device_id ?? "Unknown device"}</p>
+                      <p className="truncate text-xs text-muted-foreground">Last sync {device.last_sync_at ? formatDateTime(device.last_sync_at) : "never"}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-muted-foreground">No devices registered yet.</p>
+            )}
           </div>
         </div>
       ) : null}
@@ -1871,7 +2076,7 @@ function DashboardSection({
     <div className="space-y-3">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         {cards.map((card) => (
-          <button className="rounded-xl border bg-panel p-3 text-left shadow-line transition hover:-translate-y-0.5 hover:shadow-elevated" key={card.label} onClick={() => onOpenSection(card.label === "Active Sessions" ? "activity-logs" : "access-center")} type="button">
+          <button className="rounded-xl border bg-panel p-3 text-left shadow-line transition hover:-translate-y-0.5 hover:shadow-elevated" key={card.label} onClick={() => onOpenSection(card.label === "Active Sessions" ? "activity-logs" : "users")} type="button">
             <card.icon aria-hidden="true" className="text-primary" size={18} />
             <p className="mt-4 text-2xl font-semibold">{card.value}</p>
             <p className="text-xs text-muted-foreground">{card.label}</p>

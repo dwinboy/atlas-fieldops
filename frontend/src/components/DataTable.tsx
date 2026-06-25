@@ -269,10 +269,10 @@ export function DataTable<T>({
         )}
       >
         <table className="w-full border-separate border-spacing-0 text-left text-xs" style={{ minWidth: tableMinWidth }}>
-          <thead className="sticky top-0 z-20 bg-muted/45 text-muted-foreground shadow-line backdrop-blur">
+          <thead className="sticky top-0 z-20 bg-muted text-muted-foreground shadow-[0_1px_0_hsl(var(--border)),0_8px_12px_-12px_rgba(13,38,28,0.35)]">
             <tr>
               {selection ? (
-                <th className="w-10 border-b border-r border-border/60 px-2.5 py-2">
+                <th className="sticky left-0 z-20 w-10 border-b border-r border-border/60 bg-muted px-2.5 py-2">
                   <input
                     aria-label="Select all rows on this page"
                     checked={allPagedSelected}
@@ -288,13 +288,13 @@ export function DataTable<T>({
                 <th
                   key={column.key}
                   className={cn(
-                    "whitespace-nowrap border-b border-r border-border/60 px-2.5 py-2 font-semibold",
+                    "whitespace-nowrap border-b border-r border-border/60 bg-muted px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground",
                     columnIndex === 0 &&
                       !selection &&
-                      "sticky left-0 z-10 border-r border-border/60 bg-muted/45 backdrop-blur",
+                      "sticky left-0 z-20 shadow-[8px_0_12px_-10px_rgba(13,38,28,0.22)]",
                     columnIndex === columns.length - 1 &&
                       columns.length > 1 &&
-                      "sticky right-0 z-10 border-l border-border/60 bg-muted/45 backdrop-blur",
+                      "sticky right-0 z-20 border-l border-border/60 shadow-[-8px_0_12px_-10px_rgba(13,38,28,0.22)]",
                   )}
                 >
                   {column.value || column.sortValue ? (
@@ -376,13 +376,13 @@ export function DataTable<T>({
                       columnIndex === 0 &&
                         !selection &&
                         cn(
-                          "sticky left-0 z-[5] border-r border-border/60 bg-panel transition-colors group-hover:bg-muted/35",
+                          "sticky left-0 z-[5] border-r border-border/60 bg-panel shadow-[8px_0_12px_-10px_rgba(13,38,28,0.16)] transition-colors group-hover:bg-muted/35",
                           active && "bg-primary/10",
                         ),
                       columnIndex === columns.length - 1 &&
                         columns.length > 1 &&
                         cn(
-                          "sticky right-0 z-[5] border-l border-border/60 bg-panel transition-colors group-hover:bg-muted/35",
+                          "sticky right-0 z-[5] border-l border-border/60 bg-panel shadow-[-8px_0_12px_-10px_rgba(13,38,28,0.16)] transition-colors group-hover:bg-muted/35",
                           active && "bg-primary/10",
                         ),
                     )}

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ArrowRight, Route, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,6 @@ type ModuleWorkspaceProps = {
   className?: string;
   item: NavigationItem;
   showSections?: boolean;
-  status?: string;
 };
 
 export function ModuleWorkspace({
@@ -30,7 +29,6 @@ export function ModuleWorkspace({
   className,
   item,
   showSections = true,
-  status = "Architecture aligned",
 }: ModuleWorkspaceProps) {
   const Icon = item.icon;
   const areas = item.children ?? [];
@@ -45,10 +43,6 @@ export function ModuleWorkspace({
             </span>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge tone={item.tone}>{item.domain}</Badge>
-                <Badge tone="success">{status}</Badge>
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
                 <h1 className="text-lg font-semibold tracking-tight">
                   {item.label}
                 </h1>
@@ -56,6 +50,7 @@ export function ModuleWorkspace({
                   {item.description}
                 </HelpHint>
               </div>
+              <p className="mt-1 text-sm text-muted-foreground">{item.description}</p>
             </div>
           </div>
 
@@ -86,10 +81,7 @@ export function ModuleWorkspace({
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-[13px] font-semibold">Workspace sections</h2>
-                <HelpHint label="About workspace sections" title="Workspace sections">
-                  These are the approved sections from the platform architecture.
-                </HelpHint>
+                <h2 className="text-[13px] font-semibold">Sections in this area</h2>
               </div>
             </div>
             <Badge tone="neutral">{areas.length} sections</Badge>
@@ -106,16 +98,8 @@ export function ModuleWorkspace({
                     <Sparkles aria-hidden="true" size={13} />
                   </span>
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-[13px] font-semibold">{area.label}</h3>
-                      <HelpHint label={`About ${area.label}`} title={area.label}>
-                        {area.description}
-                      </HelpHint>
-                    </div>
-                    <p className="mt-2 inline-flex max-w-full items-center gap-1 rounded-md bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
-                      <Route aria-hidden="true" size={12} />
-                      <span className="truncate">{area.route}</span>
-                    </p>
+                    <h3 className="text-[13px] font-semibold">{area.label}</h3>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{area.description}</p>
                   </div>
                 </div>
               </article>

@@ -40,7 +40,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import type { KeyboardEvent, ReactNode, RefCallback } from "react";
+import type { ClipboardEvent, KeyboardEvent, ReactNode, RefCallback } from "react";
 import { useContextualBack } from "@/hooks/useContextualBack";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -4354,6 +4354,15 @@ function FormDataGridWorkspace({
       redoEditingDraft();
       return;
     }
+    // Fill down (Google Sheets muscle memory): copy the active cell's value down
+    // the column — to the selected rows when there is a selection, otherwise to
+    // every row from here down.
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d") {
+      event.preventDefault();
+      if (!currentEditingSubmission || bulkApplying) return;
+      void fillCurrentValueDown();
+      return;
+    }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
       event.preventDefault();
       if (!currentEditingSubmission) return;
@@ -4937,36 +4946,41 @@ function FormDataGridWorkspace({
     );
   }
 
+  async function applyClipboardGridText(clipboardText: string): Promise<void> {
+    if (!activeEditingQuestion || currentEditingRowIndex < 0 || activeEditingQuestionIndex < 0) return;
+    const matrix = parseClipboardGrid(clipboardText);
+    if (!matrix.length) {
+      pushToast({
+        title: "Clipboard is empty",
+        description: "Copy cells from Excel or Sheets first, then paste them here.",
+        tone: "warning",
+      });
+      return;
+    }
+    const updates: { submission: SubmissionRead | SubmissionRecord; values: Record<string, string> }[] = [];
+    matrix.forEach((rowValues, rowOffset) => {
+      const submission = stagedImportRows[currentEditingRowIndex + rowOffset];
+      if (!submission) return;
+      const nextValues = { ...editorValuesForSubmission(submission) };
+      rowValues.forEach((value, columnOffset) => {
+        const question = questions[activeEditingQuestionIndex + columnOffset];
+        if (!question) return;
+        nextValues[question.key] = value;
+      });
+      updates.push({ submission, values: nextValues });
+    });
+    if (!updates.length) return;
+    await applyBulkResponseUpdates(
+      updates,
+      `Pasted ${matrix.length} row(s) from the clipboard into the cleaning workspace.`,
+    );
+  }
+
   async function pasteClipboardGridIntoSheet(): Promise<void> {
     if (!activeEditingQuestion || currentEditingRowIndex < 0 || activeEditingQuestionIndex < 0) return;
     try {
       const clipboardText = await navigator.clipboard.readText();
-      const matrix = parseClipboardGrid(clipboardText);
-      if (!matrix.length) {
-        pushToast({
-          title: "Clipboard is empty",
-          description: "Copy cells from Excel or Sheets first, then paste them here.",
-          tone: "warning",
-        });
-        return;
-      }
-      const updates: { submission: SubmissionRead | SubmissionRecord; values: Record<string, string> }[] = [];
-      matrix.forEach((rowValues, rowOffset) => {
-        const submission = stagedImportRows[currentEditingRowIndex + rowOffset];
-        if (!submission) return;
-        const nextValues = { ...editorValuesForSubmission(submission) };
-        rowValues.forEach((value, columnOffset) => {
-          const question = questions[activeEditingQuestionIndex + columnOffset];
-          if (!question) return;
-          nextValues[question.key] = value;
-        });
-        updates.push({ submission, values: nextValues });
-      });
-      if (!updates.length) return;
-      await applyBulkResponseUpdates(
-        updates,
-        `Pasted ${matrix.length} row(s) from the clipboard into the cleaning workspace.`,
-      );
+      await applyClipboardGridText(clipboardText);
     } catch {
       pushToast({
         title: "Clipboard paste failed",
@@ -4974,6 +4988,17 @@ function FormDataGridWorkspace({
         tone: "danger",
       });
     }
+  }
+
+  // Native paste handler for the active-cell editor: when the clipboard holds a
+  // multi-cell block (tabs/newlines) copied from Excel/Sheets, spread it across
+  // the grid from the active cell. Single values fall through to normal paste.
+  function handleEditorPaste(event: ClipboardEvent<HTMLElement>): void {
+    if (!activeEditingQuestion || currentEditingRowIndex < 0) return;
+    const text = event.clipboardData?.getData("text") ?? "";
+    if (!text.includes("\t") && !text.includes("\n")) return;
+    event.preventDefault();
+    void applyClipboardGridText(text);
   }
 
   async function exportGrid(): Promise<void> {
@@ -6536,6 +6561,7 @@ function FormDataGridWorkspace({
                     disabled={!currentEditingSubmission || bulkApplying}
                     onClick={() => void fillCurrentValueDown()}
                     size="sm"
+                    title="Fill the active value down the column (Ctrl/Cmd+D)"
                     variant="ghost"
                   >
                     Fill down
@@ -6813,6 +6839,7 @@ function FormDataGridWorkspace({
                         onKeyDown={(event) =>
                           handleEditingCellKeyDown(event, activeEditingQuestion)
                         }
+                        onPaste={handleEditorPaste}
                         question={activeEditingQuestion}
                         registerRef={(element) =>
                           registerEditingCellRef(activeEditingQuestion.key, element)
@@ -6908,6 +6935,8 @@ function FormDataGridWorkspace({
             ) : null}
             {!compactCleaningSheet ? (
             <div className="text-[10px] text-muted-foreground">
+              <span className="font-medium text-foreground">Ctrl/Cmd+D</span>{" "}
+              fills the value down the column.{" "}
               <span className="font-medium text-foreground">Ctrl/Cmd+S</span>{" "}
               {currentEditingSaveShortcutHint}
               {currentEditingNextSubmissionId ? (
@@ -7382,6 +7411,7 @@ function InlineGridCellEditor({
   onChange,
   onFocus,
   onKeyDown,
+  onPaste,
   question,
   registerRef,
   value,
@@ -7391,6 +7421,7 @@ function InlineGridCellEditor({
   onChange: (value: string) => void;
   onFocus: () => void;
   onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
+  onPaste?: (event: ClipboardEvent<HTMLElement>) => void;
   question: FormGridQuestion;
   registerRef: RefCallback<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>;
   value: string;
@@ -7456,6 +7487,7 @@ function InlineGridCellEditor({
           onChange={(event) => onChange(event.target.value)}
           onFocus={onFocus}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
           ref={registerRef}
           value={value}
         />
@@ -7470,6 +7502,7 @@ function InlineGridCellEditor({
         onChange={(event) => onChange(event.target.value)}
         onFocus={onFocus}
         onKeyDown={onKeyDown}
+        onPaste={onPaste}
         ref={registerRef}
         type={inputTypeForQuestion(question)}
         value={value}

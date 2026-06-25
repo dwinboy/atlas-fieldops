@@ -91,6 +91,7 @@ import {
   duplicateField,
   duplicateSection,
   fieldCatalog,
+  fieldTypeHelp,
   getCollectionCompatibility,
   isFormReadyForPublish,
   moveFieldToPage,
@@ -2820,7 +2821,12 @@ function FieldPropertiesPanel({
             />
           </label>
           <label className="block text-sm font-medium">
-            Type
+            <span className="inline-flex items-center gap-1.5">
+              Type
+              <HelpHint label={`How the ${field.type} control works`} title="Response type">
+                {fieldTypeHelp[field.type] ?? "Choose how this question is answered."}
+              </HelpHint>
+            </span>
             <Select
               className="mt-2"
               onChange={(event) =>
@@ -9462,26 +9468,33 @@ export function DynamicForms({
                           {fields.map((field) => {
                             const Icon = fieldTypeIcons[field.type];
                             return (
-                              <button
+                              <div
                                 key={field.type}
-                                className="flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-muted"
-                                onClick={() => addCatalogField(field.type)}
-                                type="button"
+                                className="flex w-full items-center gap-1 rounded-md pr-1.5 transition hover:bg-muted"
                               >
-                                <Icon
-                                  aria-hidden="true"
-                                  className="text-muted-foreground"
-                                  size={16}
-                                />
-                                <span>
-                                  <span className="block font-medium">
-                                    {field.label}
+                                <button
+                                  className="flex flex-1 items-center gap-3 rounded-md px-2.5 py-2 text-left text-sm"
+                                  onClick={() => addCatalogField(field.type)}
+                                  type="button"
+                                >
+                                  <Icon
+                                    aria-hidden="true"
+                                    className="text-muted-foreground"
+                                    size={16}
+                                  />
+                                  <span>
+                                    <span className="block font-medium">
+                                      {field.label}
+                                    </span>
+                                    <span className="block text-xs text-muted-foreground">
+                                      {field.description}
+                                    </span>
                                   </span>
-                                  <span className="block text-xs text-muted-foreground">
-                                    {field.description}
-                                  </span>
-                                </span>
-                              </button>
+                                </button>
+                                <HelpHint label={`How the ${field.label} control works`} title={field.label}>
+                                  {fieldTypeHelp[field.type]}
+                                </HelpHint>
+                              </div>
                             );
                           })}
                         </div>

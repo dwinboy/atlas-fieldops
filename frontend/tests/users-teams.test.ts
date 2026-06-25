@@ -64,7 +64,8 @@ describe("users-teams utilities", () => {
 
   it("maps users and teams routes to the correct workspace section", () => {
     expect(usersTeamsSectionFromPath("/users-teams")).toBe("dashboard");
-    expect(usersTeamsSectionFromPath("/users-teams/access-center")).toBe("access-center");
+    // Access Center hub was retired; its old route now falls back to the overview.
+    expect(usersTeamsSectionFromPath("/users-teams/access-center")).toBe("dashboard");
     expect(usersTeamsSectionFromPath("/users-teams/users")).toBe("users");
     expect(usersTeamsSectionFromPath("/users-teams/roles")).toBe("roles");
     expect(usersTeamsSectionFromPath("/users-teams/teams")).toBe("teams");

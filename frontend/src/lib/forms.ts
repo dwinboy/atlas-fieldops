@@ -321,6 +321,54 @@ export const fieldCatalog: {
   }
 ];
 
+/**
+ * Plain-language, sector-aware explanation of what each control does and when to
+ * use it. Surfaced as a small "?" help popover on every control in the builder so
+ * a manager never has to guess which question type to pick.
+ */
+export const fieldTypeHelp: Record<FieldType, string> = {
+  text: "A single line for short answers like a name, ID number, or village. Use it when the answer is a few words.",
+  textarea: "A larger box for long, free-text answers such as observations, narratives, or case notes.",
+  number: "Whole numbers only — counts like household size, number of animals, or attendance. Use Decimal for fractions.",
+  decimal: "Numbers with decimals — measurements like weight (kg), area (ha), or yield. Use Number for whole counts.",
+  currency: "A money amount such as income, price, or grant value. Captures decimals and is tagged as currency for reports.",
+  phone: "A phone number with format validation — useful for follow-up calls and SMS to beneficiaries or officers.",
+  email: "An email address with format validation. Use for staff or partners; most field beneficiaries won't have one.",
+  url: "A web or document link, e.g. a reference page or shared file.",
+  password: "A masked secret value. Rarely needed in field forms — avoid collecting sensitive credentials.",
+  select: "A single-choice question shown as a compact picker. Choose one option from a defined list.",
+  dropdown: "Single choice from a compact dropdown — best when there are many options (e.g. district, crop type).",
+  multiselect: "Multiple choice — the respondent can pick several options from a list (e.g. crops grown, services received).",
+  radio: "Single choice shown as visible buttons — best for short lists like Yes/No or Male/Female where options should stay in view.",
+  checkbox: "Multiple choice shown as visible boxes — pick all that apply, ideal for short multi-answer lists.",
+  ranking: "Ask the respondent to order options by priority (e.g. rank top 3 needs). Exports as a ranked list.",
+  likert: "An agreement or perception scale (e.g. Strongly disagree → Strongly agree). Common in satisfaction surveys.",
+  matrix_single: "A grid where each row takes one choice across shared columns — efficient for rating several items the same way.",
+  matrix_multi: "A grid where each row can take several choices across shared columns.",
+  nps: "Net Promoter Score: a 0–10 'how likely to recommend' question used to gauge satisfaction.",
+  rating: "A star or score rating (e.g. 1–5) for quick satisfaction or quality scoring.",
+  gps: "Automatically captures the device's GPS coordinates — proves where collection happened. Core for field verification.",
+  geolocation: "Captures latitude, longitude, accuracy, and timestamp together as location evidence.",
+  map: "Lets the officer pick an exact point on a map — useful when GPS drift needs manual correction.",
+  geofence: "Validates that collection happens inside an allowed area, flagging submissions taken out of zone.",
+  polygon: "Draw an area on the map — a farm plot, project site, or boundary. Captures shape and size (hectares).",
+  photo: "Capture a photo as evidence; works offline and syncs later. Use for site, asset, or document proof.",
+  image: "Take or upload an image. Similar to Photo but without the offline evidence queue.",
+  signature: "Capture a drawn signature — used for consent, receipt, or acknowledgement.",
+  barcode: "Scan a 1D barcode to capture an ID — e.g. asset tags, ration cards, or stock items.",
+  qr: "Scan a QR code to capture a value quickly — e.g. beneficiary cards or equipment codes.",
+  audio: "Record or attach a voice note — useful for interviews or where typing is hard.",
+  video: "Record or attach a short video as evidence.",
+  file: "Attach a supporting document (PDF, image, spreadsheet) to the submission.",
+  date: "Pick a calendar date — birth date, visit date, planting date. Add rules to block future or past dates.",
+  time: "Capture a time of day, e.g. when an activity started.",
+  datetime: "Capture a date and time together, e.g. an exact visit timestamp.",
+  hidden: "A field the respondent never sees — stores a system value (like a code) carried into the submission.",
+  calculated: "Auto-computes a value from other answers using a formula (e.g. a score or total). Read-only for the officer.",
+  repeat_group: "Repeats a set of questions for each item — household members, crops, assets, or visits — as many times as needed.",
+  grid: "A structured table for entering several values in rows and columns.",
+};
+
 const choiceFieldTypes: FieldType[] = ["select", "dropdown", "multiselect", "radio", "checkbox", "ranking", "likert"];
 const locationFieldTypes: FieldType[] = ["gps", "geolocation", "map", "geofence", "polygon"];
 const mediaFieldTypes: FieldType[] = ["photo", "image", "signature", "audio", "video", "file"];
@@ -755,7 +803,10 @@ function toXlsType(field: FormField, listName = fieldVariableName(field)): strin
   if (field.options?.length && ["select", "dropdown", "radio", "likert"].includes(field.type)) {
     return `select_one ${listName}`;
   }
-  if (field.options?.length && ["multiselect", "checkbox", "ranking"].includes(field.type)) {
+  if (field.options?.length && field.type === "ranking") {
+    return `rank ${listName}`;
+  }
+  if (field.options?.length && ["multiselect", "checkbox"].includes(field.type)) {
     return `select_multiple ${listName}`;
   }
   const typeMap: Record<FieldType, string> = {
