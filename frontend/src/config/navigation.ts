@@ -26,7 +26,7 @@ import {
 import type { CurrentPrincipal } from "@/lib/api";
 import type { WorkspaceView } from "@/stores/workspace";
 import {
-  hasPermissionAccess,
+  hasAnyPermission,
   hasRoleAccess,
   type PlatformRole,
 } from "@/config/permissions";
@@ -67,7 +67,12 @@ export type NavigationItem = {
   icon: LucideIcon;
   tone: ViewTone;
   allowedRoles: PlatformRole[];
-  requiredPermissions?: string[];
+  /**
+   * Owner-managed permission family for this module (any-of). When set, sidebar
+   * visibility follows the principal's live permissions rather than role labels, so
+   * owner edits in Users & Teams → Roles immediately change what appears here.
+   */
+  accessPermissions?: string[];
   children?: NavigationChild[];
   keywords?: string[];
   legacyViews?: WorkspaceView[];
@@ -151,6 +156,13 @@ const sidebarSections: NavigationSection[] = [
         icon: Network,
         tone: "monitor",
         allowedRoles: ["System Admin", "M&E Manager"],
+        accessPermissions: [
+          "projects.view",
+          "projects.create",
+          "projects.edit",
+          "projects.archive",
+          "projects.manage",
+        ],
         legacyViews: ["surveys", "ecosystem", "enterprise"],
         keywords: ["project", "program", "funder", "client", "survey"],
         children: [
@@ -174,6 +186,13 @@ const sidebarSections: NavigationSection[] = [
         icon: ClipboardPenLine,
         tone: "collect",
         allowedRoles: formRoles,
+        accessPermissions: [
+          "forms.view",
+          "forms.create",
+          "forms.edit",
+          "forms.publish",
+          "forms.delete",
+        ],
         legacyViews: ["templates"],
         keywords: ["form", "survey", "question", "template", "publish"],
         children: [
@@ -201,6 +220,7 @@ const sidebarSections: NavigationSection[] = [
           "Supervisor",
           "Field Officer",
         ],
+        accessPermissions: ["officers.view", "officers.manage"],
         legacyViews: ["connectivity", "beneficiaries"],
         keywords: ["assignment", "enumerator", "field officer", "work plan"],
         children: [
@@ -230,6 +250,14 @@ const sidebarSections: NavigationSection[] = [
           "Supervisor",
           "Field Officer",
         ],
+        accessPermissions: [
+          "submissions.view",
+          "submissions.create",
+          "submissions.edit",
+          "submissions.review",
+          "submissions.approve",
+          "submissions.reject",
+        ],
         legacyViews: ["cases"],
         keywords: ["submission", "review", "approve", "reject", "return"],
         children: [
@@ -258,7 +286,12 @@ const sidebarSections: NavigationSection[] = [
           "Supervisor",
           "Field Officer",
         ],
-        requiredPermissions: ["beneficiaries.view"],
+        accessPermissions: [
+          "beneficiaries.view",
+          "beneficiaries.create",
+          "beneficiaries.edit",
+          "beneficiaries.manage",
+        ],
         keywords: ["beneficiary", "entity", "farmer", "household", "registry", "duplicate"],
         children: [
           { label: "Registry", route: "/beneficiaries", description: "Search and manage entity profiles." },
@@ -290,6 +323,7 @@ const sidebarSections: NavigationSection[] = [
           "Supervisor",
           "Viewer/Donor",
         ],
+        accessPermissions: ["gps.view", "analytics.view", "analytics.export"],
         keywords: ["map", "gis", "gps", "coverage", "boundary"],
         children: [
           { label: "Project Maps", route: "/mapping/project-maps", description: "GPS-derived project extents and source records." },
@@ -320,6 +354,7 @@ const sidebarSections: NavigationSection[] = [
           "Data Manager",
           "Viewer/Donor",
         ],
+        accessPermissions: ["indicators.view", "indicators.manage"],
         keywords: ["metric", "kpi", "indicator", "logframe", "target", "baseline"],
         children: [
           { label: "Metric Library", route: "/indicators/library", description: "Reusable metrics, KPIs, definitions, formulas, and sources." },
@@ -346,6 +381,14 @@ const sidebarSections: NavigationSection[] = [
           "Data Manager",
           "Viewer/Donor",
         ],
+        accessPermissions: [
+          "reports.view",
+          "reports.generate",
+          "reports.export",
+          "reports.manage",
+          "analytics.view",
+          "analytics.export",
+        ],
         keywords: ["report", "dashboard", "export", "funder", "client", "donor"],
         children: [
           { label: "Standard Reports", route: "/reports/standard", description: "Common operational, M&E, compliance, and sector reports." },
@@ -366,6 +409,14 @@ const sidebarSections: NavigationSection[] = [
         icon: ShieldCheck,
         tone: "governance",
         allowedRoles: operationsRoles,
+        accessPermissions: [
+          "data.import",
+          "data.export",
+          "data.bulk_edit",
+          "submissions.review",
+          "submissions.approve",
+          "submissions.reject",
+        ],
         keywords: ["quality", "duplicate", "outlier", "missing", "validation"],
         children: [
           { label: "Quality Dashboard", route: "/data-quality/dashboard", description: "Data quality scorecards and trends." },
@@ -395,6 +446,15 @@ const sidebarSections: NavigationSection[] = [
         icon: UsersRound,
         tone: "admin",
         allowedRoles: ["System Admin", "M&E Manager"],
+        accessPermissions: [
+          "users.view",
+          "users.create",
+          "users.edit",
+          "users.delete",
+          "users.manage",
+          "roles.view",
+          "roles.manage",
+        ],
         legacyViews: ["workforce"],
         keywords: ["users", "roles", "teams", "permissions"],
         children: [
@@ -423,6 +483,14 @@ const sidebarSections: NavigationSection[] = [
         icon: Fingerprint,
         tone: "governance",
         allowedRoles: ["System Admin", "M&E Manager"],
+        accessPermissions: [
+          "audit.view",
+          "workflows.manage",
+          "workflows.approve.district",
+          "workflows.approve.regional",
+          "workflows.approve.national",
+          "submissions.approve",
+        ],
         legacyViews: ["workflows"],
         keywords: ["governance", "audit", "approval", "policy", "consent"],
         children: [
@@ -452,6 +520,7 @@ const sidebarSections: NavigationSection[] = [
         icon: Settings,
         tone: "platform",
         allowedRoles: ["System Admin"],
+        accessPermissions: ["organization.manage", "organization.hierarchy.manage"],
         legacyViews: ["platform", "data"],
         keywords: ["administration", "settings", "reference data", "api", "backup"],
         children: [
@@ -828,18 +897,40 @@ export function canAccessNavigationItem(
     return !principal?.platform_admin || Boolean(principal.support_mode);
   }
 
-  const roleAccess = hasRoleAccess(item.allowedRoles, principal);
-  const permissionAccess = hasPermissionAccess(
-    item.requiredPermissions,
-    principal,
-  );
+  // The platform super admin (outside a tenant support session) is scoped to the
+  // platform console, so keep role-based gating for that operator surface.
+  if (principal?.platform_admin && !principal.support_mode) {
+    return hasRoleAccess(item.allowedRoles, principal);
+  }
 
-  if (roleAccess && permissionAccess) {
+  // Owner-managed gating: when a module declares a permission family, the principal's
+  // live permissions are authoritative. Granting a permission reveals the module;
+  // removing every permission in the family hides it — independent of role labels, so
+  // custom roles and owner edits both take effect immediately.
+  if (item.accessPermissions?.length) {
+    if (hasAnyPermission(item.accessPermissions, principal)) {
+      return true;
+    }
+    // Legacy escape hatch: an explicitly granted menu view still reveals the module
+    // even when the permission family does not match.
+    return matchesExplicitMenuView(item, principal);
+  }
+
+  // Modules without a permission family (e.g. dashboard) fall back to role labels plus
+  // any explicitly granted menu views.
+  if (hasRoleAccess(item.allowedRoles, principal)) {
     return true;
   }
 
+  return matchesExplicitMenuView(item, principal);
+}
+
+function matchesExplicitMenuView(
+  item: NavigationItem,
+  principal?: CurrentPrincipal | null,
+): boolean {
   const explicitViews = principal?.menu_views ?? [];
-  if (!explicitViews.length || !permissionAccess) {
+  if (!explicitViews.length) {
     return false;
   }
 

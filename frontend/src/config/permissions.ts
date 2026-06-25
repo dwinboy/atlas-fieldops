@@ -19,8 +19,14 @@ const roleAliases: Record<string, PlatformRole> = {
   super_admin: "Super Admin",
   superadmin: "Super Admin",
   owner: "System Admin",
+  org_owner: "System Admin",
   organization_owner: "System Admin",
   organizationowner: "System Admin",
+  organization_admin: "System Admin",
+  organizationadmin: "System Admin",
+  org_admin: "System Admin",
+  tenant_owner: "System Admin",
+  tenant_admin: "System Admin",
   system_admin: "System Admin",
   systemadmin: "System Admin",
   national_admin: "System Admin",
@@ -110,4 +116,26 @@ export function hasPermissionAccess(
 
   const permissions = new Set(principal.permissions ?? []);
   return requiredPermissions.every((permission) => permissions.has(permission));
+}
+
+/**
+ * Owner-managed navigation gating: a module is visible when the principal holds ANY of
+ * the module's permissions. This makes the owner-editable permission set authoritative
+ * for the sidebar — granting a permission reveals the module, removing every permission
+ * in the family hides it — instead of keying off hardcoded role labels.
+ */
+export function hasAnyPermission(
+  permissions: string[] | undefined,
+  principal?: CurrentPrincipal | null,
+): boolean {
+  if (!permissions?.length || !principal) {
+    return true;
+  }
+
+  if (principal.platform_admin) {
+    return true;
+  }
+
+  const held = new Set(principal.permissions ?? []);
+  return permissions.some((permission) => held.has(permission));
 }

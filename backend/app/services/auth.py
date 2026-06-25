@@ -294,7 +294,16 @@ class AuthService:
             ).split(",")
             if (normalized := normalize_permission(permission.strip())) is not None
         }
-        effective_permissions = sorted({permission.value for permission in permissions_for_roles(role_names)} | stored_permissions)
+        # Database role permissions (owner-managed) are authoritative when present, so
+        # owners can add or remove a role's permissions. The hardcoded role map is the
+        # seed/default fallback (used when a role has no stored permissions yet) and
+        # always applies for the platform super admin.
+        if is_platform_admin:
+            effective_permissions = sorted({permission.value for permission in permissions_for_roles(role_names)} | stored_permissions)
+        elif stored_permissions:
+            effective_permissions = sorted(stored_permissions)
+        else:
+            effective_permissions = sorted({permission.value for permission in permissions_for_roles(role_names)})
         geography_ids = sorted(
             {
                 *(grant.geography_id for grant in grants if grant.geography_id),

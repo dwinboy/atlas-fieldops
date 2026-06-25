@@ -174,6 +174,13 @@ class RoleCreate(BaseModel):
     permissions: list[str] = Field(default_factory=list)
 
 
+class RoleUpdate(BaseModel):
+    label: str | None = Field(default=None, max_length=160)
+    description: str | None = Field(default=None, max_length=500)
+    scope_type: Literal["global", "organization", "country", "region", "district", "field_team", "project", "own"] | None = None
+    permissions: list[str] | None = None
+
+
 class RoleRead(BaseModel):
     id: UUID
     organization_id: UUID

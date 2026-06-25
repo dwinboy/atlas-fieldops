@@ -43,6 +43,8 @@ import {
   ApiError,
   addUserRoleAssignment,
   createRole,
+  resetRolePermissions,
+  updateRole,
   createTeam,
   createUser,
   createWorkforceProfile,
@@ -123,7 +125,16 @@ type UsersTeamsModuleProps = {
   token: string | null;
 };
 
-type ModalMode = "access-test" | "edit-team" | "edit-user" | "import-users" | "role" | "role-assignment" | "team" | "user" | null;
+type ModalMode = "access-test" | "edit-role" | "edit-team" | "edit-user" | "import-users" | "role" | "role-assignment" | "team" | "user" | null;
+type EditRoleDraft = {
+  id: string;
+  name: string;
+  label: string;
+  description: string;
+  scope_type: string;
+  permissions: string[];
+  is_system: boolean;
+};
 type AccessEditDraft = {
   geography_id: string;
   is_active: boolean;
@@ -429,6 +440,7 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   const [teamDraft, setTeamDraft] = useState(defaultTeamDraft);
   const [editTeamDraft, setEditTeamDraft] = useState(defaultEditTeamDraft);
   const [roleDraft, setRoleDraft] = useState(defaultRoleDraft);
+  const [editRoleDraft, setEditRoleDraft] = useState<EditRoleDraft | null>(null);
   const [accessDraft, setAccessDraft] = useState(defaultAccessDraft);
   const [accessEditDraft, setAccessEditDraft] = useState<AccessEditDraft>(defaultAccessEditDraft);
   const [roleAssignmentDraft, setRoleAssignmentDraft] = useState<RoleAssignmentDraft>(defaultRoleAssignmentDraft);
@@ -789,6 +801,48 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
     onError: () => pushToast({ title: "Could not create role", description: "Role names must be unique and permissions must be valid.", tone: "danger" }),
   });
 
+  function openEditRole(role: RoleRead): void {
+    setEditRoleDraft({
+      id: role.id,
+      name: role.name,
+      label: role.label || normalizeRoleLabel(role.name),
+      description: role.description ?? "",
+      scope_type: role.scope_type ?? "organization",
+      permissions: [...role.permissions],
+      is_system: Boolean(role.is_system),
+    });
+    setModalMode("edit-role");
+  }
+
+  const updateRoleMutation = useMutation({
+    mutationFn: () => {
+      if (!editRoleDraft) throw new Error("No role selected");
+      return updateRole(token ?? "", editRoleDraft.id, {
+        label: editRoleDraft.label,
+        description: editRoleDraft.description,
+        scope_type: editRoleDraft.scope_type as RoleCreate["scope_type"],
+        permissions: editRoleDraft.permissions,
+      });
+    },
+    onSuccess: async (role) => {
+      setModalMode(null);
+      setEditRoleDraft(null);
+      await invalidateUsersTeams();
+      pushToast({ title: "Role updated", description: `${role.label || role.name} permissions saved. Users get the change on their next sign-in.`, tone: "success" });
+    },
+    onError: (error) => pushToast({ title: "Could not update role", description: messageFromApiError(error, "Check the permissions and your role-management access."), tone: "danger" }),
+  });
+
+  const resetRoleMutation = useMutation({
+    mutationFn: (roleId: string) => resetRolePermissions(token ?? "", roleId),
+    onSuccess: async (role) => {
+      setEditRoleDraft((current) => (current && current.id === role.id ? { ...current, permissions: [...role.permissions] } : current));
+      await invalidateUsersTeams();
+      pushToast({ title: "Role reset to default", description: `${role.label || role.name} permissions were restored to the built-in default.`, tone: "success" });
+    },
+    onError: (error) => pushToast({ title: "Could not reset role", description: messageFromApiError(error, "This role may be custom and have no built-in default."), tone: "danger" }),
+  });
+
   const resetPasswordMutation = useMutation({
     mutationFn: (userId: string) => resetUserPassword(token ?? "", userId),
     onSuccess: (result) => {
@@ -1070,6 +1124,19 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
     },
     { key: "permissions", header: "Permissions", value: (role) => String(role.permissions.length), render: (role) => <Badge tone="neutral">{role.permissions.length} permissions</Badge> },
     { key: "type", header: "Type", value: (role) => (role.is_system ? "system" : "custom"), render: (role) => <Badge tone={role.is_system ? "admin" : "success"}>{role.is_system ? "System" : "Custom"}</Badge> },
+    {
+      key: "actions",
+      header: "Actions",
+      align: "right",
+      render: (role) => (
+        <div className="flex justify-end">
+          <Button disabled={preview || !canManageRoles} onClick={() => openEditRole(role)} size="sm" variant="secondary">
+            <Pencil aria-hidden="true" />
+            Edit permissions
+          </Button>
+        </div>
+      ),
+    },
   ];
 
   const teamColumns: TableColumn<TeamRead>[] = [
@@ -1397,6 +1464,23 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
         onOpenChange={(open) => setModalMode(open ? "role" : null)}
         onSubmit={() => createRoleMutation.mutate()}
         open={modalMode === "role"}
+      />
+      <EditRoleModal
+        canSubmit={!preview && canManageRoles && !updateRoleMutation.isPending}
+        draft={editRoleDraft}
+        groups={permissionGroups}
+        onChange={setEditRoleDraft}
+        onOpenChange={(open) => {
+          if (!open) {
+            setModalMode(null);
+            setEditRoleDraft(null);
+          }
+        }}
+        onReset={() => editRoleDraft && resetRoleMutation.mutate(editRoleDraft.id)}
+        onSubmit={() => updateRoleMutation.mutate()}
+        open={modalMode === "edit-role"}
+        resetting={resetRoleMutation.isPending}
+        saving={updateRoleMutation.isPending}
       />
       <AccessTestModal
         canSubmit={!preview && Boolean(accessDraft.user_id && accessDraft.permission) && !simulateAccessMutation.isPending}
@@ -3895,6 +3979,84 @@ function CreateRoleModal({ canSubmit, draft, groups, onChange, onOpenChange, onS
         <Button onClick={() => onOpenChange(false)} variant="ghost">Cancel</Button>
         <Button disabled={!canSubmit} onClick={onSubmit} variant="primary">Create role</Button>
       </div>
+    </Modal>
+  );
+}
+
+function EditRoleModal({ canSubmit, draft, groups, onChange, onOpenChange, onReset, onSubmit, open, resetting, saving }: {
+  canSubmit: boolean;
+  draft: EditRoleDraft | null;
+  groups: ReturnType<typeof groupPermissions>;
+  onChange: (draft: EditRoleDraft) => void;
+  onOpenChange: (open: boolean) => void;
+  onReset: () => void;
+  onSubmit: () => void;
+  open: boolean;
+  resetting: boolean;
+  saving: boolean;
+}) {
+  function togglePermission(permission: string): void {
+    if (!draft) return;
+    const next = draft.permissions.includes(permission)
+      ? draft.permissions.filter((item) => item !== permission)
+      : [...draft.permissions, permission];
+    onChange({ ...draft, permissions: next });
+  }
+  return (
+    <Modal
+      description="Choose exactly what this role can do. Permissions take effect the next time each user signs in."
+      onOpenChange={onOpenChange}
+      open={open}
+      title={draft ? `Edit role · ${draft.label}` : "Edit role"}
+      contentClassName="max-w-3xl"
+    >
+      {draft ? (
+        <>
+          <div className="max-h-[70vh] overflow-y-auto p-5 product-scrollbar">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={draft.is_system ? "admin" : "success"}>{draft.is_system ? "Built-in role" : "Custom role"}</Badge>
+              <Badge tone="neutral">{draft.permissions.length} permission{draft.permissions.length === 1 ? "" : "s"}</Badge>
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <Input placeholder="Display label" value={draft.label} onChange={(event) => onChange({ ...draft, label: event.target.value })} />
+              <Select value={draft.scope_type} onChange={(event) => onChange({ ...draft, scope_type: event.target.value })}>
+                {["organization", "region", "district", "field_team", "project", "own"].map((scope) => <option key={scope} value={scope}>{scope.replace("_", " ")}</option>)}
+              </Select>
+            </div>
+            <Textarea className="mt-3" placeholder="Description" value={draft.description} onChange={(event) => onChange({ ...draft, description: event.target.value })} />
+            <p className="mt-3 text-xs text-muted-foreground">
+              Granting a &ldquo;manage&rdquo; permission automatically includes its matching &ldquo;view&rdquo; permission, so a role can never manage something it can&apos;t see.
+            </p>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              {groups.map((group) => (
+                <div className="rounded-xl border p-3" key={group.group}>
+                  <p className="text-sm font-semibold capitalize">{group.group}</p>
+                  <div className="mt-3 space-y-2">
+                    {group.items.map((permission) => (
+                      <label className="flex items-center gap-2 text-sm" key={permission.key}>
+                        <input checked={draft.permissions.includes(permission.key)} onChange={() => togglePermission(permission.key)} type="checkbox" />
+                        <span>{permission.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-5 py-4">
+            {draft.is_system ? (
+              <Button disabled={resetting || saving} onClick={onReset} variant="ghost">
+                <RotateCcw aria-hidden="true" />
+                {resetting ? "Resetting…" : "Reset to default"}
+              </Button>
+            ) : <span />}
+            <div className="flex gap-2">
+              <Button onClick={() => onOpenChange(false)} variant="ghost">Cancel</Button>
+              <Button disabled={!canSubmit} onClick={onSubmit} variant="primary">{saving ? "Saving…" : "Save permissions"}</Button>
+            </div>
+          </div>
+        </>
+      ) : null}
     </Modal>
   );
 }

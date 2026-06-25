@@ -140,6 +140,36 @@ class RoleRepository:
         )
         return list(result.scalars())
 
+    async def get(self, *, organization_id: UUID, role_id: UUID) -> Role | None:
+        result = await self.session.execute(
+            select(Role).where(
+                Role.id == role_id,
+                Role.organization_id == organization_id,
+                Role.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def update(
+        self,
+        *,
+        role: Role,
+        permissions: list[str] | None = None,
+        label: str | None = None,
+        description: str | None = None,
+        scope_type: str | None = None,
+    ) -> Role:
+        if permissions is not None:
+            role.permissions = ",".join(sorted(permissions))
+        if label is not None:
+            role.label = label
+        if description is not None:
+            role.description = description
+        if scope_type is not None:
+            role.scope_type = scope_type
+        await self.session.flush()
+        return role
+
 
 class IdentityRepository:
     def __init__(self, session: AsyncSession) -> None:

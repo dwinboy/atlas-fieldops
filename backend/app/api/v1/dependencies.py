@@ -95,6 +95,27 @@ async def _active_access_from_database(
     return roles, stored_permissions
 
 
+async def _effective_access(
+    principal: CurrentPrincipal,
+    session: AsyncSession | None,
+) -> tuple[list[str], set[str]]:
+    """Resolve the (roles, permissions) used for enforcement.
+
+    Database role permissions (owner-managed) are authoritative when present, so an
+    owner can add or remove what a role can do. When a role has no stored permissions
+    (e.g. legacy data or an unseeded fixture), fall back to the hardcoded default so a
+    user is never accidentally locked out.
+    """
+    active_access = await _active_access_from_database(principal, session)
+    if active_access is not None:
+        roles, stored = active_access
+        permissions = stored or {permission.value for permission in permissions_for_roles(roles)}
+        return roles, permissions
+    roles = principal.roles
+    permissions = set(principal.permissions) or {permission.value for permission in permissions_for_roles(roles)}
+    return roles, permissions
+
+
 async def get_current_principal(
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer)],
 ) -> CurrentPrincipal:
@@ -108,7 +129,13 @@ async def get_current_principal(
         for permission in payload.get("permissions", [])
         if (normalized := normalize_permission(str(permission))) is not None
     }
-    permissions = sorted(permission.value for permission in permissions_for_roles(roles) | token_permissions)
+    # The token carries the role's database-defined (owner-managed) permissions captured
+    # at login. Fall back to the hardcoded default only when the token has none, so a
+    # principal is never left permissionless from a legacy/permission-less token.
+    permissions = sorted(
+        permission.value
+        for permission in (token_permissions or permissions_for_roles(roles))
+    )
     scope_type = str(payload.get("scope_type") or default_scope_for_roles(roles).value)
     return CurrentPrincipal(
         user_id=str(payload["sub"]),
@@ -154,14 +181,10 @@ def require_permission(
         principal: Annotated[CurrentPrincipal, Depends(get_current_principal)],
         session: Annotated[AsyncSession | None, Depends(get_session)] = None,
     ) -> CurrentPrincipal:
-        active_access = await _active_access_from_database(principal, session)
-        if active_access is not None:
-            roles, stored_permissions = active_access
-            permissions = {permission.value for permission in permissions_for_roles(roles)} | stored_permissions
-        else:
-            roles = principal.roles
-            permissions = set(principal.permissions)
-        if not has_permission(roles, required_permission) and required_permission.value not in permissions:
+        # Owner-managed database permissions are authoritative when present; the
+        # hardcoded role map is the default fallback. The platform super admin always passes.
+        roles, permissions = await _effective_access(principal, session)
+        if "super_admin" not in roles and required_permission.value not in permissions:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permission")
         return principal
 
@@ -175,14 +198,10 @@ def require_any_permission(
         principal: Annotated[CurrentPrincipal, Depends(get_current_principal)],
         session: Annotated[AsyncSession | None, Depends(get_session)] = None,
     ) -> CurrentPrincipal:
-        active_access = await _active_access_from_database(principal, session)
-        if active_access is not None:
-            roles, stored_permissions = active_access
-            permissions = {permission.value for permission in permissions_for_roles(roles)} | stored_permissions
-        else:
-            roles = principal.roles
-            permissions = set(principal.permissions)
-        if not any(has_permission(roles, required_permission) or required_permission.value in permissions for required_permission in required_permissions):
+        roles, permissions = await _effective_access(principal, session)
+        if "super_admin" not in roles and not any(
+            required_permission.value in permissions for required_permission in required_permissions
+        ):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permission")
         return principal
 

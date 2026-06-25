@@ -207,6 +207,11 @@ OPERATIONS_MENU = frozenset(
     }
 )
 
+# Owner / admin-tier menu: everything in OPERATIONS_MENU plus the org-admin-only
+# workspaces (Data Quality, Administration). Kept separate so manager/field roles
+# that derive their menu from OPERATIONS_MENU never inherit admin surfaces.
+ADMIN_MENU = OPERATIONS_MENU | {"dataQuality", "administration"}
+
 
 ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
     "super_admin": RoleDefinition(
@@ -216,7 +221,7 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
         ScopeType.GLOBAL,
         FULL_PLATFORM_PERMISSIONS,
         frozenset(WorkflowAction),
-        OPERATIONS_MENU,
+        ADMIN_MENU,
     ),
     "owner": RoleDefinition(
         "owner",
@@ -225,7 +230,7 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
         ScopeType.ORGANIZATION,
         FULL_PLATFORM_PERMISSIONS,
         frozenset(WorkflowAction),
-        OPERATIONS_MENU,
+        ADMIN_MENU,
     ),
     "organization_owner": RoleDefinition(
         "organization_owner",
@@ -234,7 +239,7 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
         ScopeType.ORGANIZATION,
         FULL_PLATFORM_PERMISSIONS,
         frozenset(WorkflowAction),
-        OPERATIONS_MENU,
+        ADMIN_MENU,
     ),
     "system_admin": RoleDefinition(
         "system_admin",
@@ -243,7 +248,7 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
         ScopeType.ORGANIZATION,
         FULL_PLATFORM_PERMISSIONS - _p(Permission.USER_DELETE),
         frozenset(WorkflowAction),
-        OPERATIONS_MENU,
+        ADMIN_MENU,
     ),
     "national_admin": RoleDefinition(
         "national_admin",
@@ -409,6 +414,7 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
             Permission.ROLE_READ,
             Permission.PROGRAM_CREATE,
             Permission.PROGRAM_MANAGE,
+            Permission.OFFICER_READ,
             Permission.OFFICER_MANAGE,
             Permission.FORM_CREATE,
             Permission.FORM_EDIT,
@@ -690,6 +696,92 @@ def default_scope_for_roles(roles: list[str]) -> ScopeType:
 def has_permission(roles: list[str], permission: Permission | str) -> bool:
     normalized = normalize_permission(permission)
     return normalized is not None and normalized in permissions_for_roles(roles)
+
+
+# --- Owner-managed role editing guardrails -------------------------------------------------
+# Roles an organization owner must never be able to edit or delete (platform-level).
+PROTECTED_ROLE_NAMES: frozenset[str] = PLATFORM_ONLY_ROLES
+
+# Permissions that cannot be stripped from the owner role, so an organization owner
+# can never lock themselves out of managing users and roles (and therefore undo a mistake).
+_OWNER_FLOOR = frozenset(
+    {
+        Permission.ROLE_READ.value,
+        Permission.ROLE_MANAGE.value,
+        Permission.USER_READ.value,
+        Permission.USER_MANAGE.value,
+        Permission.ORGANIZATION_READ.value,
+    }
+    if hasattr(Permission, "ORGANIZATION_READ")
+    else {
+        Permission.ROLE_READ.value,
+        Permission.ROLE_MANAGE.value,
+        Permission.USER_READ.value,
+        Permission.USER_MANAGE.value,
+    }
+)
+LOCKED_ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
+    "owner": _OWNER_FLOOR,
+    "organization_owner": _OWNER_FLOOR,
+}
+
+# Permissions that an editor must never be able to strip from a role they themselves
+# hold. The owner floor only protects the canonical owner roles; this guard covers the
+# case where an organization administers through a *custom* role — removing roles.manage
+# (or users.manage) from your own role would otherwise lock the whole tenant out of
+# administration with no way to undo it.
+SELF_MANAGEABLE_PERMISSIONS: frozenset[str] = frozenset(
+    {
+        Permission.ROLE_MANAGE.value,
+        Permission.USER_MANAGE.value,
+    }
+)
+
+
+def self_lockout_permissions(
+    role_name: str,
+    holder_roles: list[str],
+    before: set[str] | frozenset[str],
+    after: set[str] | frozenset[str],
+) -> set[str]:
+    """Self-manageable permissions an editor would strip from a role they hold.
+
+    Returns the empty set unless the edited role is one the editor currently holds and
+    the change drops a permission needed to keep managing roles/users — the values that,
+    if removed, would lock the editor (and tenant) out of administration.
+    """
+    holder = {canonical_role(name) for name in holder_roles}
+    if canonical_role(role_name) not in holder:
+        return set()
+    return (set(before) & SELF_MANAGEABLE_PERMISSIONS) - set(after)
+
+_ALL_PERMISSION_VALUES = {permission.value for permission in Permission}
+# Actions that should always imply the matching read/view of the same resource, so a
+# role can never be left able to manage something it cannot see (the class of bug that
+# previously hid field officers from the M&E Manager).
+_VIEW_IMPLYING_ACTIONS = {"manage", "edit", "create", "delete", "publish", "approve", "reject", "review"}
+
+
+def expand_implied_permissions(values: set[str] | frozenset[str]) -> set[str]:
+    """Ensure any manage/edit/etc. permission also includes its resource's view permission."""
+    result = {value for value in values if value in _ALL_PERMISSION_VALUES}
+    for value in list(result):
+        if "." not in value:
+            continue
+        resource, action = value.rsplit(".", 1)
+        if action in _VIEW_IMPLYING_ACTIONS:
+            view = f"{resource}.view"
+            if view in _ALL_PERMISSION_VALUES:
+                result.add(view)
+    return result
+
+
+def default_permissions_for_role(role_name: str) -> set[str]:
+    """The built-in default permission set for a role (used to reset to default)."""
+    definition = ROLE_DEFINITIONS.get(canonical_role(role_name))
+    if definition is None:
+        return set()
+    return {permission.value for permission in definition.permissions}
 
 
 def is_scope_authorized(

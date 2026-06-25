@@ -3294,6 +3294,21 @@ export async function createRole(token: string, payload: RoleCreate): Promise<Ro
   return request<RoleRead>("/roles", { method: "POST", token, bodyJson: payload });
 }
 
+export type RoleUpdate = {
+  label?: string;
+  description?: string;
+  scope_type?: RoleCreate["scope_type"];
+  permissions?: string[];
+};
+
+export async function updateRole(token: string, roleId: string, payload: RoleUpdate): Promise<RoleRead> {
+  return request<RoleRead>(`/roles/${roleId}`, { method: "PATCH", token, bodyJson: payload });
+}
+
+export async function resetRolePermissions(token: string, roleId: string): Promise<RoleRead> {
+  return request<RoleRead>(`/roles/${roleId}/reset-permissions`, { method: "POST", token });
+}
+
 export async function getAccessCatalog(token: string): Promise<AccessCatalog> {
   return request<AccessCatalog>("/roles/catalog", { token });
 }

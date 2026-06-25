@@ -836,3 +836,41 @@ async def test_email_first_login_returns_choices_for_multiple_organizations(
         )
     slugs = {slug for slug, _ in excinfo.value.organizations}
     assert slugs == {"acme", "beta-health"}
+
+
+def test_role_editing_guardrails() -> None:
+    from app.core.permissions import (
+        LOCKED_ROLE_PERMISSIONS,
+        PROTECTED_ROLE_NAMES,
+        default_permissions_for_role,
+        expand_implied_permissions,
+        self_lockout_permissions,
+    )
+
+    # Granting a manage/edit permission always pulls in the matching view permission,
+    # so a role can never manage something it cannot see.
+    expanded = expand_implied_permissions({"officers.manage", "users.edit"})
+    assert "officers.view" in expanded
+    assert "users.view" in expanded
+
+    # Built-in roles expose a default permission set to reset to; custom roles do not.
+    assert "users.view" in default_permissions_for_role("owner")
+    assert default_permissions_for_role("totally_custom_role") == set()
+
+    # The owner role keeps a floor of role/user management so an owner cannot lock
+    # themselves out, and platform roles stay protected from tenant edits.
+    assert {"roles.manage", "users.manage"} <= LOCKED_ROLE_PERMISSIONS["owner"]
+    assert "super_admin" in PROTECTED_ROLE_NAMES
+
+    # Removing roles.manage from a role the editor holds is flagged as a self-lockout...
+    lost = self_lockout_permissions(
+        "ops_admin",
+        ["ops_admin"],
+        before={"roles.manage", "users.manage", "forms.view"},
+        after={"users.manage", "forms.view"},
+    )
+    assert lost == {"roles.manage"}
+    # ...but editing a role the editor does not hold is never a self-lockout, and keeping
+    # the management permissions is always allowed.
+    assert self_lockout_permissions("ops_admin", ["field_officer"], {"roles.manage"}, set()) == set()
+    assert self_lockout_permissions("ops_admin", ["ops_admin"], {"roles.manage"}, {"roles.manage"}) == set()

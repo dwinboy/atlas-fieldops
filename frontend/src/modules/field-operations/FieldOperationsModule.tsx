@@ -25,6 +25,7 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
+import { AccessDenied, isPermissionError } from "@/components/ui/access-denied";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ActionMenu, type ActionMenuItem } from "@/components/ui/dropdown-menu";
@@ -3486,13 +3487,17 @@ Password:          ${lastInviteCredentials.password}`}
               </button>
             </div>
           ) : null}
-          <DataTable
-            columns={officerColumns}
-            emptyLabel="No field officers yet. Invite one officer or import a CSV roster."
-            rows={officers}
-            searchLabel="Search field officers"
-            title="Field officer roster"
-          />
+          {isPermissionError(officersQuery.error) && !preview ? (
+            <AccessDenied resource="field officers" />
+          ) : (
+            <DataTable
+              columns={officerColumns}
+              emptyLabel="No field officers yet. Invite one officer or import a CSV roster."
+              rows={officers}
+              searchLabel="Search field officers"
+              title="Field officer roster"
+            />
+          )}
         </div>
       ) : null}
 
