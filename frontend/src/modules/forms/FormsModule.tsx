@@ -6131,23 +6131,20 @@ function FormDataGridWorkspace({
               <p className="mt-1 text-xs text-muted-foreground">
                 Shortcuts: <span className="font-medium text-foreground">Tab / Enter</span> moves across cells, long text keeps <span className="font-medium text-foreground">Enter</span> for new lines, <span className="font-medium text-foreground">Ctrl/Cmd + Z</span> undo, <span className="font-medium text-foreground">Ctrl/Cmd + Shift + Z</span> redo, <span className="font-medium text-foreground">Ctrl/Cmd + S</span> saves, and <span className="font-medium text-foreground">Ctrl/Cmd + Enter</span> confirms a clean row.
               </p>
-              <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-lg border border-warning/30 bg-background/80 px-2.5 py-2 text-[11px]">
-                  <p className="font-medium text-warning">Blocked</p>
-                  <p className="mt-0.5 text-muted-foreground">Blocked until flagged cells are fixed.</p>
-                </div>
-                <div className="rounded-lg border border-accent/30 bg-background/80 px-2.5 py-2 text-[11px]">
-                  <p className="font-medium text-accent">Saved locally</p>
-                  <p className="mt-0.5 text-muted-foreground">Your edits are stored locally, not live yet.</p>
-                </div>
-                <div className="rounded-lg border border-success/30 bg-background/80 px-2.5 py-2 text-[11px]">
-                  <p className="font-medium text-success">Ready</p>
-                  <p className="mt-0.5 text-muted-foreground">The row is clean but still waiting for confirmation.</p>
-                </div>
-                <div className="rounded-lg border border-success/30 bg-success/5 px-2.5 py-2 text-[11px]">
-                  <p className="font-medium text-success">Live</p>
-                  <p className="mt-0.5 text-muted-foreground">Approved rows leave this queue and move into live data.</p>
-                </div>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                <span className="font-medium text-foreground">Row status:</span>
+                <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-warning" />Blocked</span>
+                <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-accent" />Saved locally</span>
+                <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-success" />Ready</span>
+                <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-success/60" />Live</span>
+                <HelpHint label="About row statuses" title="Row statuses">
+                  <ul className="space-y-1">
+                    <li><span className="font-medium text-warning">Blocked</span> — blocked until flagged cells are fixed.</li>
+                    <li><span className="font-medium text-accent">Saved locally</span> — your edits are stored locally, not live yet.</li>
+                    <li><span className="font-medium text-success">Ready</span> — clean but still waiting for confirmation.</li>
+                    <li><span className="font-medium text-success">Live</span> — approved rows leave this queue and move into live data.</li>
+                  </ul>
+                </HelpHint>
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <Button
