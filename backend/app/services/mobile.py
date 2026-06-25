@@ -2361,13 +2361,40 @@ class MobileService:
         return prefix, include_year, separator, width
 
     def _display_name(self, values: dict[str, Any]) -> str:
-        full_name = self._string_value(values, "full_name", "farmer_name", "name", "beneficiary_name")
+        full_name = self._string_value(
+            values,
+            "full_name",
+            "entity_name",
+            "farmer_name",
+            "name",
+            "beneficiary_name",
+            "facility_name",
+            "school_name",
+            "site_name",
+            "group_name",
+            "organization_name",
+            "organisation_name",
+            "business_name",
+            "asset_name",
+            "asset_tag",
+            "title",
+            "entity_label",
+            "label",
+        )
         if full_name:
             return full_name
         first_name = self._string_value(values, "first_name", "firstname")
         last_name = self._string_value(values, "last_name", "lastname", "surname")
         combined = " ".join(part for part in [first_name, last_name] if part)
-        return combined or "Unnamed beneficiary"
+        if combined:
+            return combined
+        for key, value in values.items():
+            normalized = str(key).strip().lower()
+            if normalized.endswith(("_name", "_label", "_title")) and value not in (None, ""):
+                text = str(value).strip()
+                if text:
+                    return text
+        return "Unnamed beneficiary"
 
     async def _find_duplicate_entity(
         self,

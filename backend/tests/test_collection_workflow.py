@@ -1519,6 +1519,408 @@ async def test_mobile_synced_submission_is_visible_and_creates_beneficiary_after
 
 
 @pytest.mark.asyncio
+async def test_registration_without_recognized_name_still_creates_entity_and_flags_it() -> None:
+    """A registration form approved without a recognizable name field must still produce a
+    findable entity (auto-named) and raise a visible data-quality signal — never a silent
+    no-op that leaves the submission with a blank Entity ID."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        field_user_id = uuid4()
+        manager_user_id = uuid4()
+        project_id = uuid4()
+        survey_id = uuid4()
+        form_id = uuid4()
+        version_id = uuid4()
+        officer_id = uuid4()
+        now = datetime.now(UTC)
+        session.add_all(
+            [
+                Organization(id=organization_id, name="No Name Org", slug="no-name-org"),
+                User(id=field_user_id, email="field2@example.org", full_name="Field Officer", password_hash="x"),
+                User(id=manager_user_id, email="manager2@example.org", full_name="Manager", password_hash="x"),
+                FieldOfficerProfile(id=officer_id, organization_id=organization_id, user_id=field_user_id, is_active=True),
+                Project(id=project_id, organization_id=organization_id, name="No Name Project", slug="no-name-project", status="active"),
+                Survey(
+                    id=survey_id,
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    created_by_user_id=manager_user_id,
+                    owner_user_id=manager_user_id,
+                    title="Reg",
+                    code="REG",
+                    survey_type="registration",
+                    status="active",
+                ),
+                DataForm(
+                    id=form_id,
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    survey_id=survey_id,
+                    created_by_user_id=manager_user_id,
+                    name="Asset Registration",
+                    slug="asset-registration",
+                    status="published",
+                    current_version=1,
+                    controls_json={
+                        "entity_controls": {
+                            "linked_to_entity": True,
+                            "entity_type": "Asset",
+                            "creates_new_entity": True,
+                            "requires_existing_entity": False,
+                        }
+                    },
+                ),
+                DataFormVersion(
+                    id=version_id,
+                    organization_id=organization_id,
+                    form_id=form_id,
+                    version=1,
+                    schema_json={
+                        "sections": [
+                            {
+                                "id": "details",
+                                "title": "Details",
+                                "fields": [
+                                    {"id": "q_obs", "variable_name": "observation", "type": "text", "label": "Observation"},
+                                ],
+                            }
+                        ]
+                    },
+                    offline_compatible=True,
+                    published_at=now,
+                ),
+            ]
+        )
+        await session.commit()
+
+        principal = CurrentPrincipal(
+            user_id=str(field_user_id),
+            organization_id=str(organization_id),
+            email="field2@example.org",
+            full_name="Field Officer",
+            organization_slug="no-name-org",
+            organization_name="No Name Org",
+            roles=["field_officer"],
+            permissions=["submission.create", "sync.mobile"],
+            scope_type="own",
+        )
+        uploaded = await MobileService(session).upload_submission(
+            principal=principal,
+            payload=MobileSubmissionUpload(
+                local_id="mobile-noname-001",
+                project_id=str(project_id),
+                form_id=str(form_id),
+                form_version_id=str(version_id),
+                entity_type="Asset",
+                responses=[
+                    {"questionId": "q_obs", "variableName": "observation", "value": "Pump in good condition", "updatedAt": now},
+                ],
+                location={"latitude": 5.9, "longitude": 10.1, "accuracy": 8, "timestamp": now},
+                device_id="android-test",
+                app_version="1.0.0-test",
+                created_at=now,
+                submitted_at=now,
+            ),
+        )
+        assert uploaded.status == "synced"
+
+        submissions = await SubmissionService(session).list_submissions(
+            organization_id=organization_id, status=None, actor_user_id=field_user_id, scope_type="own"
+        )
+        submission = submissions[0]
+        await SubmissionService(session).review_submission(
+            organization_id=organization_id,
+            actor_user_id=manager_user_id,
+            submission_id=submission.id,
+            payload=SubmissionReviewAction(action="approve", comment="Approved"),
+        )
+        await session.commit()
+
+        # Entity is still created and linked (no silent no-op).
+        beneficiary = (await session.execute(select(Beneficiary))).scalar_one()
+        assert beneficiary.beneficiary_uid != ""
+        assert "Unnamed Asset" in beneficiary.display_name
+        refreshed = await session.get(Submission, submission.id)
+        assert refreshed is not None and refreshed.entity_id == beneficiary.id
+        assert refreshed.payload_json["_beneficiary_processing"]["name_autogenerated"] is True
+        # And a visible signal tells the manager to fix the name mapping.
+        signal = (
+            await session.execute(select(DataQualitySignal).where(DataQualitySignal.signal_type == "entity_name_missing"))
+        ).scalar_one()
+        assert signal.beneficiary_id == beneficiary.id
+
+
+@pytest.mark.asyncio
+async def test_registration_resolves_name_from_beneficiary_field_tag_not_just_heuristic() -> None:
+    """When the builder tags the name question with [beneficiary-field:full_name] (the form
+    propagation fix), the entity is named from the explicit mapping even though the field's
+    variable name ('client_name') is not one the heuristic recognizes — so the created
+    entity carries the real submitted name, not an auto-generated placeholder."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        field_user_id = uuid4()
+        manager_user_id = uuid4()
+        project_id = uuid4()
+        survey_id = uuid4()
+        form_id = uuid4()
+        version_id = uuid4()
+        officer_id = uuid4()
+        now = datetime.now(UTC)
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Tag Org", slug="tag-org"),
+                User(id=field_user_id, email="field3@example.org", full_name="Field Officer", password_hash="x"),
+                User(id=manager_user_id, email="manager3@example.org", full_name="Manager", password_hash="x"),
+                FieldOfficerProfile(id=officer_id, organization_id=organization_id, user_id=field_user_id, is_active=True),
+                Project(id=project_id, organization_id=organization_id, name="Tag Project", slug="tag-project", status="active"),
+                Survey(
+                    id=survey_id,
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    created_by_user_id=manager_user_id,
+                    owner_user_id=manager_user_id,
+                    title="Reg",
+                    code="REG3",
+                    survey_type="registration",
+                    status="active",
+                ),
+                DataForm(
+                    id=form_id,
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    survey_id=survey_id,
+                    created_by_user_id=manager_user_id,
+                    name="Member Registration",
+                    slug="member-registration",
+                    status="published",
+                    current_version=1,
+                    controls_json={
+                        "entity_controls": {
+                            "linked_to_entity": True,
+                            "entity_type": "Member",
+                            "creates_new_entity": True,
+                            "requires_existing_entity": False,
+                        }
+                    },
+                ),
+                DataFormVersion(
+                    id=version_id,
+                    organization_id=organization_id,
+                    form_id=form_id,
+                    version=1,
+                    schema_json={
+                        "sections": [
+                            {
+                                "id": "identity",
+                                "title": "Identity",
+                                "fields": [
+                                    {
+                                        "id": "q_name",
+                                        "variable_name": "client_name",
+                                        "type": "text",
+                                        "label": "Member name",
+                                        "appearance": {"helpText": "[profile-impact:updates_profile] [beneficiary-field:full_name]"},
+                                    },
+                                ],
+                            }
+                        ]
+                    },
+                    offline_compatible=True,
+                    published_at=now,
+                ),
+            ]
+        )
+        await session.commit()
+
+        principal = CurrentPrincipal(
+            user_id=str(field_user_id),
+            organization_id=str(organization_id),
+            email="field3@example.org",
+            full_name="Field Officer",
+            organization_slug="tag-org",
+            organization_name="Tag Org",
+            roles=["field_officer"],
+            permissions=["submission.create", "sync.mobile"],
+            scope_type="own",
+        )
+        await MobileService(session).upload_submission(
+            principal=principal,
+            payload=MobileSubmissionUpload(
+                local_id="mobile-tag-001",
+                project_id=str(project_id),
+                form_id=str(form_id),
+                form_version_id=str(version_id),
+                entity_type="Member",
+                responses=[
+                    {"questionId": "q_name", "variableName": "client_name", "value": "Awa Ndip", "updatedAt": now},
+                ],
+                location={"latitude": 5.9, "longitude": 10.1, "accuracy": 8, "timestamp": now},
+                device_id="android-test",
+                app_version="1.0.0-test",
+                created_at=now,
+                submitted_at=now,
+            ),
+        )
+        submissions = await SubmissionService(session).list_submissions(
+            organization_id=organization_id, status=None, actor_user_id=field_user_id, scope_type="own"
+        )
+        submission = submissions[0]
+        await SubmissionService(session).review_submission(
+            organization_id=organization_id,
+            actor_user_id=manager_user_id,
+            submission_id=submission.id,
+            payload=SubmissionReviewAction(action="approve", comment="Approved"),
+        )
+        await session.commit()
+
+        beneficiary = (await session.execute(select(Beneficiary))).scalar_one()
+        assert beneficiary.display_name == "Awa Ndip"
+        assert "Unnamed" not in beneficiary.display_name
+        refreshed = await session.get(Submission, submission.id)
+        assert refreshed is not None and refreshed.entity_id == beneficiary.id
+
+
+@pytest.mark.asyncio
+async def test_non_person_registration_names_entity_from_typed_name_field() -> None:
+    """A non-person registration (a Facility) whose name field is 'facility_name' — not a
+    person name the old heuristic recognized, and with no explicit mapping — is still named
+    from that field rather than auto-named, thanks to the broadened name resolution."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        field_user_id = uuid4()
+        manager_user_id = uuid4()
+        project_id = uuid4()
+        survey_id = uuid4()
+        form_id = uuid4()
+        version_id = uuid4()
+        officer_id = uuid4()
+        now = datetime.now(UTC)
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Facility Org", slug="facility-org"),
+                User(id=field_user_id, email="field4@example.org", full_name="Field Officer", password_hash="x"),
+                User(id=manager_user_id, email="manager4@example.org", full_name="Manager", password_hash="x"),
+                FieldOfficerProfile(id=officer_id, organization_id=organization_id, user_id=field_user_id, is_active=True),
+                Project(id=project_id, organization_id=organization_id, name="Facility Project", slug="facility-project", status="active"),
+                Survey(
+                    id=survey_id,
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    created_by_user_id=manager_user_id,
+                    owner_user_id=manager_user_id,
+                    title="Facility Reg",
+                    code="FAC-REG",
+                    survey_type="registration",
+                    status="active",
+                ),
+                DataForm(
+                    id=form_id,
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    survey_id=survey_id,
+                    created_by_user_id=manager_user_id,
+                    name="Facility Registration",
+                    slug="facility-registration",
+                    status="published",
+                    current_version=1,
+                    controls_json={
+                        "entity_controls": {
+                            "linked_to_entity": True,
+                            "entity_type": "Facility",
+                            "creates_new_entity": True,
+                            "requires_existing_entity": False,
+                        }
+                    },
+                ),
+                DataFormVersion(
+                    id=version_id,
+                    organization_id=organization_id,
+                    form_id=form_id,
+                    version=1,
+                    schema_json={
+                        "sections": [
+                            {
+                                "id": "details",
+                                "title": "Details",
+                                "fields": [
+                                    {"id": "q_fname", "variable_name": "facility_name", "type": "text", "label": "Facility name"},
+                                    {"id": "q_type", "variable_name": "facility_kind", "type": "text", "label": "Kind"},
+                                ],
+                            }
+                        ]
+                    },
+                    offline_compatible=True,
+                    published_at=now,
+                ),
+            ]
+        )
+        await session.commit()
+
+        principal = CurrentPrincipal(
+            user_id=str(field_user_id),
+            organization_id=str(organization_id),
+            email="field4@example.org",
+            full_name="Field Officer",
+            organization_slug="facility-org",
+            organization_name="Facility Org",
+            roles=["field_officer"],
+            permissions=["submission.create", "sync.mobile"],
+            scope_type="own",
+        )
+        await MobileService(session).upload_submission(
+            principal=principal,
+            payload=MobileSubmissionUpload(
+                local_id="mobile-fac-001",
+                project_id=str(project_id),
+                form_id=str(form_id),
+                form_version_id=str(version_id),
+                entity_type="Facility",
+                responses=[
+                    {"questionId": "q_fname", "variableName": "facility_name", "value": "Bonaberi Health Center", "updatedAt": now},
+                    {"questionId": "q_type", "variableName": "facility_kind", "value": "Clinic", "updatedAt": now},
+                ],
+                location={"latitude": 5.9, "longitude": 10.1, "accuracy": 8, "timestamp": now},
+                device_id="android-test",
+                app_version="1.0.0-test",
+                created_at=now,
+                submitted_at=now,
+            ),
+        )
+        submissions = await SubmissionService(session).list_submissions(
+            organization_id=organization_id, status=None, actor_user_id=field_user_id, scope_type="own"
+        )
+        submission = submissions[0]
+        await SubmissionService(session).review_submission(
+            organization_id=organization_id,
+            actor_user_id=manager_user_id,
+            submission_id=submission.id,
+            payload=SubmissionReviewAction(action="approve", comment="Approved"),
+        )
+        await session.commit()
+
+        beneficiary = (await session.execute(select(Beneficiary))).scalar_one()
+        assert beneficiary.display_name == "Bonaberi Health Center"
+        assert "Unnamed" not in beneficiary.display_name
+        assert beneficiary.beneficiary_type == "Facility"
+        assert beneficiary.beneficiary_uid.startswith("FAC-")
+
+
+@pytest.mark.asyncio
 async def test_mobile_follow_up_submission_requires_existing_entity_before_sync() -> None:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as connection:

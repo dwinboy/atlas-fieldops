@@ -1619,6 +1619,60 @@ function prefillSourceFieldForProfileTarget(
   }
 }
 
+// Maps a profile control target to the beneficiary profile field the backend resolver
+// understands (see _profile_key_from_mapping). These tags, written onto the field's
+// help text, are what the backend reads on approval to name/update the entity.
+const PROFILE_TARGET_TO_BENEFICIARY_FIELD: Record<keyof FormControlsDraft["profileMappings"], string> = {
+  fullName: "full_name",
+  phone: "phone",
+  gender: "gender",
+  dob: "dob",
+  village: "village",
+  gps: "gps",
+};
+
+function stripBeneficiaryProfileTags(text: string): string {
+  return text
+    .replace(/\[profile-impact:[^\]]*\]/g, "")
+    .replace(/\[beneficiary-field:[^\]]*\]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+/**
+ * Projects the explicit profile mappings (which question is the entity's name, phone,
+ * GPS, …) onto the schema fields so they reach the backend on approval. Without this the
+ * mapping lives only in form controls (prefill), and entity naming silently falls back to
+ * a variable-name heuristic. Idempotent: re-applies cleanly on every save.
+ */
+function applyProfileMappingsToForm(form: DynamicForm, controls: FormControlsDraft): DynamicForm {
+  const profileFieldByVariable = new Map<string, string>();
+  for (const [target, variable] of Object.entries(controls.profileMappings)) {
+    const normalizedVariable = (variable ?? "").trim().toLowerCase();
+    const profileField = PROFILE_TARGET_TO_BENEFICIARY_FIELD[target as keyof FormControlsDraft["profileMappings"]];
+    if (normalizedVariable && profileField) {
+      profileFieldByVariable.set(normalizedVariable, profileField);
+    }
+  }
+  return {
+    ...form,
+    fields: form.fields.map((field) => {
+      const variable = (field.variableName ?? "").trim().toLowerCase();
+      const profileField = variable ? profileFieldByVariable.get(variable) : undefined;
+      // Only touch fields explicitly mapped to a profile target. Fields tagged by other
+      // sources (e.g. imported entity-category attributes) are left untouched.
+      if (!profileField) return field;
+      const base = stripBeneficiaryProfileTags(field.appearance?.helpText ?? "");
+      const helpText = `${base} [profile-impact:updates_profile] [beneficiary-field:${profileField}]`.trim();
+      return {
+        ...field,
+        beneficiary: { ...(field.beneficiary ?? {}), profileField, profileImpact: "updates_profile" as const },
+        appearance: { ...field.appearance, helpText },
+      };
+    }),
+  };
+}
+
 function buildEntityPrefillMappings(
   controls: FormControlsDraft,
   form: DynamicForm,
@@ -6954,7 +7008,7 @@ export function FormCreationWorkspace({
       return { ok: false, error: "Sign in and select a project first." };
     }
     try {
-      const schema = toMobileSchema(formToPersist) as Record<string, unknown>;
+      const schema = toMobileSchema(applyProfileMappingsToForm(formToPersist, controlsDraft)) as Record<string, unknown>;
       const backendDraftName = backendDraftNameForSave(
         formToPersist.name,
         initialForm,
@@ -7204,7 +7258,7 @@ export function FormCreationWorkspace({
             title: surveyContext.title,
             custom_type_label: surveyContext.custom_type_label,
           }));
-        const schema = toMobileSchema(draftForm) as Record<string, unknown>;
+        const schema = toMobileSchema(applyProfileMappingsToForm(draftForm, controlsDraft)) as Record<string, unknown>;
         const targetFormId = backendFormTargetIdForSave(initialForm, savedBackendFormId);
         const saved = targetFormId
           ? await updateForm(token, targetFormId, {
@@ -10026,9 +10080,9 @@ export function FormCreationWorkspace({
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 {(
                   [
-                    ["fullName", "Full name"],
+                    ["fullName", "Primary name / display name"],
                     ["phone", "Phone"],
-                    ["village", "Village"],
+                    ["village", "Village / location"],
                     ["gps", "GPS"],
                     ["gender", "Gender"],
                     ["dob", "Date of birth"],
