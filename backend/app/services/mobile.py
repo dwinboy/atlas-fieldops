@@ -212,6 +212,7 @@ def _repeat_settings(field: dict[str, Any]) -> dict[str, Any] | None:
         "minRepeats": repeat.get("min"),
         "maxRepeats": repeat.get("max"),
         "addButtonLabel": repeat.get("addButtonLabel"),
+        "countFromVariable": repeat.get("countFromVariable"),
     }
 
 

@@ -14055,14 +14055,51 @@ export function DynamicForms({
                         />
                       </label>
                       {selectedField.type === "repeat_group" ? (
-                        <RepeatChildrenEditor
-                          field={selectedField}
-                          onChange={(children) =>
-                            updateSelectedForm(
-                              updateField(selectedForm, selectedField.id, { children }),
-                            )
-                          }
-                        />
+                        <>
+                          <RepeatChildrenEditor
+                            field={selectedField}
+                            onChange={(children) =>
+                              updateSelectedForm(
+                                updateField(selectedForm, selectedField.id, { children }),
+                              )
+                            }
+                          />
+                          <label className="block text-sm font-medium">
+                            Number of items comes from
+                            <Select
+                              className="mt-2"
+                              onChange={(event) =>
+                                updateSelectedForm(
+                                  updateField(selectedForm, selectedField.id, {
+                                    repeat: {
+                                      ...selectedField.repeat,
+                                      countFromVariable: event.target.value || undefined,
+                                    },
+                                  }),
+                                )
+                              }
+                              value={selectedField.repeat?.countFromVariable ?? ""}
+                            >
+                              <option value="">Field officer adds items manually</option>
+                              {selectedForm.fields
+                                .filter(
+                                  (candidate) =>
+                                    candidate.id !== selectedField.id &&
+                                    ["number", "decimal"].includes(candidate.type) &&
+                                    Boolean(candidate.variableName),
+                                )
+                                .map((candidate) => (
+                                  <option key={candidate.id} value={candidate.variableName}>
+                                    {candidate.label}
+                                  </option>
+                                ))}
+                            </Select>
+                            <span className="mt-1 block text-xs text-muted-foreground">
+                              When set, the answer to that number question auto-creates one item to
+                              fill per count — e.g. answer “3 farms” and the officer gets 3 boundaries to map.
+                            </span>
+                          </label>
+                        </>
                       ) : null}
                       <label className="block text-sm font-medium">
                         Type

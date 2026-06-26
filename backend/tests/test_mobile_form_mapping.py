@@ -61,7 +61,12 @@ def test_build_question_field_converts_repeat_group_children_to_mobile_fields() 
     child = question["defaultValue"]["fields"][0]
 
     assert question["type"] == "RepeatGroup"
-    assert question["repeatSettings"] == {"minRepeats": 1, "maxRepeats": 4, "addButtonLabel": "Add member"}
+    assert question["repeatSettings"] == {
+        "minRepeats": 1,
+        "maxRepeats": 4,
+        "addButtonLabel": "Add member",
+        "countFromVariable": None,
+    }
     assert child["type"] == "SingleSelect"
     assert child["variableName"] == "member_status"
     assert child["options"][0]["value"] == "present"

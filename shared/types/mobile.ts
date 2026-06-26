@@ -401,6 +401,7 @@ export type MobileQuestion = {
     minRepeats: number | null;
     maxRepeats: number | null;
     addButtonLabel: string | null;
+    countFromVariable?: string | null;
   } | null;
   order: number;
 };

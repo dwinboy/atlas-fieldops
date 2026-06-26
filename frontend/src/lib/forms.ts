@@ -110,6 +110,9 @@ export type FormField = {
     min?: number;
     max?: number;
     allowNested?: boolean;
+    /** Variable name of a number question whose answer sets how many rows to create
+     * automatically (e.g. "how many farms?" → that many farm-mapping rows). */
+    countFromVariable?: string;
   };
   beneficiary?: {
     profileField?: string;

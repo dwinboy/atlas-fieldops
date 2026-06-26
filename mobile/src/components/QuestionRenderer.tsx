@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -520,6 +520,17 @@ function renderInput(
 
   // ── Repeat group ─────────────────────────────────────────────────────────
   if (type === "RepeatGroup") {
+    if (question.repeatSettings?.countFromVariable) {
+      return (
+        <CountDrivenRepeatGroup
+          allResponses={allResponses}
+          answer={answer}
+          question={question}
+          referenceLists={referenceLists}
+          value={value}
+        />
+      );
+    }
     return renderRepeatGroup(question, value, answer, referenceLists);
   }
 
@@ -789,6 +800,61 @@ function readOnlyDisplayValue(question: MobileQuestion, value: unknown): string 
     return Object.values(value).flatMap((item) => Array.isArray(item) ? item.map(String) : [String(item)]).join(", ");
   }
   return String(value);
+}
+
+/** Repeat group whose row count is driven by another question's number answer. Answering
+ * "how many farms? → 3" auto-creates 3 rows (each with the repeat's questions, e.g. a polygon).
+ * Officers can still edit each row; reducing the count trims trailing rows. */
+function CountDrivenRepeatGroup({
+  question,
+  value,
+  answer,
+  referenceLists,
+  allResponses,
+}: {
+  question: MobileQuestion;
+  value: unknown;
+  answer: (v: unknown) => void;
+  referenceLists: MobileReferenceList[];
+  allResponses: Map<string, unknown>;
+}) {
+  const countVariable = question.repeatSettings?.countFromVariable ?? null;
+  const rawCount = countVariable ? allResponses.get(countVariable) : null;
+  const target = typeof rawCount === "number" ? rawCount : Number(rawCount);
+
+  useEffect(() => {
+    if (!countVariable || !Number.isFinite(target) || target < 0) return;
+    const max = question.repeatSettings?.maxRepeats ?? null;
+    const desired = max !== null ? Math.min(target, max) : target;
+    const rows = asRecordArray(value);
+    if (rows.length === desired) return;
+    const fields = repeatFields(question);
+    if (rows.length < desired) {
+      const additions = Array.from({ length: desired - rows.length }, () =>
+        applyRepeatRowDerivedState(
+          fields,
+          Object.fromEntries(fields.map((field) => [field.id, blankRepeatValue(field)])),
+          referenceLists,
+        ),
+      );
+      answer([...rows, ...additions]);
+    } else {
+      answer(rows.slice(0, desired));
+    }
+    // Re-sync only when the source count changes — not on every row edit (which would loop).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target, countVariable]);
+
+  return (
+    <View style={{ gap: 8 }}>
+      {countVariable && !Number.isFinite(target) ? (
+        <Text style={{ color: "#8aa79b", fontSize: 12 }}>
+          Answer the count question above to create the items to fill here.
+        </Text>
+      ) : null}
+      {renderRepeatGroup(question, value, answer, referenceLists)}
+    </View>
+  );
 }
 
 function renderRepeatGroup(
