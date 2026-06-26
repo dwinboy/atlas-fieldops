@@ -53,6 +53,7 @@ import { Modal } from "@/components/ui/modal";
 import type { BeneficiaryRead, CurrentPrincipal, DataFormSchemaRead, SubmissionRead } from "@/lib/api";
 import { ApiError, archiveForm, bulkUpdateImportCleaningRows, confirmImportedFormDataRows, getFormSchema, governExport, importFormDataRows, listBeneficiaries, listForms, listFormTemplates, listProjects, listSubmissions, restoreForm, returnImportedFormDataRows, updateForm, updateSubmissionResponses } from "@/lib/api";
 import { formatSubmissionId } from "@/lib/identifiers";
+import { useSectorTerminology } from "@/lib/sectorTerminology";
 import { cn } from "@/lib/utils";
 import { fieldOperationsAssignmentRoute } from "@/modules/field-operations/data";
 import { FormCreationWorkspace, readSpreadsheetRows } from "@/modules/forms/FormCreationWorkspace";
@@ -1612,6 +1613,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const terminology = useSectorTerminology(token);
   const [activeSection, setActiveSection] = useState<FormsSection>(() => formsSectionFromPath(pathname ?? "/forms") ?? "dashboard");
   const [activeTab, setActiveTab] = useState<FormDetailTab>("Overview");
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
@@ -2062,6 +2064,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
         <FormDetailWorkspace
           form={selectedForm}
           forms={forms}
+          primaryEntityPlural={terminology.primaryEntityPlural}
           onClose={() => setSelectedFormId(null)}
           onOpenBuilder={() => {
             openFormBuilder(selectedForm);
@@ -7510,6 +7513,7 @@ function InlineGridCellEditor({
 function FormDetailWorkspace({
   form,
   forms,
+  primaryEntityPlural,
   onClose,
   onOpenBuilder,
   onOpenDataQuality,
@@ -7521,6 +7525,7 @@ function FormDetailWorkspace({
 }: {
   form: FormListItem;
   forms: FormListItem[];
+  primaryEntityPlural: string;
   onClose: () => void;
   onOpenBuilder: () => void;
   onOpenDataQuality: () => void;
@@ -7581,7 +7586,7 @@ function FormDetailWorkspace({
         />
       ) : null}
       {tab === "Relationships" ? (
-        <FormRelationshipsPanel form={form} forms={forms} submissions={submissions} />
+        <FormRelationshipsPanel form={form} forms={forms} primaryEntityPlural={primaryEntityPlural} submissions={submissions} />
       ) : null}
       {tab === "Translations" ? <FormTranslationsPanel form={form} /> : null}
       {tab === "Offline Readiness" ? <FormOfflineReadinessPanel form={form} /> : null}
@@ -7879,10 +7884,12 @@ function FormAnalyticsPanel({
 function FormRelationshipsPanel({
   form,
   forms,
+  primaryEntityPlural,
   submissions,
 }: {
   form: FormListItem;
   forms: FormListItem[];
+  primaryEntityPlural: string;
   submissions: (SubmissionRead | SubmissionRecord)[];
 }) {
   const related = relatedFormsFor(form, forms);
@@ -7953,7 +7960,7 @@ function FormRelationshipsPanel({
         </div>
         <div className="mt-3 grid gap-2">
           <Signal label="Tracking series" value={`${form.project_name} journey`} />
-          <Signal label="Beneficiaries with records" value={`${new Set(submissions.map((submission) => submission.entity_id).filter(Boolean)).size}`} />
+          <Signal label={`${primaryEntityPlural} with records`} value={`${new Set(submissions.map((submission) => submission.entity_id).filter(Boolean)).size}`} />
           <Signal label="Expected next step" value={related[currentIndex + 1]?.name ?? "End of chain"} />
         </div>
         <div className="mt-4 space-y-2">
