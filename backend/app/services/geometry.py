@@ -5,6 +5,7 @@ from uuid import UUID
 
 from shapely.geometry import shape
 from shapely.geometry.base import BaseGeometry
+from shapely.ops import unary_union
 from shapely.validation import make_valid
 
 
@@ -24,6 +25,18 @@ def polygon_from_geojson(value: Any) -> BaseGeometry | None:
     if not geometry.is_valid:
         geometry = make_valid(geometry)
     return None if geometry.is_empty else geometry
+
+
+def union_geometries(geometries: list[BaseGeometry]) -> BaseGeometry | None:
+    """Merge several polygons into one geometry (used to compare a boundary against all of
+    another submission's boundaries at once for project/organization-wide overlap checks)."""
+    valid = [geometry for geometry in geometries if geometry is not None and not geometry.is_empty]
+    if not valid:
+        return None
+    if len(valid) == 1:
+        return valid[0]
+    merged = unary_union(valid)
+    return None if merged.is_empty else merged
 
 
 def overlap_ratio(target: BaseGeometry, other: BaseGeometry) -> float:

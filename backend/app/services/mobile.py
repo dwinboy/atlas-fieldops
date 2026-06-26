@@ -6,7 +6,7 @@ from typing import Any
 from uuid import UUID
 
 from shapely.geometry.base import BaseGeometry
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.permissions import canonical_role
@@ -55,7 +55,7 @@ from app.schemas.mobile import (
     MobileSyncUploadRead,
 )
 from app.services.collection import CollectionNotFoundError, SubmissionService
-from app.services.geometry import find_overlaps, overlap_ratio, polygon_from_geojson
+from app.services.geometry import find_overlaps, overlap_ratio, polygon_from_geojson, union_geometries
 
 _ATTACHMENT_MEDIA_TYPES = {
     "Photo": "photo",
@@ -718,16 +718,31 @@ def _schema_sections(schema_json: dict[str, Any], controls_json: dict[str, Any] 
     return sections
 
 
-def _polygon_question_ids(schema_json: dict[str, Any]) -> set[str]:
-    question_ids: set[str] = set()
+_OVERLAP_SCOPES = {"form", "project", "organization"}
+
+
+def _polygon_overlap_configs(schema_json: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Map each Polygon question id to its overlap-detection config.
+
+    Honors the form-builder settings: ``overlapCheck`` (default on) decides whether the
+    boundary is compared at all, and ``overlapScope`` (``form``/``project``/``organization``,
+    default ``form``) decides how widely we look for conflicting boundaries.
+    """
+    configs: dict[str, dict[str, Any]] = {}
     for section_index, section in enumerate(schema_json.get("sections", [])):
         section_id = str(section.get("id") or f"section-{section_index + 1}")
         for field_index, field in enumerate(section.get("fields", [])):
             if _mobile_question_type(str(field.get("type") or "")) != "Polygon":
                 continue
             field_id = str(field.get("id") or f"{section_id}-question-{field_index + 1}")
-            question_ids.add(field_id)
-    return question_ids
+            polygon_config = _as_dict(field.get("polygon"))
+            if not polygon_config.get("overlapCheck", True):
+                continue
+            scope = str(polygon_config.get("overlapScope") or "form").lower()
+            if scope not in _OVERLAP_SCOPES:
+                scope = "form"
+            configs[field_id] = {"scope": scope}
+    return configs
 
 
 def _entity_settings(controls_json: dict[str, Any]) -> dict[str, Any]:
@@ -2053,6 +2068,32 @@ class MobileService:
             accepted += 1
         return MobileSyncUploadRead(accepted=accepted, failed=failed)
 
+    def _candidate_boundary_geometry(
+        self, candidate: Submission, question_id: str, scope: str
+    ) -> BaseGeometry | None:
+        """Geometry to compare a target boundary against for one candidate submission.
+
+        For ``form`` scope we match the same question. For ``project``/``organization`` scope the
+        candidate may come from a different form (different question ids), so we union all of its
+        captured boundaries and compare against the whole footprint.
+        """
+        responses = (candidate.payload_json or {}).get("_mobile_responses")
+        if not isinstance(responses, list):
+            return None
+        geometries: list[BaseGeometry] = []
+        for response in responses:
+            if not isinstance(response, dict):
+                continue
+            if scope == "form" and str(response.get("questionId") or "") != question_id:
+                continue
+            geometry = polygon_from_geojson(response.get("value"))
+            if geometry is None:
+                continue
+            geometries.append(geometry)
+            if scope == "form":
+                break
+        return union_geometries(geometries)
+
     async def _check_polygon_overlaps(
         self,
         *,
@@ -2061,13 +2102,14 @@ class MobileService:
         form_version: DataFormVersion,
         response_payload: list[dict[str, Any]],
     ) -> None:
-        polygon_question_ids = _polygon_question_ids(form_version.schema_json or {})
-        if not polygon_question_ids:
+        overlap_configs = _polygon_overlap_configs(form_version.schema_json or {})
+        if not overlap_configs:
             return
+        # Only parse boundaries for questions where overlap checking is enabled in the form.
         target_geometries: dict[str, BaseGeometry] = {}
         for response in response_payload:
             question_id = str(response.get("questionId") or "")
-            if question_id not in polygon_question_ids:
+            if question_id not in overlap_configs:
                 continue
             geometry = polygon_from_geojson(response.get("value"))
             if geometry is not None:
@@ -2075,35 +2117,56 @@ class MobileService:
         if not target_geometries:
             return
 
-        result = await self.session.execute(
-            select(Submission)
-            .where(
+        # Boundaries that have been withdrawn or replaced should not be compared against.
+        excluded_statuses = ("rejected", "returned", "correction_requested", "draft", "archived")
+
+        candidates_by_scope: dict[str, list[Submission]] = {}
+
+        async def _candidates_for(scope: str) -> list[Submission]:
+            if scope in candidates_by_scope:
+                return candidates_by_scope[scope]
+            stmt = select(Submission).where(
                 Submission.organization_id == organization_id,
-                Submission.form_id == submission.form_id,
                 Submission.deleted_at.is_(None),
                 Submission.id != submission.id,
+                Submission.status.notin_(excluded_statuses),
             )
-            .limit(500)
-        )
-        candidates = list(result.scalars().all())
-        candidates_by_id = {candidate.id: candidate for candidate in candidates}
+            if scope == "form":
+                stmt = stmt.where(Submission.form_id == submission.form_id)
+            elif scope == "project":
+                # Compare across every form in the same project; fall back to the form when
+                # the submission has no project so we never widen beyond what we can scope.
+                if submission.project_id is not None:
+                    stmt = stmt.where(Submission.project_id == submission.project_id)
+                else:
+                    stmt = stmt.where(Submission.form_id == submission.form_id)
+            # "organization" scope adds no spatial filter — the org bound above is enough.
+            # Follow-up surveys re-map the same entity's boundary; never flag a boundary against
+            # another submission for the same entity (that would be a false positive).
+            if submission.entity_id is not None:
+                stmt = stmt.where(
+                    or_(Submission.entity_id != submission.entity_id, Submission.entity_id.is_(None))
+                )
+            rows = list((await self.session.execute(stmt.limit(500))).scalars().all())
+            candidates_by_scope[scope] = rows
+            return rows
 
+        candidates_by_id: dict[UUID, Submission] = {}
+        # Remember the exact geometry each candidate overlapped with, so the reciprocal flag
+        # written onto that candidate uses the same shape instead of re-deriving it.
+        candidate_geometry_used: dict[tuple[str, UUID], BaseGeometry] = {}
         overlaps_by_question: dict[str, list[dict[str, Any]]] = {}
         for question_id, target_geometry in target_geometries.items():
+            scope = overlap_configs[question_id]["scope"]
+            candidates = await _candidates_for(scope)
             candidate_geometries: list[tuple[UUID, BaseGeometry]] = []
             for candidate in candidates:
-                candidate_responses = (candidate.payload_json or {}).get("_mobile_responses")
-                if not isinstance(candidate_responses, list):
+                candidate_geometry = self._candidate_boundary_geometry(candidate, question_id, scope)
+                if candidate_geometry is None:
                     continue
-                for candidate_response in candidate_responses:
-                    if not isinstance(candidate_response, dict):
-                        continue
-                    if str(candidate_response.get("questionId") or "") != question_id:
-                        continue
-                    parsed_candidate_geometry = polygon_from_geojson(candidate_response.get("value"))
-                    if parsed_candidate_geometry is not None:
-                        candidate_geometries.append((candidate.id, parsed_candidate_geometry))
-                    break
+                candidates_by_id[candidate.id] = candidate
+                candidate_geometry_used[(question_id, candidate.id)] = candidate_geometry
+                candidate_geometries.append((candidate.id, candidate_geometry))
             overlaps = find_overlaps(target_geometry, candidate_geometries)
             if overlaps:
                 overlaps_by_question[question_id] = overlaps
@@ -2130,15 +2193,7 @@ class MobileService:
                 target_candidate = candidates_by_id.get(UUID(overlap["submissionId"]))
                 if target_candidate is None:
                     continue
-                candidate_responses = (target_candidate.payload_json or {}).get("_mobile_responses") or []
-                reciprocal_geometry: BaseGeometry | None = None
-                for candidate_response in candidate_responses:
-                    if not isinstance(candidate_response, dict):
-                        continue
-                    if str(candidate_response.get("questionId") or "") != question_id:
-                        continue
-                    reciprocal_geometry = polygon_from_geojson(candidate_response.get("value"))
-                    break
+                reciprocal_geometry = candidate_geometry_used.get((question_id, target_candidate.id))
                 if reciprocal_geometry is None:
                     continue
                 reciprocal_ratio = overlap_ratio(reciprocal_geometry, target_geometry)
