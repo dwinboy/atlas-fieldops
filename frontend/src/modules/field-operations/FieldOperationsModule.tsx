@@ -80,6 +80,7 @@ import {
   type OperationalActivityReportType,
   type UserRead,
 } from "@/lib/api";
+import { useSectorTerminology } from "@/lib/sectorTerminology";
 import { cn } from "@/lib/utils";
 import {
   mapBeneficiaryRead,
@@ -1320,6 +1321,7 @@ export function FieldOperationsModule({
   const router = useRouter();
   const searchParams = useSearchParams();
   const preview = isPreview(token);
+  const terminology = useSectorTerminology(token);
   const requestedFormId = searchParams.get("formId") ?? "";
   const [activeSection, setActiveSection] =
     useState<FieldOperationsSection>(() => fieldOperationsSectionFromPath(pathname));
@@ -2243,7 +2245,7 @@ export function FieldOperationsModule({
     },
     {
       key: "entities",
-      header: "Entities",
+      header: terminology.primaryEntityPlural,
       value: (assignment) => (assignment.assignedEntityIds ?? []).join(" "),
       render: (assignment) =>
         assignment.assignedEntityIds?.length ? (
