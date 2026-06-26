@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -151,6 +152,98 @@ export function hasPrefilledValueChanged(question: MobileQuestion, value: unknow
 
 // ─── Input renderers ─────────────────────────────────────────────────────────
 
+const SEARCHABLE_OPTION_THRESHOLD = 8;
+
+/** Single/multi choice list that adds a filter box for long option lists so field officers can
+ * search reference data (districts, facilities, categories, …) instead of scrolling. */
+function SearchableOptionList({
+  options,
+  value,
+  onChange,
+  multi,
+}: {
+  options: SimpleOption[];
+  value: unknown;
+  onChange: (next: unknown) => void;
+  multi: boolean;
+}) {
+  const [query, setQuery] = useState("");
+  const selectedValues = multi && Array.isArray(value) ? value.map(String) : [];
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return options;
+    return options.filter(
+      (option) =>
+        option.label.toLowerCase().includes(needle) || String(option.value).toLowerCase().includes(needle),
+    );
+  }, [options, query]);
+
+  function toggle(option: SimpleOption) {
+    if (multi) {
+      const next = new Set(selectedValues);
+      if (next.has(option.value)) next.delete(option.value);
+      else next.add(option.value);
+      onChange(Array.from(next));
+    } else {
+      onChange(String(value) === option.value ? "" : option.value);
+    }
+  }
+
+  return (
+    <View style={{ gap: 8 }}>
+      {options.length > SEARCHABLE_OPTION_THRESHOLD ? (
+        <TextInput
+          onChangeText={setQuery}
+          placeholder={`Search ${options.length} options…`}
+          placeholderTextColor="#b0c5bc"
+          style={inputStyle}
+          value={query}
+        />
+      ) : null}
+      {filtered.length === 0 ? (
+        <Text style={{ color: "#8aa79b", fontSize: 12 }}>No options match your search.</Text>
+      ) : null}
+      {filtered.map((option) => {
+        const selected = multi ? selectedValues.includes(option.value) : String(value) === option.value;
+        return (
+          <Pressable
+            key={option.id}
+            onPress={() => toggle(option)}
+            style={{
+              alignItems: "center",
+              backgroundColor: selected ? "#f0fdf4" : "white",
+              borderColor: selected ? "#12332b" : "#dbe7e2",
+              borderRadius: 12,
+              borderWidth: selected ? 2 : 1,
+              flexDirection: "row",
+              gap: 10,
+              padding: 12,
+            }}
+          >
+            <View
+              style={{
+                alignItems: "center",
+                backgroundColor: selected ? "#12332b" : "transparent",
+                borderColor: selected ? "#12332b" : "#b0c5bc",
+                borderRadius: multi ? 5 : 9,
+                borderWidth: 2,
+                height: 18,
+                justifyContent: "center",
+                width: 18,
+              }}
+            >
+              {selected ? (
+                <View style={{ backgroundColor: "white", borderRadius: multi ? 2 : 4, height: 7, width: 7 }} />
+              ) : null}
+            </View>
+            <Text style={{ color: "#12332b", flex: 1, fontWeight: selected ? "700" : "500" }}>{option.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 function renderInput(
   question: MobileQuestion,
   value: unknown,
@@ -295,45 +388,7 @@ function renderInput(
         </View>
       );
     }
-    return (
-      <View style={{ gap: 8 }}>
-        {cascadeOptions.map((opt) => {
-          const selected = String(value) === opt.value;
-          return (
-            <Pressable
-              key={opt.id}
-              onPress={() => answer(selected ? "" : opt.value)}
-              style={{
-                borderColor: selected ? "#12332b" : "#dbe7e2",
-                borderRadius: 12,
-                borderWidth: selected ? 2 : 1,
-                padding: 12,
-                backgroundColor: selected ? "#f0fdf4" : "white",
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 10,
-              }}
-            >
-              <View style={{
-                width: 18,
-                height: 18,
-                borderRadius: 9,
-                borderWidth: 2,
-                borderColor: selected ? "#12332b" : "#b0c5bc",
-                backgroundColor: selected ? "#12332b" : "transparent",
-                alignItems: "center",
-                justifyContent: "center",
-              }}>
-                {selected && <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: "white" }} />}
-              </View>
-              <Text style={{ color: "#12332b", fontWeight: selected ? "700" : "500", flex: 1 }}>
-                {opt.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    );
+    return <SearchableOptionList multi={false} onChange={answer} options={cascadeOptions} value={value} />;
   }
 
   // ── Multi select ──────────────────────────────────────────────────────────
@@ -355,51 +410,7 @@ function renderInput(
         </View>
       );
     }
-    const selected = Array.isArray(value) ? value.map(String) : [];
-    return (
-      <View style={{ gap: 8 }}>
-        {cascadeOptions.map((opt) => {
-          const isSelected = selected.includes(opt.value);
-          return (
-            <Pressable
-              key={opt.id}
-              onPress={() => {
-                const next = isSelected
-                  ? selected.filter((v) => v !== opt.value)
-                  : [...selected, opt.value];
-                answer(next);
-              }}
-              style={{
-                borderColor: isSelected ? "#12332b" : "#dbe7e2",
-                borderRadius: 12,
-                borderWidth: isSelected ? 2 : 1,
-                padding: 12,
-                backgroundColor: isSelected ? "#f0fdf4" : "white",
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 10,
-              }}
-            >
-              <View style={{
-                width: 18,
-                height: 18,
-                borderRadius: 4,
-                borderWidth: 2,
-                borderColor: isSelected ? "#12332b" : "#b0c5bc",
-                backgroundColor: isSelected ? "#12332b" : "transparent",
-                alignItems: "center",
-                justifyContent: "center",
-              }}>
-                {isSelected && <Text style={{ color: "white", fontSize: 11, fontWeight: "800" }}>✓</Text>}
-              </View>
-              <Text style={{ color: "#12332b", fontWeight: isSelected ? "700" : "500", flex: 1 }}>
-                {opt.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    );
+    return <SearchableOptionList multi onChange={answer} options={cascadeOptions} value={value} />;
   }
 
   // ── Date / DateTime ───────────────────────────────────────────────────────
