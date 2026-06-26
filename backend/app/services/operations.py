@@ -2717,6 +2717,8 @@ class OperationsService:
         changed: list[str] = []
         for field in (
             "name",
+            "form_id",
+            "linked_question",
             "description",
             "unit",
             "reporting_frequency",
@@ -4382,6 +4384,8 @@ class OperationsService:
             id=indicator.id,
             project_id=indicator.project_id,
             survey_id=indicator.survey_id,
+            form_id=indicator.form_id,
+            linked_question=indicator.linked_question,
             code=indicator.code,
             name=indicator.name,
             description=indicator.description,

@@ -366,6 +366,8 @@ class IndicatorCreate(BaseModel):
     name: str = Field(min_length=2, max_length=240)
     project_id: UUID | None = None
     survey_id: UUID | None = None
+    form_id: UUID | None = None
+    linked_question: str | None = Field(default=None, max_length=160)
     description: str | None = Field(default=None, max_length=2000)
     unit: str = Field(default="count", max_length=60)
     reporting_frequency: str = Field(default="monthly", pattern=r"^(monthly|quarterly|annual)$")
@@ -383,6 +385,8 @@ class IndicatorUpdate(BaseModel):
     submissions, targets, and reports reference it."""
 
     name: str | None = Field(default=None, min_length=2, max_length=240)
+    form_id: UUID | None = None
+    linked_question: str | None = Field(default=None, max_length=160)
     description: str | None = Field(default=None, max_length=2000)
     unit: str | None = Field(default=None, max_length=60)
     reporting_frequency: str | None = Field(default=None, pattern=r"^(monthly|quarterly|annual)$")
@@ -400,6 +404,8 @@ class IndicatorRead(BaseModel):
     id: UUID
     project_id: UUID | None
     survey_id: UUID | None
+    form_id: UUID | None = None
+    linked_question: str | None = None
     code: str
     name: str
     description: str | None

@@ -118,6 +118,8 @@ class MonitoringIndicator(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
     project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
     survey_id: Mapped[UUID | None] = mapped_column(ForeignKey("surveys.id"), index=True, nullable=True)
+    form_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_forms.id"), index=True, nullable=True)
+    linked_question: Mapped[str | None] = mapped_column(String(160), nullable=True)
     code: Mapped[str] = mapped_column(String(80), nullable=False)
     name: Mapped[str] = mapped_column(String(240), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
