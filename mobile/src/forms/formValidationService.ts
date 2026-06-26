@@ -181,6 +181,13 @@ export class FormValidationService {
       if (hasCustomRule(question, "integerOnly:true") && !Number.isInteger(numeric)) {
         addIssue("Enter a whole number without decimals.", "Error", "Use a count such as 1, 2, or 10. Do not enter 1.5 for this question.");
       }
+      const decimalPlaces = customRuleNumber(question, "decimalPlaces");
+      if (decimalPlaces !== null) {
+        const decimals = (String(value).split(".")[1] ?? "").replace(/[^0-9]/g, "").length;
+        if (decimals > decimalPlaces) {
+          addIssue(`Use at most ${decimalPlaces} decimal place(s).`, "Error", `Round the value to ${decimalPlaces} decimal place(s).`);
+        }
+      }
       for (const rule of question.validationRules) {
         if (rule.ruleType === "Min" && typeof rule.value === "number" && numeric < rule.value) {
           addIssue(rule.message || `Value must be at least ${rule.value}.`, rule.severity === "Warning" ? "Warning" : "Error", `Enter a value from ${rule.value} upward, or ask your supervisor if the form limit is wrong.`);
@@ -188,6 +195,17 @@ export class FormValidationService {
         if (rule.ruleType === "Max" && typeof rule.value === "number" && numeric > rule.value) {
           addIssue(rule.message || `Value must be at most ${rule.value}.`, rule.severity === "Warning" ? "Warning" : "Error", `Enter a value of ${rule.value} or lower, or ask your supervisor if the limit should be changed.`);
         }
+      }
+    }
+
+    if (question.type === "MultiSelect" && Array.isArray(value)) {
+      const minSelections = customRuleNumber(question, "minSelections");
+      const maxSelections = customRuleNumber(question, "maxSelections");
+      if (minSelections !== null && value.length > 0 && value.length < minSelections) {
+        addIssue(`Select at least ${minSelections} option(s).`, "Error", `Choose ${minSelections} or more options for this question.`);
+      }
+      if (maxSelections !== null && value.length > maxSelections) {
+        addIssue(`Select at most ${maxSelections} option(s).`, "Error", `Remove some choices so no more than ${maxSelections} are selected.`);
       }
     }
 

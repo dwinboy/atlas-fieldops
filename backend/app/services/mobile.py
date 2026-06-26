@@ -369,6 +369,31 @@ def _validation_rules(field: dict[str, Any]) -> list[dict[str, Any]]:
                     "severity": "Block",
                 }
             )
+        if field_type in {"number", "decimal", "currency"} and validation.get("decimalPlaces") is not None:
+            rules.append(
+                {
+                    "ruleType": "Custom",
+                    "value": f"decimalPlaces:{validation['decimalPlaces']}",
+                    "message": blocked_help or f"Use at most {validation['decimalPlaces']} decimal place(s).",
+                    "severity": "Block",
+                }
+            )
+        if field_type in {"number", "decimal", "currency"} and validation.get("unit"):
+            # Display-only hint (the unit shown next to the input); never blocks submission.
+            rules.append({"ruleType": "Custom", "value": f"unit:{validation['unit']}", "message": "", "severity": "Info"})
+        if field_type in {"multiselect", "checkbox"}:
+            for source, label in (("minSelections", "at least"), ("maxSelections", "at most")):
+                if validation.get(source) is not None:
+                    rules.append(
+                        {
+                            "ruleType": "Custom",
+                            "value": f"{source}:{validation[source]}",
+                            "message": blocked_help or f"Select {label} {validation[source]} option(s).",
+                            "severity": "Block",
+                        }
+                    )
+        if field_type in {"select", "dropdown", "radio", "multiselect", "checkbox"} and bool(validation.get("allowOther")):
+            rules.append({"ruleType": "Custom", "value": "allowOther:true", "message": "", "severity": "Info"})
         if field_type == "consent" and bool(validation.get("blockIfFalse")):
             rules.append(
                 {

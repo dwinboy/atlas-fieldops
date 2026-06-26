@@ -11912,6 +11912,75 @@ export function DynamicForms({
                                   />
                                 </label>
                               </div>
+                              {["multiselect", "checkbox"].includes(selectedField.type) ? (
+                                <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                                  <label className="text-sm font-semibold">
+                                    Minimum selections
+                                    <Input
+                                      className="mt-2"
+                                      onChange={(event) =>
+                                        updateSelectedFieldValidation({
+                                          minSelections: event.target.value === "" ? undefined : Number(event.target.value),
+                                        })
+                                      }
+                                      type="number"
+                                      value={selectedField.validation?.minSelections ?? ""}
+                                    />
+                                  </label>
+                                  <label className="text-sm font-semibold">
+                                    Maximum selections
+                                    <Input
+                                      className="mt-2"
+                                      onChange={(event) =>
+                                        updateSelectedFieldValidation({
+                                          maxSelections: event.target.value === "" ? undefined : Number(event.target.value),
+                                        })
+                                      }
+                                      type="number"
+                                      value={selectedField.validation?.maxSelections ?? ""}
+                                    />
+                                  </label>
+                                </div>
+                              ) : null}
+                              {["number", "decimal", "currency"].includes(selectedField.type) ? (
+                                <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                                  <label className="text-sm font-semibold">
+                                    Decimal places
+                                    <Input
+                                      className="mt-2"
+                                      onChange={(event) =>
+                                        updateSelectedFieldValidation({
+                                          decimalPlaces: event.target.value === "" ? undefined : Number(event.target.value),
+                                        })
+                                      }
+                                      type="number"
+                                      value={selectedField.validation?.decimalPlaces ?? ""}
+                                    />
+                                  </label>
+                                  <label className="text-sm font-semibold">
+                                    Unit (e.g. kg, ha, %)
+                                    <Input
+                                      className="mt-2"
+                                      onChange={(event) =>
+                                        updateSelectedFieldValidation({ unit: event.target.value || undefined })
+                                      }
+                                      value={selectedField.validation?.unit ?? ""}
+                                    />
+                                  </label>
+                                </div>
+                              ) : null}
+                              {["select", "dropdown", "radio", "multiselect", "checkbox"].includes(selectedField.type) ? (
+                                <label className="mt-3 flex items-center gap-2 text-sm font-semibold">
+                                  <input
+                                    checked={selectedField.validation?.allowOther ?? false}
+                                    onChange={(event) =>
+                                      updateSelectedFieldValidation({ allowOther: event.target.checked || undefined })
+                                    }
+                                    type="checkbox"
+                                  />
+                                  Allow “Other (specify)” with a free-text box
+                                </label>
+                              ) : null}
                               <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                                 <label className="text-sm font-semibold">
                                   Regex pattern

@@ -154,6 +154,19 @@ export function hasPrefilledValueChanged(question: MobileQuestion, value: unknow
 // ─── Input renderers ─────────────────────────────────────────────────────────
 
 const SEARCHABLE_OPTION_THRESHOLD = 8;
+const OTHER_OPTION_VALUE = "__other__";
+
+/** Reads the text after a `prefix:` in a Custom validation rule (e.g. unit:kg → "kg"). */
+function customRuleSuffix(question: MobileQuestion, prefix: string): string | null {
+  const rule = question.validationRules.find(
+    (item) => item.ruleType === "Custom" && typeof item.value === "string" && item.value.startsWith(prefix),
+  );
+  return rule && typeof rule.value === "string" ? rule.value.slice(prefix.length) : null;
+}
+
+function questionAllowsOther(question: MobileQuestion): boolean {
+  return question.validationRules.some((item) => item.ruleType === "Custom" && item.value === "allowOther:true");
+}
 
 /** Single/multi choice list that adds a filter box for long option lists so field officers can
  * search reference data (districts, facilities, categories, …) instead of scrolling. */
@@ -162,14 +175,23 @@ function SearchableOptionList({
   value,
   onChange,
   multi,
+  allowOther = false,
 }: {
   options: SimpleOption[];
   value: unknown;
   onChange: (next: unknown) => void;
   multi: boolean;
+  allowOther?: boolean;
 }) {
   const [query, setQuery] = useState("");
+  const knownValues = useMemo(() => new Set(options.map((option) => option.value)), [options]);
   const selectedValues = multi && Array.isArray(value) ? value.map(String) : [];
+  // Persisted "Other" text = a stored value that isn't one of the known options.
+  const singleOtherValue =
+    !multi && typeof value === "string" && value !== "" && !knownValues.has(value) ? value : "";
+  const multiOtherValue = multi ? selectedValues.find((item) => !knownValues.has(item)) ?? "" : "";
+  const [otherOpen, setOtherOpen] = useState(Boolean(singleOtherValue) || Boolean(multiOtherValue));
+
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return options;
@@ -186,9 +208,17 @@ function SearchableOptionList({
       else next.add(option.value);
       onChange(Array.from(next));
     } else {
+      setOtherOpen(false);
       onChange(String(value) === option.value ? "" : option.value);
     }
   }
+
+  function setMultiOther(text: string) {
+    const base = selectedValues.filter((item) => knownValues.has(item));
+    onChange(text.trim() ? [...base, text] : base);
+  }
+
+  const otherSelected = otherOpen || Boolean(singleOtherValue) || Boolean(multiOtherValue);
 
   return (
     <View style={{ gap: 8 }}>
@@ -210,29 +240,9 @@ function SearchableOptionList({
           <Pressable
             key={option.id}
             onPress={() => toggle(option)}
-            style={{
-              alignItems: "center",
-              backgroundColor: selected ? "#f0fdf4" : "white",
-              borderColor: selected ? "#12332b" : "#dbe7e2",
-              borderRadius: 12,
-              borderWidth: selected ? 2 : 1,
-              flexDirection: "row",
-              gap: 10,
-              padding: 12,
-            }}
+            style={optionRowStyle(selected)}
           >
-            <View
-              style={{
-                alignItems: "center",
-                backgroundColor: selected ? "#12332b" : "transparent",
-                borderColor: selected ? "#12332b" : "#b0c5bc",
-                borderRadius: multi ? 5 : 9,
-                borderWidth: 2,
-                height: 18,
-                justifyContent: "center",
-                width: 18,
-              }}
-            >
+            <View style={optionMarkStyle(selected, multi)}>
               {selected ? (
                 <View style={{ backgroundColor: "white", borderRadius: multi ? 2 : 4, height: 7, width: 7 }} />
               ) : null}
@@ -241,8 +251,69 @@ function SearchableOptionList({
           </Pressable>
         );
       })}
+      {allowOther && !query ? (
+        <>
+          <Pressable
+            key={OTHER_OPTION_VALUE}
+            onPress={() => {
+              if (multi) {
+                setOtherOpen((open) => !open);
+              } else if (otherSelected) {
+                setOtherOpen(false);
+                onChange("");
+              } else {
+                setOtherOpen(true);
+                onChange("");
+              }
+            }}
+            style={optionRowStyle(otherSelected)}
+          >
+            <View style={optionMarkStyle(otherSelected, multi)}>
+              {otherSelected ? (
+                <View style={{ backgroundColor: "white", borderRadius: multi ? 2 : 4, height: 7, width: 7 }} />
+              ) : null}
+            </View>
+            <Text style={{ color: "#12332b", flex: 1, fontWeight: otherSelected ? "700" : "500" }}>Other (specify)</Text>
+          </Pressable>
+          {otherSelected ? (
+            <TextInput
+              onChangeText={(text) => (multi ? setMultiOther(text) : onChange(text))}
+              placeholder="Type your answer"
+              placeholderTextColor="#b0c5bc"
+              style={inputStyle}
+              value={multi ? multiOtherValue : singleOtherValue}
+            />
+          ) : null}
+        </>
+      ) : null}
     </View>
   );
+}
+
+function optionRowStyle(selected: boolean) {
+  return {
+    alignItems: "center",
+    backgroundColor: selected ? "#f0fdf4" : "white",
+    borderColor: selected ? "#12332b" : "#dbe7e2",
+    borderRadius: 12,
+    borderWidth: selected ? 2 : 1,
+    flexDirection: "row",
+    gap: 10,
+    padding: 12,
+  } as const;
+}
+
+function optionMarkStyle(selected: boolean, multi: boolean) {
+  return {
+    alignItems: "center",
+    backgroundColor: selected ? "#12332b" : "transparent",
+    borderColor: selected ? "#12332b" : "#b0c5bc",
+    borderRadius: multi ? 5 : 9,
+    borderWidth: 2,
+    height: 18,
+    justifyContent: "center",
+    width: 18,
+  } as const;
 }
 
 /** Search-and-pick over an on-device dataset: registered records (entities), entity categories,
@@ -433,7 +504,7 @@ function renderInput(
         </View>
       );
     }
-    return <SearchableOptionList multi={false} onChange={answer} options={cascadeOptions} value={value} />;
+    return <SearchableOptionList allowOther={questionAllowsOther(question)} multi={false} onChange={answer} options={cascadeOptions} value={value} />;
   }
 
   // ── Multi select ──────────────────────────────────────────────────────────
@@ -455,7 +526,7 @@ function renderInput(
         </View>
       );
     }
-    return <SearchableOptionList multi onChange={answer} options={cascadeOptions} value={value} />;
+    return <SearchableOptionList allowOther={questionAllowsOther(question)} multi onChange={answer} options={cascadeOptions} value={value} />;
   }
 
   // ── Date / DateTime ───────────────────────────────────────────────────────
@@ -515,7 +586,8 @@ function renderInput(
 
   // ── Number / Decimal / Currency ───────────────────────────────────────────
   if (type === "Number" || type === "Decimal" || type === "Currency") {
-    return (
+    const unit = customRuleSuffix(question, "unit:");
+    const input = (
       <TextInput
         keyboardType={numericKeyboardType(type)}
         onChangeText={(t) => {
@@ -523,9 +595,16 @@ function renderInput(
         }}
         placeholder={type === "Currency" ? "0.00" : "0"}
         placeholderTextColor="#b0c5bc"
-        style={inputStyle}
+        style={unit ? { ...inputStyle, flex: 1 } : inputStyle}
         value={String(value ?? "")}
       />
+    );
+    if (!unit) return input;
+    return (
+      <View style={{ alignItems: "center", flexDirection: "row", gap: 8 }}>
+        {input}
+        <Text style={{ color: "#49635a", fontSize: 14, fontWeight: "700" }}>{unit}</Text>
+      </View>
     );
   }
 

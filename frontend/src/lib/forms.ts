@@ -91,6 +91,14 @@ export type FormField = {
     allowedFileTypes?: string;
     maxFileSizeMb?: number;
     maxAttachmentCount?: number;
+    /** Choice questions: offer an "Other" option that reveals a free-text box. */
+    allowOther?: boolean;
+    /** Multi-select: minimum / maximum number of choices the officer must pick. */
+    minSelections?: number;
+    maxSelections?: number;
+    /** Number questions: limit decimal places and show a unit (e.g. kg, ha, %). */
+    decimalPlaces?: number;
+    unit?: string;
   };
   logic?: LogicRule[];
   appearance?: {
