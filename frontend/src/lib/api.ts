@@ -4399,6 +4399,64 @@ export async function exportReportCsv(token: string, reportId: string): Promise<
   return response.text();
 }
 
+export type ExportFormatOption = {
+  id: string;
+  label: string;
+  hint: string;
+  kind: "tabular" | "spatial" | "points";
+  available: boolean;
+  reason: string;
+};
+
+export type FormExportCapabilities = {
+  form_id: string;
+  form_name: string;
+  record_count: number;
+  has_points: boolean;
+  has_polygons: boolean;
+  has_media: boolean;
+  formats: ExportFormatOption[];
+};
+
+export async function getFormExportCapabilities(
+  token: string,
+  formId: string,
+  statusFilter?: string,
+): Promise<FormExportCapabilities> {
+  const query = statusFilter ? `?status_filter=${encodeURIComponent(statusFilter)}` : "";
+  return request<FormExportCapabilities>(`/operations/data/forms/${formId}/export-capabilities${query}`, { token });
+}
+
+/** Fetches a form export in the chosen format and triggers a browser download. */
+export async function downloadFormExport(
+  token: string,
+  formId: string,
+  exportFormat: string,
+  statusFilter?: string,
+): Promise<void> {
+  const params = new URLSearchParams({ export_format: exportFormat });
+  if (statusFilter) params.set("status_filter", statusFilter);
+  const response = await fetch(`${getApiBaseUrl()}/operations/data/forms/${formId}/export?${params.toString()}`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new ApiError(detail || response.statusText, response.status);
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const match = disposition.match(/filename="?([^"]+)"?/);
+  const filename = match?.[1] ?? `export.${exportFormat}`;
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export type ReportScheduleRead = {
   id: string;
   report_id: string;

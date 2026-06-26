@@ -50,6 +50,7 @@ import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
+import { DataExportDialog } from "@/components/DataExportDialog";
 import type { BeneficiaryRead, CurrentPrincipal, DataFormSchemaRead, SubmissionRead } from "@/lib/api";
 import { ApiError, archiveForm, bulkUpdateImportCleaningRows, confirmImportedFormDataRows, getFormSchema, governExport, importFormDataRows, listBeneficiaries, listForms, listFormTemplates, listProjects, listSubmissions, restoreForm, returnImportedFormDataRows, updateForm, updateSubmissionResponses } from "@/lib/api";
 import { formatSubmissionId } from "@/lib/identifiers";
@@ -1617,6 +1618,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
   const [activeSection, setActiveSection] = useState<FormsSection>(() => formsSectionFromPath(pathname ?? "/forms") ?? "dashboard");
   const [activeTab, setActiveTab] = useState<FormDetailTab>("Overview");
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
+  const [exportForm, setExportForm] = useState<FormListItem | null>(null);
   const [creationOpen, setCreationOpen] = useState(false);
   const [builderFormId, setBuilderFormId] = useState<string | null>(null);
   const [duplicateSourceFormId, setDuplicateSourceFormId] = useState<string | null>(null);
@@ -2066,6 +2068,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
           forms={forms}
           primaryEntityPlural={terminology.primaryEntityPlural}
           onClose={() => setSelectedFormId(null)}
+          onExportData={() => setExportForm(selectedForm)}
           onOpenBuilder={() => {
             openFormBuilder(selectedForm);
           }}
@@ -2077,6 +2080,14 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
           setTab={setActiveTab}
         />
       ) : null}
+
+      <DataExportDialog
+        token={token}
+        formId={exportForm?.id ?? null}
+        formName={exportForm?.name}
+        open={Boolean(exportForm)}
+        onClose={() => setExportForm(null)}
+      />
 
       {!selectedForm && activeSection === "dashboard" ? (
         <FormsDashboard
@@ -7515,6 +7526,7 @@ function FormDetailWorkspace({
   forms,
   primaryEntityPlural,
   onClose,
+  onExportData,
   onOpenBuilder,
   onOpenDataQuality,
   onOpenMapping,
@@ -7527,6 +7539,7 @@ function FormDetailWorkspace({
   forms: FormListItem[];
   primaryEntityPlural: string;
   onClose: () => void;
+  onExportData: () => void;
   onOpenBuilder: () => void;
   onOpenDataQuality: () => void;
   onOpenMapping: () => void;
@@ -7551,9 +7564,14 @@ function FormDetailWorkspace({
             {form.project_name} · {form.survey_name} · {form.owner}
           </p>
         </div>
-        <Button onClick={onClose} variant="secondary">
-          Back to list
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={onExportData} variant="secondary">
+            Export data
+          </Button>
+          <Button onClick={onClose} variant="secondary">
+            Back to list
+          </Button>
+        </div>
       </div>
       <div className="flex gap-2 overflow-x-auto product-scrollbar">
         {formDetailTabs.map((item) => (
