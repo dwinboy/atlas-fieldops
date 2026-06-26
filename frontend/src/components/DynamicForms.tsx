@@ -1292,6 +1292,16 @@ function FieldTranslationsEditor({
     });
   }
 
+  function patchMatrix(language: string, kind: "matrixRows" | "matrixColumns", index: number, value: string, count: number) {
+    const current = [...(translations[language]?.[kind] ?? [])];
+    while (current.length < count) current.push("");
+    current[index] = value;
+    onChange({
+      ...translations,
+      [language]: { ...translations[language], [kind]: current },
+    });
+  }
+
   return (
     <section className="rounded-md border bg-background p-3">
       <div className="flex items-center justify-between gap-2">
@@ -1338,6 +1348,34 @@ function FieldTranslationsEditor({
                     />
                   ))}
                 </div>
+              ) : null}
+              {field.matrix ? (
+                <>
+                  <div className="mt-2 space-y-1">
+                    <p className="text-[11px] font-semibold text-muted-foreground">Row labels</p>
+                    {(field.matrix.rows ?? []).map((row, index) => (
+                      <Input
+                        className="text-xs"
+                        key={`${language}-row-${index}`}
+                        onChange={(event) => patchMatrix(language, "matrixRows", index, event.target.value, field.matrix?.rows?.length ?? 0)}
+                        placeholder={row}
+                        value={translations[language]?.matrixRows?.[index] ?? ""}
+                      />
+                    ))}
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    <p className="text-[11px] font-semibold text-muted-foreground">Column labels</p>
+                    {(field.matrix.columns ?? []).map((column, index) => (
+                      <Input
+                        className="text-xs"
+                        key={`${language}-column-${index}`}
+                        onChange={(event) => patchMatrix(language, "matrixColumns", index, event.target.value, field.matrix?.columns?.length ?? 0)}
+                        placeholder={column}
+                        value={translations[language]?.matrixColumns?.[index] ?? ""}
+                      />
+                    ))}
+                  </div>
+                </>
               ) : null}
             </div>
           ))}

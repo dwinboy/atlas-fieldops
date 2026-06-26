@@ -405,7 +405,10 @@ export type MobileQuestion = {
     countFromVariable?: string | null;
   } | null;
   /** Per-language overrides keyed by language name; base label/helpText are the default language. */
-  translations?: Record<string, { label?: string; hint?: string; options?: string[] }> | null;
+  translations?: Record<
+    string,
+    { label?: string; hint?: string; options?: string[]; matrixRows?: string[]; matrixColumns?: string[] }
+  > | null;
   order: number;
 };
 

@@ -369,14 +369,14 @@ function LookupQuestion({
     if (source === "categories") {
       return localDatabase.entityCategories
         .list()
-        .map((category) => ({ id: category.id, label: category.name, value: category.id }));
+        .map((category) => ({ id: category.id, label: category.name, value: category.name }));
     }
     if (source === "reference") {
       return resolveQuestionOptions(question, allResponses, referenceLists);
     }
     return localDatabase.entities
       .list()
-      .map((entity) => ({ id: entity.id, label: entity.name || entity.entityUid, value: entity.id }));
+      .map((entity) => ({ id: entity.id, label: entity.name || entity.entityUid, value: entity.name || entity.entityUid }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source, referenceLists, question.id]);
 
@@ -720,7 +720,7 @@ function renderInput(
 
   // ── Matrix ───────────────────────────────────────────────────────────────
   if (type === "Matrix") {
-    return renderMatrix(question, value, answer);
+    return renderMatrix(question, value, answer, activeLanguage);
   }
 
   // ── Lookup (search records, categories, or reference data) ────────────────
@@ -1147,8 +1147,19 @@ function renderRepeatGroup(
   );
 }
 
-function renderMatrix(question: MobileQuestion, value: unknown, answer: (v: unknown) => void) {
-  const { rows, columns, multi } = matrixMetadata(question);
+function applyLabelOverrides(options: SimpleOption[], labels?: string[]): SimpleOption[] {
+  if (!Array.isArray(labels) || labels.length === 0) return options;
+  return options.map((option, index) =>
+    typeof labels[index] === "string" && labels[index].trim() ? { ...option, label: labels[index] } : option,
+  );
+}
+
+function renderMatrix(question: MobileQuestion, value: unknown, answer: (v: unknown) => void, activeLanguage?: string) {
+  const base = matrixMetadata(question);
+  const translation = activeLanguage && question.translations ? question.translations[activeLanguage] : undefined;
+  const rows = applyLabelOverrides(base.rows, translation?.matrixRows);
+  const columns = applyLabelOverrides(base.columns, translation?.matrixColumns);
+  const multi = base.multi;
   const matrix = isRecord(value) ? value : {};
 
   function toggle(rowValue: string, columnValue: string) {

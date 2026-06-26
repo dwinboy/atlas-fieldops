@@ -154,9 +154,12 @@ export type FormField = {
   };
   variableName?: string;
   children?: FormField[];
-  /** Per-language overrides for label/hint/options, keyed by language name (e.g. "French").
-   * The base label/hint/options are the form's default language. */
-  translations?: Record<string, { label?: string; hint?: string; options?: string[] }>;
+  /** Per-language overrides for label/hint/options (and matrix rows/columns), keyed by language
+   * name (e.g. "French"). The base label/hint/options are the form's default language. */
+  translations?: Record<
+    string,
+    { label?: string; hint?: string; options?: string[]; matrixRows?: string[]; matrixColumns?: string[] }
+  >;
 };
 
 export type FormPage = {
