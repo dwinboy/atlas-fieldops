@@ -36,6 +36,7 @@ export function DataExportDialog({
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
+  const [excludedColumns, setExcludedColumns] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState("");
 
@@ -48,12 +49,17 @@ export function DataExportDialog({
   const capabilities = capabilitiesQuery.data;
   const formats = capabilities?.formats ?? [];
 
+  const allColumns = capabilities?.columns ?? [];
+  const includedColumns = allColumns.filter((column) => !excludedColumns.has(column));
+
   async function handleDownload() {
     if (!token || !formId || !selected) return;
     setDownloading(true);
     setError("");
+    // Send the field list only when the user has narrowed it; otherwise export every column.
+    const fields = includedColumns.length && includedColumns.length !== allColumns.length ? includedColumns : undefined;
     try {
-      await downloadFormExport(token, formId, selected, statusFilter || undefined);
+      await downloadFormExport(token, formId, selected, statusFilter || undefined, fields);
       onClose();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Export failed. Try again.");
@@ -101,6 +107,33 @@ export function DataExportDialog({
                   ))}
                 </select>
               </label>
+            ) : null}
+
+            {allColumns.length > 0 ? (
+              <details className="rounded-xl border bg-background p-3">
+                <summary className="cursor-pointer text-sm font-medium">
+                  Columns ({includedColumns.length} of {allColumns.length})
+                </summary>
+                <div className="mt-3 grid gap-1.5 sm:grid-cols-2">
+                  {allColumns.map((column) => (
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground" key={column}>
+                      <input
+                        checked={!excludedColumns.has(column)}
+                        onChange={(event) =>
+                          setExcludedColumns((current) => {
+                            const next = new Set(current);
+                            if (event.target.checked) next.delete(column);
+                            else next.add(column);
+                            return next;
+                          })
+                        }
+                        type="checkbox"
+                      />
+                      <span className="truncate" title={column}>{column}</span>
+                    </label>
+                  ))}
+                </div>
+              </details>
             ) : null}
 
             {KIND_GROUPS.map((group) => {

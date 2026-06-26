@@ -4416,6 +4416,7 @@ export type FormExportCapabilities = {
   has_polygons: boolean;
   has_media: boolean;
   statuses: string[];
+  columns: string[];
   formats: ExportFormatOption[];
 };
 
@@ -4434,9 +4435,11 @@ export async function downloadFormExport(
   formId: string,
   exportFormat: string,
   statusFilter?: string,
+  fields?: string[],
 ): Promise<void> {
   const params = new URLSearchParams({ export_format: exportFormat });
   if (statusFilter) params.set("status_filter", statusFilter);
+  for (const field of fields ?? []) params.append("fields", field);
   const response = await fetch(`${getApiBaseUrl()}/operations/data/forms/${formId}/export?${params.toString()}`, {
     headers: { authorization: `Bearer ${token}` },
   });
