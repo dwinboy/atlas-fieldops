@@ -13,14 +13,17 @@ import {
   deriveIndicatorGeography,
   extentStatus,
   extentToBounds,
+  extractSubmissionBoundaries,
   featureSource,
   filterFeaturesBySection,
   maskCoordinate,
+  ringCentroid,
   statusColor,
   summarizeMapAreaForAssignment,
   toGeoJson,
   validateGpsPoint,
 } from "@/modules/mapping/utils";
+import type { MapFeatureRecord } from "@/modules/mapping/data";
 
 describe("Mapping module helpers", () => {
   it("routes mapping cross-module actions to their owning workspaces", () => {
@@ -136,6 +139,68 @@ describe("Mapping module helpers", () => {
     expect(statusColor("Warning")).toMatch(/^#/);
     expect(statusColor("Critical")).toMatch(/^#/);
     expect(statusColor("Inactive")).toMatch(/^#/);
+  });
+
+  it("extracts captured boundary polygons from a submission payload as Leaflet [lat, lng] rings", () => {
+    const payload = {
+      farm_area: "Smith plot",
+      _mobile_responses: [
+        {
+          questionId: "q1",
+          variableName: "farm_boundary",
+          // GeoJSON [lng, lat], closed ring.
+          value: {
+            type: "Polygon",
+            coordinates: [[[10.1, 5.9], [10.2, 5.9], [10.2, 6.0], [10.1, 6.0], [10.1, 5.9]]],
+          },
+        },
+      ],
+    };
+    const rings = extractSubmissionBoundaries(payload);
+    expect(rings).toHaveLength(1);
+    // Converted to Leaflet [lat, lng] order.
+    expect(rings[0][0]).toEqual([5.9, 10.1]);
+    expect(rings[0]).toHaveLength(5);
+
+    const centroid = ringCentroid(rings[0]);
+    expect(centroid.latitude).toBeCloseTo(5.94, 1);
+    expect(centroid.longitude).toBeCloseTo(10.14, 1);
+
+    // No polygon answer → no rings, and a malformed ring (< 3 points) is ignored.
+    expect(extractSubmissionBoundaries({ note: "no geometry" })).toHaveLength(0);
+    expect(
+      extractSubmissionBoundaries({ _mobile_responses: [{ value: { type: "Polygon", coordinates: [[[1, 1], [2, 2]]] } }] }),
+    ).toHaveLength(0);
+  });
+
+  it("exports a feature with a captured boundary as GeoJSON Polygon geometry", () => {
+    const feature: MapFeatureRecord = {
+      id: "submission-1",
+      label: "MOB-2026-0001",
+      category: "Submission",
+      project: "Agricultural Resilience Program",
+      location: "Captured boundary",
+      region: "",
+      district: "",
+      latitude: 5.95,
+      longitude: 10.15,
+      status: "Healthy",
+      qualityScore: 90,
+      gpsAccuracy: 8,
+      count: 1,
+      popup: {},
+      boundaries: [[[5.9, 10.1], [5.9, 10.2], [6.0, 10.2], [6.0, 10.1]]],
+    };
+    const geojson = JSON.parse(toGeoJson([feature], "Internal"));
+    const geometry = geojson.features[0].geometry;
+    expect(geometry.type).toBe("Polygon");
+    // GeoJSON [lng, lat] order, ring auto-closed (first vertex repeated at the end).
+    expect(geometry.coordinates[0][0]).toEqual([10.1, 5.9]);
+    expect(geometry.coordinates[0][geometry.coordinates[0].length - 1]).toEqual([10.1, 5.9]);
+
+    // A sensitive boundary is withheld in the aggregated export — only the masked point ships.
+    const aggregated = JSON.parse(toGeoJson([{ ...feature, sensitive: true }], "Aggregated"));
+    expect(aggregated.features[0].geometry.type).toBe("Point");
   });
 
   it("derives project-level indicator geography from live metrics", () => {

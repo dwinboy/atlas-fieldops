@@ -1474,6 +1474,17 @@ export type SubmissionRead = {
   }[];
   review_quality?: number | null;
   redacted_fields?: string[];
+  spatial_flags?: SubmissionSpatialFlags | null;
+};
+
+/** Polygon boundary-overlap detection results attached to a submission (server-computed). */
+export type SubmissionSpatialFlags = {
+  status: string;
+  flaggedAt?: string;
+  polygonOverlaps: {
+    questionId: string;
+    overlaps: { submissionId: string; overlapRatio: number }[];
+  }[];
 };
 
 export type ImportCleaningRowRead = {

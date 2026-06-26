@@ -1723,6 +1723,30 @@ function SubmissionsDashboard({
   );
 }
 
+/** Warns reviewers when a submission's captured boundary overlaps other submissions'
+ * boundaries (server-detected). Renders nothing when there are no overlaps. */
+function SpatialOverlapBanner({ submission }: { submission: SubmissionRecord }) {
+  const overlaps = submission.spatial_flags?.polygonOverlaps?.flatMap((entry) => entry.overlaps) ?? [];
+  if (!overlaps.length) return null;
+  const maxRatio = Math.max(...overlaps.map((overlap) => overlap.overlapRatio));
+  return (
+    <div
+      className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-amber-900 dark:text-amber-200"
+      role="status"
+    >
+      <ShieldAlert aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
+      <div>
+        <p className="text-sm font-medium">Boundary overlap detected — needs review</p>
+        <p className="mt-0.5 text-xs leading-5">
+          This boundary overlaps {overlaps.length} other submission{overlaps.length === 1 ? "" : "s"} (up to{" "}
+          {Math.round(maxRatio * 100)}% of its area). Confirm the correct boundary before approving, or return the
+          submission for re-capture.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function SubmissionDetailWorkspace({
   canEditResponses,
   canReview,
@@ -1794,6 +1818,8 @@ function SubmissionDetailWorkspace({
           Back to list
         </Button>
       </div>
+
+      <SpatialOverlapBanner submission={submission} />
 
       <div className="flex gap-2 overflow-x-auto product-scrollbar">
         {submissionDetailTabs.map((item) => (
@@ -2181,10 +2207,51 @@ function formatResponseValue(value: unknown, type?: string, options?: FormFieldM
       const geo = formatGeoValue(value as Record<string, unknown>);
       if (geo) return geo;
     }
+    const polygon = formatPolygonValue(value as Record<string, unknown>);
+    if (polygon) return polygon;
     return JSON.stringify(value, null, 2);
   }
   if (options?.length) return optionLabelFor(value, options);
   return String(value);
+}
+
+/** Summarizes a GeoJSON `{ type: "Polygon", coordinates }` answer captured on mobile into a
+ * readable "Boundary polygon · N points · ≈ X ha" string instead of a raw coordinate dump. */
+function formatPolygonValue(value: Record<string, unknown>): string | null {
+  if (value.type !== "Polygon" || !Array.isArray(value.coordinates)) return null;
+  const ring = Array.isArray(value.coordinates[0]) ? (value.coordinates[0] as unknown[]) : [];
+  const points = ring.filter(
+    (point): point is number[] =>
+      Array.isArray(point) && point.length >= 2 && typeof point[0] === "number" && typeof point[1] === "number",
+  );
+  if (points.length < 3) return "Boundary polygon (incomplete)";
+  // GeoJSON rings repeat the first vertex at the end — don't count it twice.
+  const [first, last] = [points[0], points[points.length - 1]];
+  const vertexCount = first[0] === last[0] && first[1] === last[1] ? points.length - 1 : points.length;
+  const hectares = polygonAreaHectares(points);
+  const areaLabel = hectares >= 0.01 ? `≈ ${hectares.toFixed(hectares >= 1 ? 1 : 2)} ha` : null;
+  return areaLabel
+    ? `Boundary polygon · ${vertexCount} points · ${areaLabel}`
+    : `Boundary polygon · ${vertexCount} points`;
+}
+
+/** Approximate polygon area in hectares from `[lng, lat]` vertices using an equirectangular
+ * projection at the polygon's mean latitude (shoelace formula). */
+function polygonAreaHectares(ring: number[][]): number {
+  const earthRadius = 6378137; // metres
+  const meanLat = ring.reduce((sum, point) => sum + point[1], 0) / ring.length;
+  const cosLat = Math.cos((meanLat * Math.PI) / 180);
+  let area = 0;
+  for (let index = 0; index < ring.length; index += 1) {
+    const [lng1, lat1] = ring[index];
+    const [lng2, lat2] = ring[(index + 1) % ring.length];
+    const x1 = ((lng1 * Math.PI) / 180) * earthRadius * cosLat;
+    const y1 = ((lat1 * Math.PI) / 180) * earthRadius;
+    const x2 = ((lng2 * Math.PI) / 180) * earthRadius * cosLat;
+    const y2 = ((lat2 * Math.PI) / 180) * earthRadius;
+    area += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(area / 2) / 10000; // m² → hectares
 }
 
 function responseTypeFromValue(value: unknown): string {

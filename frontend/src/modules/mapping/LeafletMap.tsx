@@ -381,6 +381,30 @@ export default function LeafletMap({
               );
             })
           : null}
+        {features.flatMap((feature) => {
+          // Boundaries captured in submissions render as filled polygons over the terrain.
+          // Sensitive features are not outlined in the aggregated view — only their masked point shows.
+          if (!feature.boundaries?.length || (feature.sensitive && privacyVisibility === "Aggregated")) return [];
+          const opacity = featureOpacityByCategory[feature.category] ?? 1;
+          const isSelected = selectedFeature?.id === feature.id;
+          const color = statusColor(feature.status);
+          return feature.boundaries.map((ring, ringIndex) => (
+            <Polygon
+              eventHandlers={{ click: () => onFeatureSelect(feature) }}
+              key={`${feature.id}-boundary-${ringIndex}`}
+              pathOptions={{
+                color,
+                fillColor: color,
+                fillOpacity: (isSelected ? 0.28 : 0.16) * opacity,
+                opacity: (isSelected ? 0.9 : 0.6) * opacity,
+                weight: isSelected ? 3 : 2,
+              }}
+              positions={ring}
+            >
+              <Tooltip sticky>{feature.label} · captured boundary</Tooltip>
+            </Polygon>
+          ));
+        })}
         {features.map((feature, index) => (
           <Marker
             eventHandlers={{ click: () => onFeatureSelect(feature) }}

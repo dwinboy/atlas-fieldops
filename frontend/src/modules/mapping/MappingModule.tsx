@@ -93,6 +93,8 @@ import {
   drawnBoundaryToGeoJson,
   extentStatus,
   extentToBounds,
+  extractSubmissionBoundaries,
+  ringCentroid,
   featureSource,
   filterFeaturesBySection,
   isFeatureInBounds,
@@ -649,15 +651,27 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
     );
     const officerById = new globalThis.Map((fieldOfficersQuery.data ?? []).map((officer) => [officer.id, officer]));
     const geotaggedSubmissions = (submissionsQuery.data ?? [])
-      .filter((submission) => submission.latitude && submission.longitude)
-      .sort((left, right) => new Date(right.submitted_at).getTime() - new Date(left.submitted_at).getTime());
+      .map((submission) => ({ submission, boundaries: extractSubmissionBoundaries(submission.payload_json ?? {}) }))
+      // Keep submissions that have a GPS point OR a captured boundary — a boundary-only
+      // record (walked perimeter without a separate point) should still appear on the map.
+      .filter(({ submission, boundaries }) => (submission.latitude && submission.longitude) || boundaries.length > 0)
+      .sort((left, right) => new Date(right.submission.submitted_at).getTime() - new Date(left.submission.submitted_at).getTime());
     const geotaggedBeneficiaries = (beneficiariesQuery.data ?? []).filter(
       (beneficiary) => beneficiary.latitude && beneficiary.longitude,
     );
 
-    const submissionFeatures: MapFeatureRecord[] = geotaggedSubmissions.map((submission) => {
+    const submissionFeatures: MapFeatureRecord[] = geotaggedSubmissions.map(({ submission, boundaries }) => {
       const accuracy = submission.accuracy ?? 0;
       const source = submission.is_imported ? "Imported" : submission.offline_created ? "Mobile" : submission.device_id ? "Field Submitted" : "Web Entry";
+      const hasGpsPoint = Boolean(submission.latitude && submission.longitude);
+      // Anchor a boundary-only submission at the centroid of its first captured ring.
+      const anchor = hasGpsPoint
+        ? { latitude: submission.latitude, longitude: submission.longitude }
+        : ringCentroid(boundaries[0]);
+      // A server-detected boundary overlap is the strongest spatial signal — surface it in red.
+      const overlapCount =
+        submission.spatial_flags?.polygonOverlaps?.reduce((sum, entry) => sum + entry.overlaps.length, 0) ?? 0;
+      const gpsStatus = submission.accuracy == null ? "Warning" : accuracy <= 15 ? "Healthy" : accuracy <= 30 ? "Warning" : "Critical";
       return {
         category: "Submission",
         count: 1,
@@ -665,11 +679,18 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
         gpsAccuracy: accuracy,
         id: `submission-${submission.id}`,
         label: formatSubmissionId(submission),
-        latitude: submission.latitude,
-        location: "Field GPS capture",
-        longitude: submission.longitude,
+        latitude: anchor.latitude,
+        location: boundaries.length > 0 ? "Captured boundary" : "Field GPS capture",
+        longitude: anchor.longitude,
+        ...(boundaries.length > 0 ? { boundaries } : {}),
         popup: {
           "GPS accuracy": submission.accuracy != null ? `${submission.accuracy}m` : "Unknown",
+          ...(boundaries.length > 0
+            ? { Boundaries: `${boundaries.length} polygon${boundaries.length === 1 ? "" : "s"} captured` }
+            : {}),
+          ...(overlapCount > 0
+            ? { "Boundary overlap": `Overlaps ${overlapCount} other submission${overlapCount === 1 ? "" : "s"} — needs review` }
+            : {}),
           "Submission ID": formatSubmissionId(submission),
           "Submission source": source,
           "Submitted by": submission.submitted_by_name ?? "Unknown",
@@ -677,10 +698,10 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
           Submitted: new Date(submission.submitted_at).toLocaleDateString(),
         },
         project: projectNameById[submission.project_id ?? ""] ?? "Unassigned project",
-        qualityScore: submission.accuracy == null ? 60 : Math.max(0, Math.min(100, Math.round(100 - submission.accuracy))),
+        qualityScore: overlapCount > 0 ? 0 : submission.accuracy == null ? 60 : Math.max(0, Math.min(100, Math.round(100 - submission.accuracy))),
         region: "",
         source,
-        status: submission.accuracy == null ? "Warning" : accuracy <= 15 ? "Healthy" : accuracy <= 30 ? "Warning" : "Critical",
+        status: overlapCount > 0 ? "Critical" : gpsStatus,
       };
     });
 

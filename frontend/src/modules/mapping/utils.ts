@@ -321,9 +321,60 @@ export function computeProjectExtents(features: MapFeatureRecord[]): ProjectExte
 }
 
 /**
+ * Extract captured boundary polygons from a submission payload. Mobile stores polygon answers
+ * as GeoJSON `{ type: "Polygon", coordinates: [ring][vertex][lng, lat] }` inside
+ * `_mobile_responses` (and as flattened answer values). We return each ring in Leaflet
+ * `[latitude, longitude]` order so the map can draw it directly.
+ */
+export function extractSubmissionBoundaries(payload: Record<string, unknown>): [number, number][][] {
+  const rings: [number, number][][] = [];
+  const seen = new Set<string>();
+  const responses = Array.isArray(payload._mobile_responses) ? payload._mobile_responses : [];
+  const candidateValues = [
+    ...responses.map((response) =>
+      response && typeof response === "object" ? (response as { value?: unknown }).value : undefined,
+    ),
+    ...Object.entries(payload)
+      .filter(([key]) => !key.startsWith("_") && key !== "responses")
+      .map(([, value]) => value),
+  ];
+
+  for (const value of candidateValues) {
+    if (!value || typeof value !== "object" || (value as { type?: unknown }).type !== "Polygon") continue;
+    const coordinates = (value as { coordinates?: unknown }).coordinates;
+    if (!Array.isArray(coordinates)) continue;
+    for (const rawRing of coordinates) {
+      if (!Array.isArray(rawRing)) continue;
+      const ring = rawRing
+        .filter(
+          (point): point is number[] =>
+            Array.isArray(point) && point.length >= 2 && typeof point[0] === "number" && typeof point[1] === "number",
+        )
+        // GeoJSON is [lng, lat]; Leaflet wants [lat, lng].
+        .map((point) => [point[1], point[0]] as [number, number]);
+      if (ring.length < 3) continue;
+      const fingerprint = JSON.stringify(ring);
+      if (seen.has(fingerprint)) continue;
+      seen.add(fingerprint);
+      rings.push(ring);
+    }
+  }
+  return rings;
+}
+
+/** Average vertex position of a `[latitude, longitude]` ring — used as a label/anchor point
+ * for a boundary-only submission that has no separate GPS capture. */
+export function ringCentroid(ring: [number, number][]): { latitude: number; longitude: number } {
+  const latitude = ring.reduce((sum, point) => sum + point[0], 0) / ring.length;
+  const longitude = ring.reduce((sum, point) => sum + point[1], 0) / ring.length;
+  return { latitude, longitude };
+}
+
+/**
  * Serialize map features to a GeoJSON FeatureCollection so users can open the
  * current view in QGIS, ArcGIS, kepler.gl, or any standard GIS tool. Sensitive
- * coordinates are masked to the configured precision before export.
+ * coordinates are masked to the configured precision before export. Features with a
+ * captured boundary are exported as Polygon geometry; the rest as Points.
  */
 export function toGeoJson(features: MapFeatureRecord[], visibility: LayerVisibility): string {
   return JSON.stringify(
@@ -331,9 +382,27 @@ export function toGeoJson(features: MapFeatureRecord[], visibility: LayerVisibil
       type: "FeatureCollection",
       features: features.map((feature) => {
         const [latitude, longitude] = maskedCoordinates(feature, visibility);
+        // Sensitive boundaries are withheld in aggregated exports; only the masked point ships.
+        const exportBoundaries =
+          feature.boundaries?.length && !(feature.sensitive && visibility === "Aggregated")
+            ? feature.boundaries
+            : null;
+        const geometry = exportBoundaries
+          ? {
+              type: "Polygon" as const,
+              // Leaflet rings are [lat, lng]; GeoJSON wants [lng, lat] and a closed ring.
+              coordinates: exportBoundaries.map((ring) => {
+                const closed =
+                  ring.length > 0 && (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1])
+                    ? [...ring, ring[0]]
+                    : ring;
+                return closed.map(([ringLat, ringLng]) => [ringLng, ringLat]);
+              }),
+            }
+          : { type: "Point" as const, coordinates: [longitude, latitude] };
         return {
           type: "Feature",
-          geometry: { type: "Point", coordinates: [longitude, latitude] },
+          geometry,
           properties: {
             id: feature.id,
             label: feature.label,

@@ -93,6 +93,9 @@ export type MapFeatureRecord = {
   popup: Record<string, string | number>;
   source?: string;
   sensitive?: boolean;
+  /** Captured boundary polygons from the submission's responses. Each entry is a closed
+   * ring of `[latitude, longitude]` vertices (Leaflet order), ready for `<Polygon positions>`. */
+  boundaries?: [number, number][][];
 };
 
 export type CoverageRecord = {
