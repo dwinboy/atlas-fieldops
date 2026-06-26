@@ -28,7 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
-import { Modal } from "@/components/ui/modal";
+import { Modal, ModalBody, ModalFooter } from "@/components/ui/modal";
 import {
   createGovernancePolicy,
   createRetentionPolicy,
@@ -753,7 +753,7 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
         open={policyModalOpen}
         title="Create governance policy"
       >
-        <div className="grid gap-3 md:grid-cols-2">
+        <ModalBody className="grid gap-3 md:grid-cols-2">
           <label className="text-sm font-medium md:col-span-2">
             Policy name
             <Input className="mt-2" onChange={(event) => setPolicyDraft((current) => ({ ...current, name: event.target.value }))} placeholder="e.g. Beneficiary data protection policy" value={policyDraft.name} />
@@ -786,13 +786,13 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
               <option value="published">Published</option>
             </Select>
           </label>
-        </div>
-        <div className="mt-4 flex justify-end gap-2">
+        </ModalBody>
+        <ModalFooter>
           <Button onClick={() => setPolicyModalOpen(false)} type="button" variant="secondary">Cancel</Button>
           <Button disabled={policyMutation.isPending || policyDraft.name.trim().length < 2} onClick={() => policyMutation.mutate()} type="button" variant="primary">
             {policyMutation.isPending ? "Creating…" : "Create policy"}
           </Button>
-        </div>
+        </ModalFooter>
       </Modal>
 
       <Modal
@@ -802,7 +802,8 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
         open={retentionModalOpen}
         title="Create retention rule"
       >
-        <div className="grid gap-3 md:grid-cols-2">
+        <ModalBody className="space-y-3">
+          <div className="grid gap-3 md:grid-cols-2">
           <label className="text-sm font-medium md:col-span-2">
             Record type
             <Input className="mt-2" onChange={(event) => setRetentionDraft((current) => ({ ...current, recordType: event.target.value }))} placeholder="e.g. beneficiary, submission, consent" value={retentionDraft.recordType} />
@@ -830,12 +831,13 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
             Anonymize on export
           </label>
         </div>
-        <div className="mt-4 flex justify-end gap-2">
+        </ModalBody>
+        <ModalFooter>
           <Button onClick={() => setRetentionModalOpen(false)} type="button" variant="secondary">Cancel</Button>
           <Button disabled={retentionMutation.isPending || retentionDraft.recordType.trim().length < 2} onClick={() => retentionMutation.mutate()} type="button" variant="primary">
             {retentionMutation.isPending ? "Creating…" : "Create retention rule"}
           </Button>
-        </div>
+        </ModalFooter>
       </Modal>
     </section>
   );

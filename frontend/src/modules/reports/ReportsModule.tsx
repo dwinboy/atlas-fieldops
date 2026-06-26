@@ -38,7 +38,7 @@ import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
-import { Modal } from "@/components/ui/modal";
+import { Modal, ModalBody, ModalFooter } from "@/components/ui/modal";
 import {
   ApiError,
   createCustomDashboard,
@@ -749,6 +749,7 @@ export function ReportsModule({ token }: ReportsModuleProps) {
         open={createOpen}
         title="Create report"
       >
+        <ModalBody className="space-y-3">
         <div className="grid gap-3 md:grid-cols-2">
           <label className="text-sm font-medium md:col-span-2">
             Report name
@@ -825,7 +826,8 @@ export function ReportsModule({ token }: ReportsModuleProps) {
         {createDraft.periodStart && createDraft.periodEnd && createDraft.periodEnd < createDraft.periodStart ? (
           <p className="mt-2 text-xs text-danger">Period end must be on or after period start.</p>
         ) : null}
-        <div className="mt-4 flex justify-end gap-2">
+        </ModalBody>
+        <ModalFooter>
           <Button onClick={() => setCreateOpen(false)} type="button" variant="secondary">Cancel</Button>
           <Button
             disabled={
@@ -843,7 +845,7 @@ export function ReportsModule({ token }: ReportsModuleProps) {
           >
             {createReportMutation.isPending ? "Creating…" : "Create & generate"}
           </Button>
-        </div>
+        </ModalFooter>
       </Modal>
     </section>
   );
