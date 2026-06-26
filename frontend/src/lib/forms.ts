@@ -38,7 +38,8 @@ export type FieldType =
   | "hidden"
   | "calculated"
   | "repeat_group"
-  | "grid";
+  | "grid"
+  | "lookup";
 
 export type LogicRule = {
   id: string;
@@ -113,6 +114,10 @@ export type FormField = {
     /** Variable name of a number question whose answer sets how many rows to create
      * automatically (e.g. "how many farms?" → that many farm-mapping rows). */
     countFromVariable?: string;
+  };
+  /** Config for a `lookup` question: which on-device dataset the field officer searches. */
+  lookup?: {
+    source: "entities" | "categories" | "reference";
   };
   beneficiary?: {
     profileField?: string;
@@ -228,6 +233,7 @@ type ExportedSchemaField = {
   calculation?: string;
   matrix?: FormField["matrix"];
   repeat?: FormField["repeat"];
+  lookup?: FormField["lookup"];
   media?: FormField["media"];
   gps?: FormField["gps"];
   children: ExportedSchemaField[];
@@ -277,7 +283,8 @@ export const fieldCatalog: {
       { type: "checkbox", label: "Checkboxes", description: "Visible multi choice" },
       { type: "dropdown", label: "Dropdown", description: "Compact single choice" },
       { type: "multiselect", label: "Multi-select", description: "Multiple choice list" },
-      { type: "ranking", label: "Ranking", description: "Rank options by priority" }
+      { type: "ranking", label: "Ranking", description: "Rank options by priority" },
+      { type: "lookup", label: "Search & pick", description: "Search records, categories, or reference data" }
     ]
   },
   {
@@ -370,6 +377,7 @@ export const fieldTypeHelp: Record<FieldType, string> = {
   calculated: "Auto-computes a value from other answers using a formula (e.g. a score or total). Read-only for the officer.",
   repeat_group: "Repeats a set of questions for each item — household members, crops, assets, or visits — as many times as needed.",
   grid: "A structured table for entering several values in rows and columns.",
+  lookup: "Lets the field officer search a list — registered records, categories, or reference data — and pick a value, even offline.",
 };
 
 const choiceFieldTypes: FieldType[] = ["select", "dropdown", "multiselect", "radio", "checkbox", "ranking", "likert"];
@@ -438,6 +446,7 @@ export function createField(type: FieldType, sectionId: string, pageId?: string)
       ? { rows: ["Row 1", "Row 2", "Row 3"], columns: ["Option 1", "Option 2", "Option 3"] }
       : undefined,
     repeat: type === "repeat_group" ? { min: 0, max: 10, allowNested: false } : undefined,
+    lookup: type === "lookup" ? { source: "entities" as const } : undefined,
     media: mediaFieldTypes.includes(type) ? { compression: "standard", metadata: true } : undefined,
     gps: locationFieldTypes.includes(type) && type !== "polygon"
       ? { latitude: true, longitude: true, altitude: true, accuracy: true, timestamp: true, geofenceRadius: type === "geofence" ? 250 : undefined }
@@ -762,6 +771,7 @@ export function toMobileSchema(form: DynamicForm) {
       calculation: field.calculation?.expression ?? field.logic?.find((rule) => rule.kind === "calculation")?.expression,
       matrix: field.matrix,
       repeat: field.repeat,
+      lookup: field.lookup,
       media: field.media,
       gps: field.gps,
       children: (field.children ?? []).map((child) => exportField(child)),
@@ -852,7 +862,8 @@ function toXlsType(field: FormField, listName = fieldVariableName(field)): strin
     hidden: "hidden",
     calculated: "calculate",
     repeat_group: "begin_repeat",
-    grid: "table-list"
+    grid: "table-list",
+    lookup: "select_one_external"
   };
   return typeMap[field.type];
 }

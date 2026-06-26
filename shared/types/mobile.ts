@@ -275,6 +275,7 @@ export type MobileQuestionType =
   | "CalculatedField"
   | "RepeatGroup"
   | "Matrix"
+  | "Lookup"
   | "Ranking"
   | "Nps"
   | "Rating"

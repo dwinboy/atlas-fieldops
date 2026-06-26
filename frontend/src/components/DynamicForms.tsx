@@ -183,6 +183,7 @@ const fieldTypeIcons: Record<FieldType, typeof Type> = {
   calculated: Sigma,
   repeat_group: Repeat2,
   grid: Grid3X3,
+  lookup: Search,
 };
 
 function asSettingsRecord(value: unknown): Record<string, unknown> {
@@ -14100,6 +14101,29 @@ export function DynamicForms({
                             </span>
                           </label>
                         </>
+                      ) : null}
+                      {selectedField.type === "lookup" ? (
+                        <label className="block text-sm font-medium">
+                          What the officer searches
+                          <Select
+                            className="mt-2"
+                            onChange={(event) =>
+                              updateSelectedForm(
+                                updateField(selectedForm, selectedField.id, {
+                                  lookup: { source: event.target.value as "entities" | "categories" | "reference" },
+                                }),
+                              )
+                            }
+                            value={selectedField.lookup?.source ?? "entities"}
+                          >
+                            <option value="entities">Registered records (entities)</option>
+                            <option value="categories">Entity categories</option>
+                            <option value="reference">Reference data</option>
+                          </Select>
+                          <span className="mt-1 block text-xs text-muted-foreground">
+                            On mobile the field officer searches this on-device list (works offline) and picks a value.
+                          </span>
+                        </label>
                       ) : null}
                       <label className="block text-sm font-medium">
                         Type

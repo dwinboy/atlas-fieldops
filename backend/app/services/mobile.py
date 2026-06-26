@@ -177,6 +177,7 @@ def _mobile_question_type(value: str) -> str:
         "rating": "Rating",
         "hidden": "Hidden",
         "polygon": "Polygon",
+        "lookup": "Lookup",
     }.get(value.lower(), "Text")
 
 
@@ -575,12 +576,15 @@ def _mobile_default_value(
 ) -> Any:
     field_type = str(field.get("type") or "").lower()
     default_value = field.get("defaultValue")
-    if field_type not in {"matrix_single", "matrix_multi", "grid", "repeat_group", "repeatable_group", "ranking"}:
+    if field_type not in {"matrix_single", "matrix_multi", "grid", "repeat_group", "repeatable_group", "ranking", "lookup"}:
         return default_value
 
     metadata: dict[str, Any] = default_value if isinstance(default_value, dict) else {}
     if default_value is not None and not isinstance(default_value, dict):
         metadata["value"] = default_value
+    if field_type == "lookup":
+        lookup_config = _as_dict(field.get("lookup"))
+        metadata["lookupSource"] = str(lookup_config.get("source") or "entities")
     if field_type in {"matrix_single", "matrix_multi", "grid"}:
         matrix_config = _as_dict(field.get("matrix"))
         metadata.setdefault("mode", "multi" if field_type == "matrix_multi" else "single")

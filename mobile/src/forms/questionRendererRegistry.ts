@@ -39,6 +39,7 @@ const renderMap: Record<MobileQuestionType, QuestionRenderModel["component"]> = 
   Rating: "NumberQuestion",
   RepeatGroup: "RepeatGroupRenderer",
   Matrix: "MatrixQuestion",
+  Lookup: "SelectQuestion",
   Ranking: "RankingQuestion",
   Signature: "MediaQuestion",
   SingleSelect: "SelectQuestion",

@@ -17,6 +17,7 @@ import { DateTimeField } from "@/components/ui";
 import type { FormValidationIssue } from "@/forms/formValidationService";
 import { evaluateQuestionLogicStates } from "@/forms/logicEngine";
 import { isCascadeBlocked, resolveQuestionOptions, type SimpleOption } from "@/forms/optionResolver";
+import { localDatabase } from "@/storage/localDatabase";
 import type { GPSResult } from "@/hooks/useGPS";
 import type { PhotoResult } from "@/hooks/usePhotoCapture";
 import type {
@@ -242,6 +243,50 @@ function SearchableOptionList({
       })}
     </View>
   );
+}
+
+/** Search-and-pick over an on-device dataset: registered records (entities), entity categories,
+ * or reference data. Works offline from the local database; reuses the searchable option list. */
+function LookupQuestion({
+  question,
+  value,
+  answer,
+  referenceLists,
+  allResponses,
+}: {
+  question: MobileQuestion;
+  value: unknown;
+  answer: (v: unknown) => void;
+  referenceLists: MobileReferenceList[];
+  allResponses: Map<string, unknown>;
+}) {
+  const source = isRecord(question.defaultValue) ? String(question.defaultValue.lookupSource ?? "entities") : "entities";
+  const options = useMemo<SimpleOption[]>(() => {
+    if (source === "categories") {
+      return localDatabase.entityCategories
+        .list()
+        .map((category) => ({ id: category.id, label: category.name, value: category.id }));
+    }
+    if (source === "reference") {
+      return resolveQuestionOptions(question, allResponses, referenceLists);
+    }
+    return localDatabase.entities
+      .list()
+      .map((entity) => ({ id: entity.id, label: entity.name || entity.entityUid, value: entity.id }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source, referenceLists, question.id]);
+
+  if (options.length === 0) {
+    return (
+      <View style={emptySubCard}>
+        <Text style={{ color: "#49635a", fontWeight: "700" }}>Nothing to search yet</Text>
+        <Text style={{ color: "#8aa79b", fontSize: 12 }}>
+          Sync to download {source === "categories" ? "categories" : source === "reference" ? "reference data" : "records"} for this question.
+        </Text>
+      </View>
+    );
+  }
+  return <SearchableOptionList multi={false} onChange={answer} options={options} value={value} />;
 }
 
 function renderInput(
@@ -537,6 +582,19 @@ function renderInput(
   // ── Matrix ───────────────────────────────────────────────────────────────
   if (type === "Matrix") {
     return renderMatrix(question, value, answer);
+  }
+
+  // ── Lookup (search records, categories, or reference data) ────────────────
+  if (type === "Lookup") {
+    return (
+      <LookupQuestion
+        allResponses={allResponses}
+        answer={answer}
+        question={question}
+        referenceLists={referenceLists}
+        value={value}
+      />
+    );
   }
 
   // ── Ranking ──────────────────────────────────────────────────────────────
