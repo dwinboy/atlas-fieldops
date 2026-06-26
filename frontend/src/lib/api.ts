@@ -1929,6 +1929,8 @@ export type IndicatorRead = {
   id: string;
   project_id: string | null;
   survey_id: string | null;
+  form_id?: string | null;
+  linked_question?: string | null;
   code: string;
   name: string;
   description: string | null;
@@ -1951,6 +1953,8 @@ export type IndicatorCreate = {
   name: string;
   project_id?: string | null;
   survey_id?: string | null;
+  form_id?: string | null;
+  linked_question?: string | null;
   description?: string | null;
   unit?: string;
   reporting_frequency?: "monthly" | "quarterly" | "annual";
@@ -4317,6 +4321,8 @@ export async function listIndicators(token: string): Promise<IndicatorRead[]> {
 
 export type IndicatorUpdate = {
   name?: string;
+  form_id?: string | null;
+  linked_question?: string | null;
   description?: string | null;
   unit?: string;
   reporting_frequency?: string;

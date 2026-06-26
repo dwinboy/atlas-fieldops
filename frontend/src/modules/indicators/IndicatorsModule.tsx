@@ -329,7 +329,8 @@ function mapApiIndicator(row: IndicatorRead): IndicatorRecord {
     id: row.id,
     lastCalculatedAt: row.calculated_at ?? new Date().toISOString(),
     linkedForm: null,
-    linkedQuestion: null,
+    linkedFormId: row.form_id ?? null,
+    linkedQuestion: row.linked_question ?? null,
     name: row.name,
     owner: "Operations Manager",
     project: row.project_id ? "Linked project" : "Organization-wide",
@@ -481,6 +482,8 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
           (indicatorDraft.manualFormula
             ? indicatorDraft.calculationMethod.trim()
             : composeFormula(indicatorDraft.operation, indicatorDraft.fieldVariable) || indicatorDraft.calculationMethod.trim()) || null,
+        form_id: indicatorDraft.formId || null,
+        linked_question: indicatorDraft.fieldVariable || null,
         name: indicatorDraft.name.trim(),
         project_id: indicatorDraft.projectId || null,
         reporting_frequency: apiFrequency(indicatorDraft.frequency),
@@ -1476,6 +1479,18 @@ function IndicatorDetailWorkspace({
   targets: IndicatorTarget[];
   token: string | null;
 }) {
+  const router = useRouter();
+  const detailFormsQuery = useQuery({
+    queryKey: ["indicator-detail-forms", token],
+    queryFn: () => listForms(token ?? ""),
+    enabled: Boolean(token && token !== "preview-token" && indicator.linkedFormId),
+  });
+  const linkedFormName = indicator.linkedFormId
+    ? (detailFormsQuery.data ?? []).find((form) => form.id === indicator.linkedFormId)?.name ?? indicator.linkedForm
+    : indicator.linkedForm;
+  const onOpenLinkedForm = indicator.linkedFormId
+    ? () => router.push(`/forms?formId=${indicator.linkedFormId}`)
+    : undefined;
   return (
     <section className="space-y-4 rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
@@ -1506,7 +1521,7 @@ function IndicatorDetailWorkspace({
       {tab === "Baselines" ? <BaselineRows baselines={baselines} indicator={indicator} /> : null}
       {tab === "Disaggregation" ? <DisaggregationTab indicator={indicator} preview={preview} token={token} /> : null}
       {tab === "Projects" ? <ProjectTab indicator={indicator} /> : null}
-      {tab === "Forms" ? <FormsTab indicator={indicator} /> : null}
+      {tab === "Forms" ? <FormsTab indicator={indicator} linkedFormName={linkedFormName} onOpenLinkedForm={onOpenLinkedForm} /> : null}
       {tab === "Progress" ? <ProgressTab indicator={indicator} /> : null}
       {tab === "History" ? <TimelineRows rows={auditEvents.filter((event) => event.indicatorId === indicator.id).map((event) => ({ label: event.action, meta: `${event.actor} · ${event.reason}`, tone: "accent" }))} /> : null}
       {tab === "Audit Trail" ? (
@@ -1695,10 +1710,24 @@ function ProjectTab({ indicator }: { indicator: IndicatorRecord }) {
   );
 }
 
-function FormsTab({ indicator }: { indicator: IndicatorRecord }) {
+function FormsTab({
+  indicator,
+  linkedFormName,
+  onOpenLinkedForm,
+}: {
+  indicator: IndicatorRecord;
+  linkedFormName?: string | null;
+  onOpenLinkedForm?: () => void;
+}) {
+  const formLabel = linkedFormName ?? indicator.linkedForm;
   return (
     <Panel title="Form Question Link">
-      <Signal label="Linked form" value={indicator.linkedForm ?? "Missing"} tone={indicator.linkedForm ? "success" : "danger"} />
+      <div className="flex items-center justify-between gap-3">
+        <Signal label="Linked form" value={formLabel ?? "Missing"} tone={formLabel ? "success" : "danger"} />
+        {onOpenLinkedForm ? (
+          <Button onClick={onOpenLinkedForm} size="sm" variant="secondary">Open form</Button>
+        ) : null}
+      </div>
       <Signal label="Numerator question" value={indicator.linkedQuestion ?? "Missing"} tone={indicator.linkedQuestion ? "success" : "danger"} />
       <Signal label="Numerator" value={indicator.numerator ?? "Not configured"} />
       <Signal label="Denominator" value={indicator.denominator ?? "Not required"} />

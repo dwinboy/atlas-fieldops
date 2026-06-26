@@ -49,6 +49,7 @@ export type IndicatorRecord = {
   status: IndicatorStatus;
   owner: string;
   linkedForm: string | null;
+  linkedFormId?: string | null;
   linkedQuestion: string | null;
   lastCalculatedAt: string;
 };
