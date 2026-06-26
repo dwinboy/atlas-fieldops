@@ -1,22 +1,32 @@
 import {
   BarChart3,
+  Bell,
   BookOpenCheck,
   Boxes,
   Building2,
+  Camera,
   CheckCircle2,
   ClipboardCheck,
   ClipboardList,
   Database,
+  Download,
   FileText,
   GitPullRequestArrow,
   HelpCircle,
   Map,
+  MapPin,
+  Navigation,
   RadioTower,
+  RefreshCw,
   Search,
   ShieldCheck,
+  Smartphone,
+  Sparkles,
   UsersRound,
   Wifi,
+  X,
 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
@@ -35,7 +45,9 @@ type HelpTopic = {
   title: string;
   purpose: string;
   audience: string;
-  view: WorkspaceView;
+  /** Web topics open a workspace; mobile topics describe the Android app and have no web view. */
+  platform?: "web" | "mobile";
+  view?: WorkspaceView;
   icon: typeof HelpCircle;
   whenToUse: string;
   beforeYouStart: string[];
@@ -1180,6 +1192,286 @@ const helpTopics: HelpTopic[] = [
       { label: "Workforce", view: "workforce" },
     ],
   },
+  {
+    id: "mobile-setup",
+    title: "Install the mobile app and sign in",
+    purpose:
+      "The Atlas FieldOps Android app is what field officers use to collect data in the field, including in places with no internet. This guide explains how to install it and sign in for the first time.",
+    audience: "Field officer",
+    platform: "mobile",
+    icon: Smartphone,
+    whenToUse:
+      "Use this once on each device before going to the field. The first sign-in needs internet because it downloads your assigned work; after that the app works offline.",
+    beforeYouStart: [
+      "Ask your supervisor for your organization code, email, and password — or for your personal login QR code.",
+      "Make sure the phone has internet (Wi-Fi or mobile data) for this first sign-in only.",
+      "Install the Atlas FieldOps app file (.apk) your organization shared, allowing installs from your file manager if prompted.",
+    ],
+    steps: [
+      "Open the Atlas FieldOps app. You will see the sign-in screen.",
+      "Choose Password and enter your organization code, email, and password; or choose Scan QR code and point the camera at the login code from your field officer profile.",
+      "Wait while the app signs you in and downloads your assigned projects, forms, entities, and reference lists. This is the only step that requires internet.",
+      "On the Home screen, check the green 'Ready for offline use' card — it confirms how many forms, assignments, and records are saved on the device.",
+      "You can now travel to areas with no connection and keep working; the app stays signed in offline.",
+    ],
+    dataLanguage: [
+      "Organization code",
+      "Login QR code",
+      "Assignments",
+      "Ready for offline use",
+    ],
+    goodPractice: [
+      "Sign in once while still in coverage (office Wi-Fi, town, or mobile data) before heading to a remote site.",
+      "Confirm the 'Ready for offline use' card shows your forms and assignments before you leave.",
+      "Keep the app installed and signed in between visits so cached work is preserved.",
+    ],
+    avoid: [
+      "Do not expect the first sign-in to work with no connection — it must download your work once.",
+      "Do not uninstall the app or clear its storage while you have unsynced submissions.",
+    ],
+    result:
+      "The field officer is signed in, their assigned work is downloaded, and the device is ready to collect data offline.",
+    nextActions: [{ label: "Set up field officers and QR codes", view: "workforce" }],
+  },
+  {
+    id: "mobile-home",
+    title: "Find your way around the mobile app",
+    purpose:
+      "Understand the mobile home screen and the bottom tabs so you always know where your work, drafts, and sync status are.",
+    audience: "Field officer",
+    platform: "mobile",
+    icon: Navigation,
+    whenToUse: "Use this whenever you open the app and want to know what to do next.",
+    beforeYouStart: [
+      "Sign in at least once so your assignments and forms are downloaded.",
+    ],
+    steps: [
+      "Home shows a greeting, the 'Ready for offline use' status, an Online/Offline chip, and quick counts for assignments, ready forms, entities, drafts, sync queue, and visit requests.",
+      "Tap the Work tab to see assignments given to you by your supervisor.",
+      "Tap the Forms tab to see the blank forms you are allowed to fill.",
+      "Tap the Drafts tab to continue saved or returned-for-correction submissions.",
+      "Tap the Sync tab to upload queued work and refresh your assignments.",
+      "Tap the bell icon at the top to read notifications; a red badge shows unread items such as returned submissions.",
+    ],
+    dataLanguage: [
+      "Online / Offline chip",
+      "Sync queue",
+      "Drafts",
+      "Last synced",
+      "Unread badge",
+    ],
+    goodPractice: [
+      "Glance at the Online/Offline chip and 'Last synced' time so you know how fresh your data is.",
+      "Clear the sync queue whenever you regain connection.",
+    ],
+    avoid: [
+      "Do not assume work is uploaded just because you saved it — check the Sync tab and queue count.",
+    ],
+    result: "You can navigate the mobile app confidently and always find your work and its status.",
+    nextActions: [],
+  },
+  {
+    id: "mobile-collect",
+    title: "Fill in and submit a form offline",
+    purpose:
+      "The core field task: open an assignment, select or register the right record, answer the questions, and submit. Everything works without internet and uploads later.",
+    audience: "Field officer",
+    platform: "mobile",
+    icon: ClipboardList,
+    whenToUse:
+      "Use this every time you collect data from a person, household, facility, site, or asset in the field.",
+    beforeYouStart: [
+      "Confirm the form you need appears under Work or Forms (it was downloaded at sign-in).",
+      "Move to the correct location if the form requires GPS so the captured point is accurate.",
+    ],
+    steps: [
+      "Open the Work or Forms tab and tap the form for your assignment.",
+      "If the form tracks a record, search for the existing entity first; if it is a registration form, create the new record when prompted.",
+      "Answer each question. The app shows required questions and only enables submit when they are complete.",
+      "Capture any required evidence — GPS point, boundary, photo, audio, or signature — when the question asks for it.",
+      "Tap Save draft at any time; your answers are kept safely on the device even if the app closes or the battery dies.",
+      "When finished, tap Submit. With no connection the submission is queued; it uploads automatically the next time you sync.",
+    ],
+    dataLanguage: [
+      "Assignment",
+      "Entity / record",
+      "Draft",
+      "Required question",
+      "Queued submission",
+    ],
+    goodPractice: [
+      "Search for an existing record before creating a new one to avoid duplicates.",
+      "Save a draft early and often during long interviews.",
+      "Review the answers before submitting; corrections are easier before upload.",
+    ],
+    avoid: [
+      "Do not create a new record when the person or place is already registered.",
+      "Do not skip required evidence — submissions can be returned for missing GPS or photos.",
+    ],
+    result:
+      "A complete submission is saved on the device and queued to upload, ready for supervisor review after sync.",
+    nextActions: [],
+  },
+  {
+    id: "mobile-mapping",
+    title: "Capture GPS points and map boundaries",
+    purpose:
+      "Some forms ask for a GPS location or a mapped area (polygon). This guide explains how to capture an accurate point and how to draw a boundary by walking it or tapping the map.",
+    audience: "Field officer",
+    platform: "mobile",
+    icon: MapPin,
+    whenToUse:
+      "Use this for questions that capture a location, a farm or facility boundary, or any mapped area.",
+    beforeYouStart: [
+      "Allow location permission when the app first asks.",
+      "Stand in an open area for a stronger GPS signal before capturing.",
+    ],
+    steps: [
+      "For a GPS point question, tap Capture GPS and wait for the accuracy reading; recapture if accuracy is poor.",
+      "For a boundary (polygon) question, tap the question to open the full-screen map with your live location shown.",
+      "To map automatically, start Walk mode and walk the perimeter — the app drops a point every few seconds as you move.",
+      "To map manually, tap the map to place each corner point, or tap Add point at your current location.",
+      "Use Undo to remove the last point and Clear to start over; the shape and point count update as you go.",
+      "When the boundary is complete (at least three points), finish the shape to save it to the form.",
+    ],
+    dataLanguage: [
+      "GPS accuracy",
+      "Polygon / boundary",
+      "Walk mode (auto-trace)",
+      "Manual point",
+      "Vertex / corner point",
+    ],
+    goodPractice: [
+      "Check the GPS accuracy value before accepting a point.",
+      "Walk steadily along the true edge when using Walk mode for an accurate boundary.",
+      "Close the shape only after you have walked or tapped the full perimeter.",
+    ],
+    avoid: [
+      "Do not capture GPS indoors or under heavy cover if accuracy matters.",
+      "Do not finish a boundary with too few points — it must form a closed area.",
+    ],
+    result:
+      "The form holds an accurate location or boundary that appears on the web map and is checked for overlaps after approval.",
+    nextActions: [{ label: "See boundaries on the web map", view: "map" }],
+  },
+  {
+    id: "mobile-evidence",
+    title: "Capture photos, audio, and signatures",
+    purpose:
+      "Forms can require supporting evidence. This guide explains how to attach photos, audio recordings, and signatures, and how they sync.",
+    audience: "Field officer",
+    platform: "mobile",
+    icon: Camera,
+    whenToUse: "Use this for questions that ask for a photo, audio clip, signature, or file.",
+    beforeYouStart: [
+      "Allow camera and microphone permission when the app first asks.",
+      "Make sure the device has enough free storage for media files.",
+    ],
+    steps: [
+      "Tap the evidence question and choose to take a photo, record audio, or capture a signature.",
+      "Review the captured media; retake it if it is unclear.",
+      "The media is saved on the device and attached to the submission.",
+      "When you sync, media uploads alongside the submission; large files may take longer on weak connections.",
+    ],
+    dataLanguage: ["Attachment", "Photo / audio / signature", "Evidence", "Upload"],
+    goodPractice: [
+      "Capture clear, well-lit photos that show what the question asks for.",
+      "Sync media when you have a stronger connection to upload faster.",
+    ],
+    avoid: ["Do not delete the app's storage before media has finished uploading."],
+    result: "Required evidence is attached to the submission and uploads with it during sync.",
+    nextActions: [],
+  },
+  {
+    id: "mobile-sync",
+    title: "Sync your work and manage the queue",
+    purpose:
+      "Submissions you make offline are held safely on the device and uploaded when you reconnect. This guide explains how syncing works and how to clear the queue.",
+    audience: "Field officer",
+    platform: "mobile",
+    icon: RefreshCw,
+    whenToUse:
+      "Use this whenever you regain connectivity, at the end of a collection day, or if the queue count is not zero.",
+    beforeYouStart: [
+      "Reconnect to Wi-Fi or mobile data.",
+    ],
+    steps: [
+      "Open the Sync tab and check the Online/Offline status and the number of queued and failed items.",
+      "Tap Full sync to upload queued submissions and download any new assignments and returned submissions.",
+      "Tap Retry queue to re-attempt items that failed earlier.",
+      "Watch the result message; a successful sync reduces the queue count and updates 'Last synced'.",
+      "The app also tries to sync automatically when you reopen it with a connection.",
+    ],
+    dataLanguage: ["Queued", "Failed", "Synced", "Full sync", "Last synced"],
+    goodPractice: [
+      "Sync at least once at the end of each field day.",
+      "If items keep failing, check your connection and retry; the data stays safe on the device until it uploads.",
+    ],
+    avoid: [
+      "Do not assume a weak signal synced everything — confirm the queue reaches zero.",
+      "Do not sign out or reinstall while items are still queued.",
+    ],
+    result: "All offline work is uploaded to the server and your assignments are refreshed.",
+    nextActions: [{ label: "Monitor sync health on web", view: "connectivity" }],
+  },
+  {
+    id: "mobile-corrections",
+    title: "Fix a submission returned for correction",
+    purpose:
+      "When a supervisor returns a submission, it comes back to your device with their reason. This guide explains how to correct and resubmit it.",
+    audience: "Field officer",
+    platform: "mobile",
+    icon: GitPullRequestArrow,
+    whenToUse: "Use this when you see a returned-for-correction item or an unread notification about a returned submission.",
+    beforeYouStart: [
+      "Sync so the returned submission and the supervisor's reason are on your device.",
+    ],
+    steps: [
+      "Open the bell icon or the Drafts tab to find the returned submission (the unread badge highlights new ones).",
+      "Read the supervisor's reason for the return.",
+      "Tap the submission to reopen the form with your previous answers preserved.",
+      "Update the answers or evidence the supervisor asked about.",
+      "Submit again; the corrected submission is queued and uploads on the next sync.",
+    ],
+    dataLanguage: ["Returned for correction", "Reviewer note", "Resubmission", "Notification"],
+    goodPractice: [
+      "Read the full reviewer note before changing answers so you fix the right thing.",
+      "Resync after resubmitting so the supervisor sees your correction.",
+    ],
+    avoid: [
+      "Do not create a brand-new submission to fix a returned one — reopen the returned record.",
+    ],
+    result: "The corrected submission returns to the supervisor's review queue after sync.",
+    nextActions: [],
+  },
+  {
+    id: "mobile-visits",
+    title: "Plan and check in to field visits",
+    purpose:
+      "Field visits let officers record planned movement and capture GPS check-in and check-out evidence, even offline.",
+    audience: "Field officer",
+    platform: "mobile",
+    icon: MapPin,
+    whenToUse: "Use this when your organization plans and verifies field movement or site visits.",
+    beforeYouStart: [
+      "Confirm with your supervisor whether visits require approval before evidence can be captured.",
+    ],
+    steps: [
+      "Open Visit requests from Home and create a visit with its purpose, location, and planned time.",
+      "If you are offline, the visit is saved and queued; it uploads on the next sync.",
+      "Once a visit is approved, capture GPS check-in when you arrive and check-out when you leave.",
+      "Attach any required photos or evidence to the visit.",
+      "Sync so your supervisor can see the visit and its GPS evidence.",
+    ],
+    dataLanguage: ["Visit request", "Check-in / check-out", "Approval", "GPS evidence"],
+    goodPractice: [
+      "Capture check-in at the actual site for accurate location evidence.",
+      "Sync visits promptly so supervisors can verify movement.",
+    ],
+    avoid: ["Do not check in away from the planned location if accuracy is required."],
+    result: "Planned visits and their GPS evidence are recorded and shared with supervisors after sync.",
+    nextActions: [],
+  },
 ];
 
 const guideStandards = [
@@ -1190,11 +1482,6 @@ const guideStandards = [
   "Update this guide whenever a new feature, field, permission, workflow, or page is added.",
 ];
 
-const topicLinks = helpTopics.map((topic, index) => ({
-  id: topic.id,
-  label: topic.title,
-  number: index + 1,
-}));
 
 export function helpRouteForAction(
   action: Pick<HelpAction, "route" | "view">,
@@ -1239,8 +1526,39 @@ export function ProductHelpCenter() {
   const router = useRouter();
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const [platformFilter, setPlatformFilter] = useState<"all" | "web" | "mobile">("all");
+
+  const webCount = helpTopics.filter((topic) => (topic.platform ?? "web") === "web").length;
+  const mobileCount = helpTopics.filter((topic) => topic.platform === "mobile").length;
+
+  const filteredTopics = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return helpTopics.filter((topic) => {
+      const topicPlatform = topic.platform ?? "web";
+      if (platformFilter !== "all" && topicPlatform !== platformFilter) return false;
+      if (!query) return true;
+      const haystack = [
+        topic.title,
+        topic.purpose,
+        topic.audience,
+        topic.whenToUse,
+        topicPlatform === "mobile" ? "mobile app android" : "web app",
+        ...topic.beforeYouStart,
+        ...topic.steps,
+        ...topic.dataLanguage,
+        ...topic.goodPractice,
+        ...topic.avoid,
+        topic.result,
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [searchQuery, platformFilter]);
+
   function openHelpAction(action: Pick<HelpAction, "route" | "view">): void {
-    setActiveView(action.view);
+    if (action.view) setActiveView(action.view);
     const route = helpRouteForAction(action);
     if (route && route !== pathname) {
       router.push(route);
@@ -1253,7 +1571,7 @@ export function ProductHelpCenter() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              Help center
+              Documentation
             </p>
             <h1
               id="help-title"
@@ -1262,9 +1580,12 @@ export function ProductHelpCenter() {
               How to use Atlas FieldOps
             </h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              A beginner-friendly operating guide for using Atlas FieldOps
-              across projects, mobile forms, field teams, submissions,
-              approvals, maps, reports, data tools, and governance.
+              A complete, beginner-friendly guide to both the web app and the
+              Android mobile app — no prior experience needed. Search below, or
+              filter by app, to learn how to set up and use every module:
+              projects, forms, field teams, offline data collection, GPS and
+              boundary mapping, submissions, approvals, maps, indicators,
+              reports, data tools, and governance.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1295,10 +1616,10 @@ export function ProductHelpCenter() {
         className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"
       >
         {[
-          ["Core workflows", `${helpTopics.length}`, FileText],
+          ["Web app guides", `${webCount}`, FileText],
+          ["Mobile app guides", `${mobileCount}`, Smartphone],
           ["Role-based guidance", `${rolePaths.length} roles`, UsersRound],
-          ["Product language", "Corporate", RadioTower],
-          ["Content source", "Live platform", Search],
+          ["Written for beginners", "No training needed", Sparkles],
         ].map(([label, value, Icon]) => (
           <article
             className="surface-premium rounded-2xl p-4"
@@ -1313,6 +1634,63 @@ export function ProductHelpCenter() {
             </p>
           </article>
         ))}
+      </section>
+
+      <section
+        aria-label="Search the documentation"
+        className="rounded-2xl border bg-panel p-4 shadow-line md:p-5"
+      >
+        <label className="relative block" htmlFor="help-search">
+          <span className="sr-only">Search the documentation</span>
+          <Search
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            size={18}
+          />
+          <input
+            autoComplete="off"
+            className="w-full rounded-xl border bg-background py-2.5 pl-10 pr-10 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+            id="help-search"
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search guides, steps, and terms — e.g. 'offline login', 'map boundary', 'approve submission'"
+            type="search"
+            value={searchQuery}
+          />
+          {searchQuery ? (
+            <button
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+              onClick={() => setSearchQuery("")}
+              type="button"
+            >
+              <X aria-hidden="true" size={15} />
+            </button>
+          ) : null}
+        </label>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {([
+            ["all", "All guides"],
+            ["web", "Web app"],
+            ["mobile", "Mobile app"],
+          ] as const).map(([value, label]) => (
+            <button
+              className={
+                platformFilter === value
+                  ? "rounded-full border border-primary bg-primary px-3 py-1 text-xs font-medium text-primary-foreground"
+                  : "rounded-full border bg-background px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-muted"
+              }
+              key={value}
+              onClick={() => setPlatformFilter(value)}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+          <span className="ml-auto text-xs text-muted-foreground">
+            {filteredTopics.length} guide{filteredTopics.length === 1 ? "" : "s"}
+            {searchQuery ? ` matching “${searchQuery}”` : ""}
+          </span>
+        </div>
       </section>
 
       <section
@@ -1370,25 +1748,43 @@ export function ProductHelpCenter() {
           <Badge tone="accent">Jump to workflow</Badge>
         </div>
         <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {topicLinks.map((topic) => (
+          {filteredTopics.map((topic, index) => (
             <a
               className="flex items-center gap-3 rounded-xl border bg-background p-3 text-sm font-medium transition hover:border-primary/30 hover:bg-primary/5"
               href={`#${topic.id}`}
               key={topic.id}
             >
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-panel text-xs font-semibold">
-                {topic.number}
+                {index + 1}
               </span>
-              <span>{topic.label}</span>
+              <span>{topic.title}</span>
+              {topic.platform === "mobile" ? (
+                <Smartphone aria-hidden="true" className="ml-auto shrink-0 text-muted-foreground" size={14} />
+              ) : null}
             </a>
           ))}
+          {filteredTopics.length === 0 ? (
+            <p className="text-sm text-muted-foreground sm:col-span-2 xl:col-span-3">
+              No guides match your search. Try a different word, or switch the filter back to “All guides”.
+            </p>
+          ) : null}
         </div>
       </section>
 
       <div className="grid gap-5 xl:grid-cols-[1fr_340px]">
         <div className="space-y-4">
-          {helpTopics.map((topic, index) => {
+          {filteredTopics.length === 0 ? (
+            <article className="rounded-2xl border bg-panel p-6 text-center shadow-line">
+              <p className="text-sm font-semibold">No guides match your search</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Try a simpler word, or clear the search and filter to browse every guide.
+              </p>
+            </article>
+          ) : null}
+          {filteredTopics.map((topic, index) => {
             const Icon = topic.icon;
+            const isMobile = topic.platform === "mobile";
+            const topicView = topic.view;
             return (
               <article
                 className="rounded-2xl border bg-panel p-4 shadow-line md:p-5"
@@ -1403,6 +1799,9 @@ export function ProductHelpCenter() {
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge tone="accent">Guide {index + 1}</Badge>
+                        <Badge tone={isMobile ? "collect" : "neutral"}>
+                          {isMobile ? "Mobile app" : "Web app"}
+                        </Badge>
                         <Badge>{topic.audience}</Badge>
                       </div>
                       <h2 className="mt-3 text-lg font-semibold tracking-tight">
@@ -1413,14 +1812,16 @@ export function ProductHelpCenter() {
                       </p>
                     </div>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => openHelpAction({ view: topic.view })}
-                    type="button"
-                  >
-                    Open workspace
-                  </Button>
+                  {topicView ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => openHelpAction({ view: topicView })}
+                      type="button"
+                    >
+                      Open workspace
+                    </Button>
+                  ) : null}
                 </div>
 
                 <details
