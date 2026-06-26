@@ -9045,7 +9045,7 @@ export function DynamicForms({
                   <span className="mt-1">{label}</span>
                   <span
                     className={cn(
-                      "text-[10px] font-normal",
+                      "text-[11px] font-normal",
                       builderFocusPanel === panel
                         ? "text-primary-foreground/80"
                         : "text-muted-foreground",
@@ -9133,7 +9133,7 @@ export function DynamicForms({
                       className="flex items-center gap-2"
                       key={`${item}-${index}`}
                     >
-                      <span className="flex h-5 w-5 items-center justify-center rounded bg-primary/10 text-[10px] font-semibold text-primary">
+                      <span className="flex h-5 w-5 items-center justify-center rounded bg-primary/10 text-[11px] font-semibold text-primary">
                         {index + 1}
                       </span>
                       <span className="truncate text-muted-foreground">
@@ -9335,7 +9335,7 @@ export function DynamicForms({
                             <span className="truncate text-xs font-semibold">
                               {section.title}
                             </span>
-                            <span className="text-[10px] text-muted-foreground">
+                            <span className="text-[11px] text-muted-foreground">
                               {sectionFields.length}
                             </span>
                           </button>
@@ -9355,7 +9355,7 @@ export function DynamicForms({
                               </button>
                             ))}
                             {sectionFields.length > 8 ? (
-                              <p className="px-2 text-[10px] text-muted-foreground">
+                              <p className="px-2 text-[11px] text-muted-foreground">
                                 +{sectionFields.length - 8} more
                               </p>
                             ) : null}
@@ -10540,7 +10540,7 @@ export function DynamicForms({
                           {page.title}
                           <span
                             className={cn(
-                              "rounded bg-muted px-1.5 py-0.5 text-[10px]",
+                              "rounded bg-muted px-1.5 py-0.5 text-[11px]",
                               activePage?.id === page.id &&
                                 "bg-primary-foreground/20",
                             )}
@@ -14951,7 +14951,7 @@ export function DynamicForms({
                           key={page.id}
                         >
                           <div className="mb-3">
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                               Page {pageIndex + 1}
                             </p>
                             <h3 className="mt-1 text-sm font-semibold">

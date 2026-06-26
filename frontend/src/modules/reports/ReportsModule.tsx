@@ -640,7 +640,7 @@ export function ReportsModule({ token }: ReportsModuleProps) {
               <span className="flex items-center gap-1.5 text-xs font-semibold">
                 {section.label}
               </span>
-              <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">{section.route}</span>
+              <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">{section.route}</span>
             </button>
           ))}
         </div>

@@ -19,7 +19,7 @@ import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 
 const inputClass =
-  "h-9 w-full rounded-lg border border-input bg-panel/95 px-2.5 text-sm text-foreground shadow-line transition-all duration-150 ease-product placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-3 focus:ring-ring/15 disabled:cursor-not-allowed disabled:opacity-50";
+  "h-9 w-full rounded-lg border border-input bg-panel/95 px-2.5 text-sm text-foreground shadow-line transition-all duration-150 ease-product placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 disabled:cursor-not-allowed disabled:opacity-50";
 
 export function Input({
   className,
@@ -354,7 +354,7 @@ export function Textarea({
   return (
     <textarea
       className={cn(
-        "min-h-20 w-full rounded-lg border border-input bg-panel/95 px-2.5 py-2 text-sm shadow-line transition-all duration-150 ease-product placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-3 focus:ring-ring/15",
+        "min-h-20 w-full rounded-lg border border-input bg-panel/95 px-2.5 py-2 text-sm shadow-line transition-all duration-150 ease-product placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35",
         className,
       )}
       {...props}

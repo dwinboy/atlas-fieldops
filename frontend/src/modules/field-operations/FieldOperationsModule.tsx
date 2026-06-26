@@ -4134,7 +4134,7 @@ Password:          ${lastInviteCredentials.password}`}
 
                   return (
                     <>
-                      <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                         On {assignmentDraft.project}
                       </p>
                       {teamOfficers.length ? (
@@ -4146,7 +4146,7 @@ Password:          ${lastInviteCredentials.password}`}
                           No officers assigned to this project yet.
                         </p>
                       )}
-                      <p className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      <p className="px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                         Other organization staff
                       </p>
                       {otherOfficers.length ? (

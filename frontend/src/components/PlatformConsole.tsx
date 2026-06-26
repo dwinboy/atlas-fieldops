@@ -1908,7 +1908,7 @@ export function PlatformConsole({
                 </div>
               </div>
               <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.06] p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/50">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">
                   Signed in as
                 </p>
                 <p className="mt-1 truncate text-sm font-semibold text-white">
@@ -1971,7 +1971,7 @@ export function PlatformConsole({
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <div className="rounded-lg border bg-panel/80 px-3 py-2 shadow-line">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                     Signed in as
                   </p>
                   <p className="truncate text-sm font-semibold">{operatorName}</p>

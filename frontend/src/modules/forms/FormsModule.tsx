@@ -2384,7 +2384,7 @@ function FormsAnalyticsSection({
           <div className="mt-3 overflow-auto product-scrollbar">
             <table className="min-w-full border-separate border-spacing-0 text-xs">
               <thead>
-                <tr className="bg-muted/60 text-left text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+                <tr className="bg-muted/60 text-left text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
                   {["Form", "Completion", "Approval", "GPS", "Mobile", "Quality"].map((header) => (
                     <th className="border-b px-2 py-2 font-semibold" key={header}>{header}</th>
                   ))}
@@ -2749,7 +2749,7 @@ function FormStatusCards({
                 </div>
                 <div className="rounded-lg bg-muted/50 px-2.5 py-1.5 text-right">
                   <p className="text-sm font-semibold">v{form.version}</p>
-                  <p className="text-[10px] text-muted-foreground">version</p>
+                  <p className="text-[11px] text-muted-foreground">version</p>
                 </div>
               </div>
               <div className="mt-2 grid gap-1.5 text-xs md:grid-cols-2">
@@ -2880,7 +2880,7 @@ function MiniStat({
       type="button"
     >
       <p className="text-sm font-semibold leading-tight">{value}</p>
-      <p className="line-clamp-1 text-[10px] text-muted-foreground">{label}</p>
+      <p className="line-clamp-1 text-[11px] text-muted-foreground">{label}</p>
     </button>
   );
 }
@@ -6598,16 +6598,16 @@ function FormDataGridWorkspace({
 
           <div className="mt-2 rounded-md border border-warning/30 bg-warning/8 px-2.5 py-2">
             {!currentEditingSubmission ? (
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-[11px] text-muted-foreground">
                 Click a cell to edit it in the fx bar.
               </p>
             ) : currentEditingIssueCount ? (
               <div className="space-y-0.5">
-                <p className="text-[10px] font-medium text-warning">
+                <p className="text-[11px] font-medium text-warning">
                   Blocked · {currentEditingIssueCount} issue{currentEditingIssueCount === 1 ? "" : "s"}
                 </p>
                 {currentEditingIssueSummary ? (
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-[11px] text-muted-foreground">
                     {currentEditingIssueSummary}
                   </p>
                 ) : null}
@@ -6626,12 +6626,12 @@ function FormDataGridWorkspace({
               </p>
             ) : null}
             {currentEditingSubmission && currentEditingQueueMovementHint ? (
-              <p className="mt-0.5 text-[10px] text-muted-foreground">
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
                 {currentEditingQueueMovementHint}
               </p>
             ) : null}
             {currentEditingSubmission && activeEditingIssueTarget?.message ? (
-              <p className="mt-0.5 text-[10px] text-warning">
+              <p className="mt-0.5 text-[11px] text-warning">
                 <span className="font-medium">Selected cell warning:</span>{" "}
                 {activeEditingIssueTarget.issueTypeLabel === "Issue"
                   ? activeEditingIssueTarget.label
@@ -6641,7 +6641,7 @@ function FormDataGridWorkspace({
                   : ""}
               </p>
             ) : nextEditingIssueTarget?.message ? (
-              <p className="mt-0.5 text-[10px] text-warning">
+              <p className="mt-0.5 text-[11px] text-warning">
                 <span className="font-medium">Next warning:</span>{" "}
                 {nextEditingIssueTarget.issueTypeLabel === "Issue"
                   ? nextEditingIssueTarget.label
@@ -6804,7 +6804,7 @@ function FormDataGridWorkspace({
                         <p className="font-medium text-foreground">
                           {activeEditingQuestion.label}
                         </p>
-                        <p className="text-[10px] text-muted-foreground">
+                        <p className="text-[11px] text-muted-foreground">
                           {activeEditingQuestion.key} · {activeEditingQuestion.type}
                         </p>
                       </div>
@@ -6813,14 +6813,14 @@ function FormDataGridWorkspace({
                         <p className="font-medium text-foreground">
                           {activeEditingQuestion.label}
                         </p>
-                        <p className="text-[10px] text-muted-foreground">
+                        <p className="text-[11px] text-muted-foreground">
                           {activeEditingQuestion.key} · {activeEditingQuestion.type}
                         </p>
                       </div>
                     )}
                   </div>
                   <div className="flex items-center gap-2 rounded-md border bg-panel px-2 py-1.5">
-                    <span className="rounded border border-border/80 bg-background px-2 py-1 font-mono text-[10px] font-semibold text-muted-foreground">
+                    <span className="rounded border border-border/80 bg-background px-2 py-1 font-mono text-[11px] font-semibold text-muted-foreground">
                       fx
                     </span>
                     <div className="min-w-0 flex-1">
@@ -6842,7 +6842,7 @@ function FormDataGridWorkspace({
                     </div>
                   </div>
                   {validationHintForQuestion(activeEditingQuestion) ? (
-                    <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                       <span className="font-medium text-foreground">Expected:</span>{" "}
                       {validationHintForQuestion(activeEditingQuestion)}
                     </div>
@@ -6859,13 +6859,13 @@ function FormDataGridWorkspace({
                       </Badge>
                     ) : null}
                     {activeEditingOriginalValuePreview ? (
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-[11px] text-muted-foreground">
                         <span className="font-medium text-foreground">Original:</span>{" "}
                         {activeEditingOriginalValuePreview}
                       </span>
                     ) : null}
                     {activeEditingEditedValuePreview ? (
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-[11px] text-muted-foreground">
                         <span className="font-medium text-foreground">
                           {activeEditingCellDirty ? "Edited:" : "Value:"}
                         </span>{" "}
@@ -6873,7 +6873,7 @@ function FormDataGridWorkspace({
                       </span>
                     ) : null}
                     {activeEditingOptionsPreview ? (
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-[11px] text-muted-foreground">
                         <span className="font-medium text-foreground">Allowed:</span>{" "}
                         {activeEditingOptionsPreview}
                       </span>
@@ -6892,7 +6892,7 @@ function FormDataGridWorkspace({
               )}
             </div>
             {currentEditingChangedFields.length ? (
-              <div className="text-[10px] text-muted-foreground">
+              <div className="text-[11px] text-muted-foreground">
                 Changed fields{" "}
                 <span className="font-medium text-foreground">
                   {currentEditingChangedFields.length}
@@ -6910,7 +6910,7 @@ function FormDataGridWorkspace({
                 {currentEditingIssueTargets.map((issue) => (
                   <button
                     className={cn(
-                      "rounded-full border px-2 py-1 text-[10px] transition",
+                      "rounded-full border px-2 py-1 text-[11px] transition",
                       compactCleaningSheet && "shrink-0 whitespace-nowrap",
                       editingCellKey === issue.fieldKey
                         ? "border-primary bg-primary/10 text-primary"
@@ -6927,7 +6927,7 @@ function FormDataGridWorkspace({
               </div>
             ) : null}
             {!compactCleaningSheet ? (
-            <div className="text-[10px] text-muted-foreground">
+            <div className="text-[11px] text-muted-foreground">
               <span className="font-medium text-foreground">Ctrl/Cmd+D</span>{" "}
               fills the value down the column.{" "}
               <span className="font-medium text-foreground">Ctrl/Cmd+S</span>{" "}
@@ -6981,12 +6981,12 @@ function FormDataGridWorkspace({
         >
           <table
             className={cn(
-              "border-separate border-spacing-0 text-[10px]",
+              "border-separate border-spacing-0 text-[11px]",
               compactCleaningSheet ? "min-w-[700px]" : "min-w-[1080px]",
             )}
           >
             <thead>
-              <tr className="bg-muted/70 text-left text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+              <tr className="bg-muted/70 text-left text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
                 {compactCleaningSheet ? (
                   <th className="sticky left-0 top-0 z-30 whitespace-nowrap border-b border-r border-border/60 bg-muted px-2 py-1.5 font-semibold">
                     <div className="flex items-center gap-2">
@@ -7026,7 +7026,7 @@ function FormDataGridWorkspace({
                       key={question.key}
                     >
 	                    <div className="flex items-center gap-1.5">
-                          <span className="rounded border border-border/70 bg-background/80 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                          <span className="rounded border border-border/70 bg-background/80 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                             {spreadsheetColumnLabel(questionIndex)}
                           </span>
 	                      <span className="line-clamp-1 normal-case tracking-normal text-foreground">{question.label}</span>
@@ -7043,7 +7043,7 @@ function FormDataGridWorkspace({
                           </HelpHint>
                         ) : null}
                     </div>
-                    <div className="mt-0.5 truncate font-mono normal-case tracking-normal text-[9px] text-muted-foreground">
+                    <div className="mt-0.5 truncate font-mono normal-case tracking-normal text-[11px] text-muted-foreground">
                       {question.key}
                     </div>
                   </th>
@@ -7115,7 +7115,7 @@ function FormDataGridWorkspace({
                         <Badge tone={currentRowState.tone}>{currentRowState.label}</Badge>
                         {displayIssues.length > 0 ? (
                           <button
-                            className="text-left text-[10px] font-medium text-warning transition hover:text-warning/80"
+                            className="text-left text-[11px] font-medium text-warning transition hover:text-warning/80"
                             onClick={() =>
                               startRowEdit(
                                 submission,
@@ -7127,7 +7127,7 @@ function FormDataGridWorkspace({
                             {displayIssues.length} issue{displayIssues.length === 1 ? "" : "s"}
                           </button>
                         ) : (
-                          <p className="text-[10px] text-muted-foreground">0 issues</p>
+                          <p className="text-[11px] text-muted-foreground">0 issues</p>
                         )}
                       </div>
                     </td>
@@ -7190,7 +7190,7 @@ function FormDataGridWorkspace({
                           {submissionEntityCode(submission, beneficiaryCodes)}
                         </p>
                         {submissionEntityContext(submission, beneficiaryDetails).map((line) => (
-                          <p className="text-[10px] text-muted-foreground" key={`${submission.id}-${line}`}>
+                          <p className="text-[11px] text-muted-foreground" key={`${submission.id}-${line}`}>
                             {line}
                           </p>
                         ))}
@@ -7205,12 +7205,12 @@ function FormDataGridWorkspace({
                           {formatSubmissionGpsEvidence(submission)}
                         </span>
                         {submissionHasUsableGps(submission) && submission.accuracy && submission.accuracy > 20 ? (
-                          <p className="mt-1 text-[10px] text-warning">Poor accuracy; review location evidence.</p>
+                          <p className="mt-1 text-[11px] text-warning">Poor accuracy; review location evidence.</p>
                         ) : null}
                       </td>
                       <td className="whitespace-nowrap border-b border-r border-border/60 px-1.5 py-1">
-                        <p className="max-w-32 truncate font-mono text-[10px]">{formatSubmissionDeviceEvidence(submission)}</p>
-                        {submission.offline_created ? <p className="text-[10px] text-muted-foreground">Mobile offline sync</p> : null}
+                        <p className="max-w-32 truncate font-mono text-[11px]">{formatSubmissionDeviceEvidence(submission)}</p>
+                        {submission.offline_created ? <p className="text-[11px] text-muted-foreground">Mobile offline sync</p> : null}
                       </td>
                     </>
                   )}
@@ -7237,7 +7237,7 @@ function FormDataGridWorkspace({
                             return canCleanImportedSubmission(submission) ? (
                         <button
                           className={cn(
-                            "block w-full rounded-sm border border-dashed bg-background/65 px-1 py-0.5 text-left text-[10px] transition hover:border-primary/25 hover:bg-primary/5",
+                            "block w-full rounded-sm border border-dashed bg-background/65 px-1 py-0.5 text-left text-[11px] transition hover:border-primary/25 hover:bg-primary/5",
                             isDraftChangedCell && "border-accent/60 bg-accent/10",
                             hasCellNote && !isDraftChangedCell && "border-border/80 bg-muted/25",
                             hasIssues ? "border-warning/45 bg-warning/8" : "border-transparent",
@@ -7265,7 +7265,7 @@ function FormDataGridWorkspace({
 		                      ) : (
                         <div
                           className={cn(
-                            "truncate whitespace-nowrap rounded-sm bg-background/65 px-1 py-0.5 text-[10px] leading-4",
+                            "truncate whitespace-nowrap rounded-sm bg-background/65 px-1 py-0.5 text-[11px] leading-4",
                             isDraftChangedCell && "border border-accent/45 bg-accent/10",
                             hasCellNote && !isDraftChangedCell && "border border-border/80 bg-muted/25",
                             hasIssues && "border border-warning/45 bg-warning/8",
@@ -7321,7 +7321,7 @@ function FormDataGridWorkspace({
           ) : null}
         </div>
         {visibleStagedImportRows.length ? (
-          <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t bg-muted/25 px-3 py-2 text-[10px] text-muted-foreground">
+          <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t bg-muted/25 px-3 py-2 text-[11px] text-muted-foreground">
             <span>
               Selected <span className="font-medium text-foreground">{selectedVisibleSubmissionIds.length}</span>
             </span>
@@ -7423,7 +7423,7 @@ function InlineGridCellEditor({
 }) {
   const options = parseQuestionOptions(question);
   const editorClassName = cn(
-    "w-full rounded-sm border bg-background px-2 py-1 text-[10px] outline-none transition",
+    "w-full rounded-sm border bg-background px-2 py-1 text-[11px] outline-none transition",
     active
       ? "border-primary shadow-[0_0_0_3px_rgba(15,118,110,0.14)]"
       : issues.length
@@ -7444,7 +7444,7 @@ function InlineGridCellEditor({
           <option value="true">Yes / True</option>
           <option value="false">No / False</option>
         </select>
-        {issues.length ? <p className="text-[10px] text-warning">{issues[0]}</p> : null}
+        {issues.length ? <p className="text-[11px] text-warning">{issues[0]}</p> : null}
       </div>
     );
   }
@@ -7466,7 +7466,7 @@ function InlineGridCellEditor({
             </option>
           ))}
         </select>
-        {issues.length ? <p className="text-[10px] text-warning">{issues[0]}</p> : null}
+        {issues.length ? <p className="text-[11px] text-warning">{issues[0]}</p> : null}
       </div>
     );
   }
@@ -7486,7 +7486,7 @@ function InlineGridCellEditor({
           ref={registerRef}
           value={value}
         />
-        {issues.length ? <p className="text-[10px] text-warning">{issues[0]}</p> : null}
+        {issues.length ? <p className="text-[11px] text-warning">{issues[0]}</p> : null}
       </div>
     );
   }
@@ -7502,7 +7502,7 @@ function InlineGridCellEditor({
         type={inputTypeForQuestion(question)}
         value={value}
       />
-      {issues.length ? <p className="text-[10px] text-warning">{issues[0]}</p> : null}
+      {issues.length ? <p className="text-[11px] text-warning">{issues[0]}</p> : null}
     </div>
   );
 }
@@ -7827,7 +7827,7 @@ function FormAnalyticsPanel({
           <div className="mt-3 overflow-auto product-scrollbar">
             <table className="min-w-full border-separate border-spacing-0 text-xs">
               <thead>
-                <tr className="bg-muted/60 text-left text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+                <tr className="bg-muted/60 text-left text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
                   {["Question", "Responses", "Missing", "Skip Rate", "Validation", "Common Answer", "Average", "Outliers"].map((header) => (
                     <th className="border-b px-2 py-2 font-semibold" key={header}>{header}</th>
                   ))}
@@ -8420,7 +8420,7 @@ function Signal({
 }) {
   return (
     <div className="rounded-lg border bg-background/50 p-2">
-      <p className="line-clamp-1 text-[10px] uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
+      <p className="line-clamp-1 text-[11px] uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
       <p
         className={cn(
           "mt-0.5 truncate text-xs font-semibold",

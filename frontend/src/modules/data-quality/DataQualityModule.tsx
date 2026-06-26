@@ -484,7 +484,7 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
         <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
           {sectionGroups.map((group) => (
             <div key={group.label}>
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{group.label}</p>
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{group.label}</p>
               <div className="flex flex-wrap gap-1.5">
                 {group.ids.map((id) => {
                   const section = dataQualitySections.find((candidate) => candidate.id === id);
@@ -506,7 +506,7 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
                       type="button"
                     >
                       <span className="text-xs font-semibold">{section.label}</span>
-                      <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">{section.route}</span>
+                      <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">{section.route}</span>
                     </button>
                   );
                 })}
@@ -1311,7 +1311,7 @@ function ImportCleaningSection({
       ) : null}
       {selectedRows.length && bulkColumns.length ? (
         <div className="h-[calc(100vh-250px)] min-h-[520px] overflow-auto rounded-xl border bg-background product-scrollbar">
-          <table className="table-fixed border-separate border-spacing-0 text-left text-[10px]" style={{ width: `${gridWidth}px` }}>
+          <table className="table-fixed border-separate border-spacing-0 text-left text-[11px]" style={{ width: `${gridWidth}px` }}>
             <thead className="sticky top-0 z-20 bg-muted/80 text-muted-foreground shadow-line backdrop-blur">
               <tr>
                 <th className="sticky left-0 z-30 w-36 border-b border-r bg-muted/90 px-1.5 py-1 font-semibold">Row</th>
@@ -1321,7 +1321,7 @@ function ImportCleaningSection({
                 {bulkColumns.map((key) => (
                   <th className="w-32 border-b border-r px-1.5 py-1 font-semibold" key={key}>
                     <span className="block truncate" title={titleCase(key)}>{titleCase(key)}</span>
-                    <span className="block truncate text-[9px] font-normal leading-3" title={key}>{key}</span>
+                    <span className="block truncate text-[11px] font-normal leading-3" title={key}>{key}</span>
                   </th>
                 ))}
               </tr>
@@ -1333,7 +1333,7 @@ function ImportCleaningSection({
                     <button className="block max-w-32 truncate font-semibold text-primary hover:underline" onClick={() => onOpenRow(row)} title={formatSubmissionId(row)} type="button">
                       {formatSubmissionId(row)}
                     </button>
-                    <span className="block truncate text-[9px] text-muted-foreground">#{row.source_record_id ?? "?"}</span>
+                    <span className="block truncate text-[11px] text-muted-foreground">#{row.source_record_id ?? "?"}</span>
                   </td>
                   <td className="border-b border-r px-1 py-1 align-top">
                     <Badge tone={row.ready_to_confirm ? "success" : "warning"}>{row.ready_to_confirm ? "Ready" : "Clean"}</Badge>
@@ -1345,7 +1345,7 @@ function ImportCleaningSection({
                   </td>
                   <td className="border-b border-r px-1.5 py-1 align-top">
                     <span className="block truncate" title={row.source_system ?? "Uploaded file"}>{row.source_system ?? "Uploaded"}</span>
-                    <span className="block truncate text-[9px] text-muted-foreground">{row.uploaded_by_name ?? "Unknown"}</span>
+                    <span className="block truncate text-[11px] text-muted-foreground">{row.uploaded_by_name ?? "Unknown"}</span>
                   </td>
                   {bulkColumns.map((key) => {
                     const missing = row.missing_field_keys.includes(key);
@@ -1355,7 +1355,7 @@ function ImportCleaningSection({
                         <input
                           aria-label={`${row.client_submission_id} ${key}`}
                           className={cn(
-                            "h-6 w-full rounded-none border-0 bg-transparent px-1.5 text-[10px] leading-6 outline-none ring-inset transition focus:bg-primary/5 focus:ring-1 focus:ring-primary",
+                            "h-6 w-full rounded-none border-0 bg-transparent px-1.5 text-[11px] leading-6 outline-none ring-inset transition focus:bg-primary/5 focus:ring-1 focus:ring-primary",
                             missing && !cellValue(row, key) ? "text-danger placeholder:text-danger/70" : "text-foreground",
                           )}
                           onChange={(event) => updateCell(row.id, key, event.target.value)}

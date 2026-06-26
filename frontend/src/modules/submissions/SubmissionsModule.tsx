@@ -2526,7 +2526,7 @@ function ResponsesTab({
         <div className="max-h-[72vh] overflow-auto product-scrollbar">
           <table className="min-w-[1280px] border-separate border-spacing-0 text-xs">
             <thead>
-              <tr className="bg-muted/75 text-left text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+              <tr className="bg-muted/75 text-left text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
                 {["Section", "Question", "Variable", "Required", "Source", "Issue", editing ? "Cleaned value" : "Value"].map((header, index) => (
                   <th
                     className={cn(
@@ -2931,7 +2931,7 @@ function DataExplorerSection({
               <div className="max-h-[72vh] overflow-auto product-scrollbar">
                 <table className="min-w-max border-separate border-spacing-0 text-xs">
                   <thead>
-                    <tr className="bg-muted/75 text-left text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+                    <tr className="bg-muted/75 text-left text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
                       <th className="sticky left-0 top-0 z-30 min-w-44 border-b bg-muted/90 px-2.5 py-2 font-semibold">
                         Submission ID
                       </th>
@@ -2992,7 +2992,7 @@ function DataExplorerSection({
             <div className="max-h-[72vh] overflow-auto product-scrollbar">
               <table className="min-w-max border-separate border-spacing-0 text-xs">
                 <thead>
-                  <tr className="bg-muted/75 text-left text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+                  <tr className="bg-muted/75 text-left text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
                     <th className="sticky left-0 top-0 z-30 min-w-44 border-b bg-muted/90 px-2.5 py-2 font-semibold">
                       Submission ID
                     </th>

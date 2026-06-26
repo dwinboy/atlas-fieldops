@@ -95,7 +95,7 @@ export function ModuleLandingPage({
                     {area.description}
                   </HelpHint>
                 </div>
-                <p className="mt-2 truncate rounded-md bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+                <p className="mt-2 truncate rounded-md bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
                   {area.route}
                 </p>
               </div>

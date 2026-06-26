@@ -402,7 +402,7 @@ export function ImportsMigrationModule({
               onClick={() => setStep(index)}
               type="button"
             >
-              <span className="flex h-5 w-5 items-center justify-center rounded-full border text-[10px]">{index + 1}</span>
+              <span className="flex h-5 w-5 items-center justify-center rounded-full border text-[11px]">{index + 1}</span>
               {label}
             </button>
           ))}

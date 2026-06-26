@@ -7806,7 +7806,7 @@ export function FormCreationWorkspace({
                     ) : isActive ? (
                       <Play aria-hidden="true" size={13} />
                     ) : (
-                      <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full border text-[9px]">
+                      <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full border text-[11px]">
                         {index + 1}
                       </span>
                     )}
@@ -8544,7 +8544,7 @@ export function FormCreationWorkspace({
                     </div>
                     <p
                       className={cn(
-                        "mt-1 text-[10px] font-semibold uppercase tracking-wide",
+                        "mt-1 text-[11px] font-semibold uppercase tracking-wide",
                         stepReadiness.required ? "text-danger/70" : "text-muted-foreground/60",
                       )}
                     >

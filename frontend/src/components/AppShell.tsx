@@ -326,7 +326,7 @@ export function AppShell({
           <div className="space-y-1" key={group.label}>
             <p
               className={cn(
-                "px-2 pt-2.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground",
+                "px-2 pt-2.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground",
                 compactSidebar && "sr-only",
               )}
             >
@@ -394,7 +394,7 @@ export function AppShell({
                       {item.label}
                     </span>
                     {!compactSidebar && badgeCount > 0 ? (
-                      <span className="shrink-0 rounded-full bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-warning">
+                      <span className="shrink-0 rounded-full bg-warning/15 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-warning">
                         {badgeCount > 99 ? "99+" : badgeCount}
                       </span>
                     ) : null}
@@ -485,7 +485,7 @@ export function AppShell({
           </span>
           <kbd
             className={cn(
-              "rounded border bg-muted px-1 font-mono text-[10px]",
+              "rounded border bg-muted px-1 font-mono text-[11px]",
               compactSidebar && "sr-only",
             )}
           >
@@ -601,7 +601,7 @@ export function AppShell({
             >
               <Command aria-hidden="true" />
               <span>Command center</span>
-              <kbd className="rounded border bg-background/80 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+              <kbd className="rounded border bg-background/80 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
                 ⌘K
               </kbd>
             </Button>
