@@ -51,3 +51,51 @@ def test_parse_xlsx_upload_without_external_dependencies() -> None:
     assert file_format == "xlsx"
     assert columns == ["Household ID", "Farmer Name"]
     assert rows == [{"Household ID": "HH-2", "Farmer Name": "Grace"}]
+
+
+def test_parse_kml_upload_flattens_placemarks() -> None:
+    kml = (
+        b'<?xml version="1.0" encoding="UTF-8"?>'
+        b'<kml xmlns="http://www.opengis.net/kml/2.2"><Document>'
+        b"<Placemark><name>Bali farm</name>"
+        b'<ExtendedData><Data name="Owner"><value>Amina</value></Data></ExtendedData>'
+        b"<Point><coordinates>10.5,5.2,0</coordinates></Point></Placemark>"
+        b"<Placemark><name>North plot</name>"
+        b"<Polygon><outerBoundaryIs><LinearRing>"
+        b"<coordinates>0,0 0,1 1,1 1,0 0,0</coordinates>"
+        b"</LinearRing></outerBoundaryIs></Polygon></Placemark>"
+        b"</Document></kml>"
+    )
+
+    file_format, columns, rows = parse_uploaded_dataset("plots.kml", kml)
+
+    assert file_format == "kml"
+    assert "name" in columns and "Owner" in columns
+    assert rows[0]["name"] == "Bali farm" and rows[0]["Owner"] == "Amina"
+    assert rows[0]["geometry"] == {"type": "Point", "coordinates": [10.5, 5.2]}
+    assert rows[1]["geometry"]["type"] == "Polygon"
+
+
+def test_parse_shapefile_zip_upload() -> None:
+    import io as _io
+    import shapefile
+
+    shp, shx, dbf = _io.BytesIO(), _io.BytesIO(), _io.BytesIO()
+    writer = shapefile.Writer(shp=shp, shx=shx, dbf=dbf, shapeType=shapefile.POINT)
+    writer.field("name", "C", size=40)
+    writer.point(10.5, 5.2)
+    writer.record("Bali farm")
+    writer.close()
+
+    bundle = _io.BytesIO()
+    with ZipFile(bundle, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("plots.shp", shp.getvalue())
+        archive.writestr("plots.shx", shx.getvalue())
+        archive.writestr("plots.dbf", dbf.getvalue())
+
+    file_format, columns, rows = parse_uploaded_dataset("plots.zip", bundle.getvalue())
+
+    assert file_format == "zip"
+    assert "name" in columns
+    assert rows[0]["name"] == "Bali farm"
+    assert rows[0]["geometry"]["type"] == "Point"

@@ -436,7 +436,7 @@ export function ImportsMigrationModule({
                 </div>
                 <label className="grid gap-1.5 text-sm font-medium">
                   Upload your existing data
-                  <Input accept=".csv,.xlsx,.xls,.json,.geojson,.kml" onChange={(event) => setFile(event.target.files?.[0] ?? null)} type="file" />
+                  <Input accept=".csv,.xlsx,.xls,.json,.geojson,.kml,.zip" onChange={(event) => setFile(event.target.files?.[0] ?? null)} type="file" />
                 </label>
                 <div className="grid gap-3 md:grid-cols-2">
                   <label className="grid gap-1.5 text-sm font-medium">Source system<Input onChange={(event) => setSourceSystem(event.target.value)} value={sourceSystem} /></label>

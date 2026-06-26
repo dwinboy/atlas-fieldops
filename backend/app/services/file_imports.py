@@ -8,7 +8,10 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
 
-SUPPORTED_UPLOAD_FORMATS = {"csv", "xlsx", "xls", "json", "geojson"}
+import shapefile  # pyshp
+
+# `zip` is treated as a (zipped) Esri Shapefile; `kml` is Google Earth / GIS export.
+SUPPORTED_UPLOAD_FORMATS = {"csv", "xlsx", "xls", "json", "geojson", "kml", "zip"}
 MAX_ROWS_PER_UPLOAD = 5000
 
 
@@ -33,9 +36,98 @@ def parse_uploaded_dataset(filename: str, content: bytes) -> tuple[str, list[str
         raise UnsupportedImportFormatError("Legacy .xls upload needs conversion to .xlsx or .csv first")
     elif file_format in {"json", "geojson"}:
         rows = parse_json_dataset(content)
+    elif file_format == "kml":
+        rows = parse_kml(content)
+    elif file_format == "zip":
+        rows = parse_shapefile(content)
     else:  # pragma: no cover - defensive guard
         raise UnsupportedImportFormatError(f"Unsupported file format: {file_format}")
     return file_format, columns_for_rows(rows), rows[:MAX_ROWS_PER_UPLOAD]
+
+
+def _localname(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _kml_coordinates(element: ElementTree.Element) -> list[list[float]]:
+    coords_node = next((node for node in element.iter() if _localname(node.tag) == "coordinates"), None)
+    if coords_node is None or not coords_node.text:
+        return []
+    points: list[list[float]] = []
+    for token in coords_node.text.split():
+        parts = token.split(",")
+        if len(parts) >= 2:
+            try:
+                points.append([float(parts[0]), float(parts[1])])
+            except ValueError:
+                continue
+    return points
+
+
+def _kml_geometry(placemark: ElementTree.Element) -> dict[str, object] | None:
+    for node in placemark.iter():
+        name = _localname(node.tag)
+        if name == "Point":
+            points = _kml_coordinates(node)
+            if points:
+                return {"type": "Point", "coordinates": points[0]}
+        if name == "Polygon":
+            ring_node = next((sub for sub in node.iter() if _localname(sub.tag) == "LinearRing"), None)
+            ring = _kml_coordinates(ring_node) if ring_node is not None else []
+            if len(ring) >= 3:
+                return {"type": "Polygon", "coordinates": [ring]}
+    return None
+
+
+def parse_kml(content: bytes) -> list[dict[str, object]]:
+    """Flatten KML placemarks into rows: name/description + ExtendedData fields + GeoJSON geometry."""
+    root = ElementTree.fromstring(content)
+    rows: list[dict[str, object]] = []
+    for placemark in (node for node in root.iter() if _localname(node.tag) == "Placemark"):
+        row: dict[str, object] = {}
+        for child in placemark:
+            local = _localname(child.tag)
+            if local in {"name", "description"} and child.text and child.text.strip():
+                row[local] = child.text.strip()
+        for data in (node for node in placemark.iter() if _localname(node.tag) == "Data"):
+            key = data.attrib.get("name")
+            value_node = next((c for c in data if _localname(c.tag) == "value"), None)
+            if key and value_node is not None and value_node.text:
+                row[key] = value_node.text.strip()
+        geometry = _kml_geometry(placemark)
+        if geometry:
+            row["geometry"] = geometry
+        if row:
+            rows.append(row)
+    return rows
+
+
+def parse_shapefile(content: bytes) -> list[dict[str, object]]:
+    """Read a zipped Esri Shapefile into rows: DBF attributes + GeoJSON geometry per feature."""
+    with zipfile.ZipFile(BytesIO(content)) as archive:
+        names = archive.namelist()
+        shp_name = next((name for name in names if name.lower().endswith(".shp")), None)
+        dbf_name = next((name for name in names if name.lower().endswith(".dbf")), None)
+        shx_name = next((name for name in names if name.lower().endswith(".shx")), None)
+        if not shp_name or not dbf_name:
+            raise UnsupportedImportFormatError("Shapefile .zip must contain at least a .shp and a .dbf file")
+        reader = shapefile.Reader(
+            shp=BytesIO(archive.read(shp_name)),
+            dbf=BytesIO(archive.read(dbf_name)),
+            shx=BytesIO(archive.read(shx_name)) if shx_name else None,
+        )
+        field_names = [field[0] for field in reader.fields[1:]]  # skip the leading DeletionFlag
+        rows: list[dict[str, object]] = []
+        for shape_record in reader.shapeRecords():
+            row: dict[str, object] = {
+                name: normalize_cell(value) for name, value in zip(field_names, list(shape_record.record))
+            }
+            try:
+                row["geometry"] = shape_record.shape.__geo_interface__
+            except Exception:  # noqa: BLE001 - a bad geometry must not abort the whole import
+                pass
+            rows.append(row)
+    return rows
 
 
 def parse_csv(content: bytes) -> list[dict[str, object]]:
