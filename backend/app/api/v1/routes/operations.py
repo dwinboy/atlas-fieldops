@@ -103,6 +103,7 @@ from app.schemas.operations import (
     WorkflowDefinitionCreate,
     WorkflowDefinitionRead,
 )
+from app.services.data_export import DataExportService
 from app.services.operations import FieldPlanningService, OperationsService
 
 router = APIRouter()
@@ -1372,6 +1373,44 @@ async def create_export_job(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ExportJobRead:
     return await OperationsService(session).create_export_job(organization_uuid(principal), user_uuid(principal), payload)
+
+
+@router.get("/data/forms/{form_id}/export-capabilities", summary="List export formats available for a form's data")
+async def form_export_capabilities(
+    form_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_EXPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    status_filter: str | None = None,
+) -> dict[str, object]:
+    capabilities = await DataExportService(session).capabilities(
+        organization_uuid(principal), form_id, status=status_filter
+    )
+    if capabilities is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
+    return capabilities
+
+
+@router.get("/data/forms/{form_id}/export", summary="Export a form's submissions in the requested format")
+async def export_form_submissions(
+    form_id: UUID,
+    export_format: str,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_EXPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    status_filter: str | None = None,
+) -> Response:
+    try:
+        artifact = await DataExportService(session).export(
+            organization_uuid(principal), form_id, export_format, status=status_filter
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    if artifact is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
+    return Response(
+        content=artifact.content,
+        media_type=artifact.media_type,
+        headers={"Content-Disposition": f'attachment; filename="{artifact.filename}"'},
+    )
 
 
 @router.get("/data/public-links", response_model=list[PublicCollectionLinkRead], summary="List public collection links")
