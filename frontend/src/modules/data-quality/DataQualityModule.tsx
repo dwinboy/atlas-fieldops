@@ -48,6 +48,7 @@ import {
   type ImportCleaningRowRead,
 } from "@/lib/api";
 import { formatSubmissionId } from "@/lib/identifiers";
+import { useSectorTerminology } from "@/lib/sectorTerminology";
 import { cn } from "@/lib/utils";
 import {
   dataQualitySectionFromPath,
@@ -236,6 +237,9 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
   const pathname = usePathname();
   const router = useRouter();
   const [activeSection, setActiveSection] = useState<DataQualitySection>(() => dataQualitySectionFromPath(pathname));
+  const terminology = useSectorTerminology(token);
+  const primaryEntity = terminology.primaryEntity;
+  const primaryEntityLower = primaryEntity.toLowerCase();
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
   useContextualBack(Boolean(selectedIssueId));
   const [activeIssueTab, setActiveIssueTab] = useState<IssueDetailTab>("Overview");
@@ -296,12 +300,12 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
       setSelectedIssueId(null);
       setActionResult(
         variables.payload.action === "approve"
-          ? `Profile update approved for ${variables.payload.submission_id}. Official beneficiary fields were updated and the conflict left the queue.`
-          : `Profile update rejected for ${variables.payload.submission_id}. The official beneficiary profile stayed unchanged and the conflict left the queue.`,
+          ? `Profile update approved for ${variables.payload.submission_id}. Official ${primaryEntityLower} fields were updated and the conflict left the queue.`
+          : `Profile update rejected for ${variables.payload.submission_id}. The official ${primaryEntityLower} profile stayed unchanged and the conflict left the queue.`,
       );
       pushToast({
         title: variables.payload.action === "approve" ? "Profile update approved" : "Profile update rejected",
-        description: "The reconciliation decision was recorded in the beneficiary history and audit trail.",
+        description: `The reconciliation decision was recorded in the ${primaryEntityLower} history and audit trail.`,
         tone: "success",
       });
     },
@@ -310,7 +314,7 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
         title: "Profile update decision failed",
         description:
           error instanceof ApiError && error.status === 403
-            ? "You need beneficiary edit permission to approve or reject submission-driven profile changes."
+            ? `You need ${primaryEntityLower} edit permission to approve or reject submission-driven profile changes.`
             : error instanceof Error
               ? error.message
               : "The profile conflict decision could not be saved.",
@@ -425,7 +429,7 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
     if (!beneficiaryId || issue.submissionId === "Not linked") {
       pushToast({
         title: "Profile conflict details are incomplete",
-        description: "This signal is missing the linked beneficiary or submission needed for a decision.",
+        description: `This signal is missing the linked ${primaryEntityLower} or submission needed for a decision.`,
         tone: "warning",
       });
       return;
@@ -584,6 +588,8 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
           onOpenRejectProposal={(issue) => openProposalReview(issue, "reject")}
           onOpenSubmission={(submissionId) => router.push(`/submissions/all?submissionId=${submissionId}`)}
           onUpdateStatus={(status, comment) => updateSignalMutation.mutate({ comment, signalId: selectedIssue.id, status })}
+          primaryEntity={primaryEntity}
+          primaryEntityLower={primaryEntityLower}
           selectedTab={activeIssueTab}
           setSelectedTab={setActiveIssueTab}
         />
@@ -606,6 +612,7 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
             }
             selectSection(section);
           }}
+          primaryEntityLower={primaryEntityLower}
           scores={qualityScores}
           summary={summary}
         />
@@ -669,6 +676,7 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
           onOpenIssue={(issue) => openIssue(issue, preferredIssueDetailTab(issue))}
           onOpenRejectProposal={(issue) => openProposalReview(issue, "reject")}
           onOpenSubmission={(submissionId) => router.push(`/submissions/all?submissionId=${submissionId}`)}
+          primaryEntityLower={primaryEntityLower}
           selectedProfileConflictDecision={profileConflictDecisionFilter}
           selectedProfileConflictFocus={profileConflictFocusFilter}
           selectedFilter={reconciliationFilter}
@@ -741,8 +749,8 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
               className="mt-2"
               placeholder={
                 proposalReviewDraft.action === "approve"
-                  ? "Explain why these beneficiary fields should become the official values."
-                  : "Explain why the proposed beneficiary changes should not replace the official profile."
+                  ? `Explain why these ${primaryEntityLower} fields should become the official values.`
+                  : `Explain why the proposed ${primaryEntityLower} changes should not replace the official profile.`
               }
               rows={4}
               value={proposalReviewDraft.comment}
@@ -778,11 +786,13 @@ function QualityLanding({
   onOpenProfileConflictFocus,
   onOpenProfileConflicts,
   onOpenSection,
+  primaryEntityLower,
   scores,
   summary,
 }: {
   importCleaningRows: ImportCleaningRowRead[];
   issues: QualityIssue[];
+  primaryEntityLower: string;
   onOpenProfileConflictDecision: (decisionFilter: Exclude<ProfileConflictDecisionFilter, "all">) => void;
   onOpenProfileConflictFocusDecision: (
     focus: Exclude<ProfileConflictFocusFilter, "all">,
@@ -855,14 +865,14 @@ function QualityLanding({
                 <p className="text-sm font-medium">Ready for decision</p>
                 <Badge tone="success">{profileConflictDecisionCounts.ready}</Badge>
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">Conflicts with enough beneficiary and submission context to approve or reject now.</p>
+              <p className="mt-2 text-xs text-muted-foreground">Conflicts with enough {primaryEntityLower} and submission context to approve or reject now.</p>
             </button>
             <button className="rounded-xl border bg-background p-3 text-left transition hover:border-primary/40 hover:bg-primary/5" onClick={() => onOpenProfileConflictDecision("blocked")} type="button">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-medium">Blocked conflicts</p>
                 <Badge tone="warning">{profileConflictDecisionCounts.blocked}</Badge>
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">Conflicts that still need missing beneficiary links or source submissions before decision.</p>
+              <p className="mt-2 text-xs text-muted-foreground">Conflicts that still need missing {primaryEntityLower} links or source submissions before decision.</p>
             </button>
           </div>
           <div className="grid gap-3 md:grid-cols-3">
@@ -1443,6 +1453,7 @@ function ReconciliationSection({
   onOpenIssue,
   onOpenRejectProposal,
   onOpenSubmission,
+  primaryEntityLower,
   selectedProfileConflictDecision,
   selectedProfileConflictFocus,
   selectedFilter,
@@ -1450,6 +1461,7 @@ function ReconciliationSection({
   isUpdating: boolean;
   isReviewingProposal: boolean;
   issues: QualityIssue[];
+  primaryEntityLower: string;
   onChangeFilter: (filter: ReconciliationFocusFilter) => void;
   onChangeProfileConflictDecision: (filter: ProfileConflictDecisionFilter) => void;
   onChangeProfileConflictFocus: (focus: ProfileConflictFocusFilter) => void;
@@ -1536,14 +1548,14 @@ function ReconciliationSection({
     selectedFilter === "profile_conflicts"
       ? selectedProfileConflictDecision === "ready"
         ? selectedProfileConflictFocus === "all"
-          ? "Every profile conflict with enough beneficiary and submission context has already been decided."
-          : `${selectedProfileConflictFocus} conflicts with enough beneficiary and submission context have already been decided.`
+          ? `Every profile conflict with enough ${primaryEntityLower} and submission context has already been decided.`
+          : `${selectedProfileConflictFocus} conflicts with enough ${primaryEntityLower} and submission context have already been decided.`
         : selectedProfileConflictDecision === "blocked"
           ? selectedProfileConflictFocus === "all"
-            ? "No profile conflicts are currently waiting for missing beneficiary links or source submissions."
-            : `No ${selectedProfileConflictFocus.toLowerCase()} conflicts are currently waiting for missing beneficiary links or source submissions.`
+            ? `No profile conflicts are currently waiting for missing ${primaryEntityLower} links or source submissions.`
+            : `No ${selectedProfileConflictFocus.toLowerCase()} conflicts are currently waiting for missing ${primaryEntityLower} links or source submissions.`
           : selectedProfileConflictFocus === "all"
-            ? "Submission-driven beneficiary profile changes have all been decided."
+            ? `Submission-driven ${primaryEntityLower} profile changes have all been decided.`
             : `${selectedProfileConflictFocus} conflicts have all been cleared from the reconciliation queue.`
       : "The remaining queue is made up of profile conflicts only.";
   return (
@@ -1614,8 +1626,8 @@ function ReconciliationSection({
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
                 {selectedProfileConflictFocus === "all"
-                  ? "These still need missing beneficiary or submission context."
-                  : `${selectedProfileConflictFocus} conflicts still missing beneficiary or submission context.`}
+                  ? `These still need missing ${primaryEntityLower} or submission context.`
+                  : `${selectedProfileConflictFocus} conflicts still missing ${primaryEntityLower} or submission context.`}
               </p>
               <p className="mt-2 text-[11px] font-medium text-foreground">{blockedDecisionCountLabel}</p>
             </button>
@@ -1694,8 +1706,8 @@ function ReconciliationSection({
                 ? `These conflicts have enough linked context for managers to approve or reject immediately. ${selectedDecisionVisibleCountLabel}`
                 : `These ${selectedProfileConflictFocus.toLowerCase()} conflicts have enough linked context for managers to approve or reject immediately. ${selectedDecisionVisibleCountLabel}`
               : selectedProfileConflictFocus === "all"
-                ? `These conflicts still need missing beneficiary or submission context before a final decision can be made. ${selectedDecisionVisibleCountLabel}`
-                : `These ${selectedProfileConflictFocus.toLowerCase()} conflicts still need missing beneficiary or submission context before a final decision can be made. ${selectedDecisionVisibleCountLabel}`}
+                ? `These conflicts still need missing ${primaryEntityLower} or submission context before a final decision can be made. ${selectedDecisionVisibleCountLabel}`
+                : `These ${selectedProfileConflictFocus.toLowerCase()} conflicts still need missing ${primaryEntityLower} or submission context before a final decision can be made. ${selectedDecisionVisibleCountLabel}`}
           </p>
         </div>
       ) : null}
@@ -1928,12 +1940,16 @@ function IssueDetail({
   onOpenRejectProposal,
   onOpenSubmission,
   onUpdateStatus,
+  primaryEntity,
+  primaryEntityLower,
   selectedTab,
   setSelectedTab,
 }: {
   auditEvents: QualityAuditEvent[];
   isUpdating: boolean;
   issue: QualityIssue;
+  primaryEntity: string;
+  primaryEntityLower: string;
   onOpenApproveProposal: (issue: QualityIssue) => void;
   onOpenBeneficiary: (beneficiaryId: string) => void;
   onBack: () => void;
@@ -2023,7 +2039,7 @@ function IssueDetail({
           ) : null}
           {beneficiaryId ? (
             <Button onClick={() => onOpenBeneficiary(beneficiaryId)} type="button" variant="secondary">
-              Open {beneficiaryUid || "beneficiary"}
+              Open {beneficiaryUid || primaryEntityLower}
             </Button>
           ) : null}
           {canReviewProposal ? (
@@ -2054,8 +2070,8 @@ function IssueDetail({
           </button>
         ))}
       </div>
-      {selectedTab === "Overview" ? <IssueOverview issue={issue} /> : null}
-      {selectedTab === "Related Submission" ? <IssueRelatedSubmission issue={issue} /> : null}
+      {selectedTab === "Overview" ? <IssueOverview issue={issue} primaryEntity={primaryEntity} /> : null}
+      {selectedTab === "Related Submission" ? <IssueRelatedSubmission issue={issue} primaryEntityLower={primaryEntityLower} /> : null}
       {selectedTab === "Investigation" ? (
         <InvestigationPanel
           isUpdating={isUpdating}
@@ -2064,6 +2080,7 @@ function IssueDetail({
           onDecisionBlocker={decisionBlocker}
           onOpenResolution={requiresDecision ? () => setSelectedTab("Resolution") : undefined}
           onUpdateStatus={onUpdateStatus}
+          primaryEntityLower={primaryEntityLower}
         />
       ) : null}
       {selectedTab === "Resolution" ? (
@@ -2073,6 +2090,7 @@ function IssueDetail({
           onOpenProfileConflictQueue={onOpenProfileConflictQueue}
           onOpenRejectProposal={canReviewProposal ? () => onOpenRejectProposal(issue) : undefined}
           onOpenSubmission={issue.submissionId !== "Not linked" ? onOpenSubmission : undefined}
+          primaryEntityLower={primaryEntityLower}
         />
       ) : null}
       {selectedTab === "History" ? <Timeline records={historyRecords} /> : null}
@@ -2081,7 +2099,8 @@ function IssueDetail({
   );
 }
 
-function IssueOverview({ issue }: { issue: QualityIssue }) {
+function IssueOverview({ issue, primaryEntity }: { issue: QualityIssue; primaryEntity: string }) {
+  const primaryEntityLower = primaryEntity.toLowerCase();
   const profileChanges = profileConflictChangesFromEvidence(issue.evidenceJson);
   const beneficiaryUid = evidenceText(issue, "beneficiary_uid");
   const clientSubmissionId = evidenceText(issue, "client_submission_id");
@@ -2095,8 +2114,8 @@ function IssueOverview({ issue }: { issue: QualityIssue }) {
           <Panel title="Profile Conflict Summary">
             <div className="grid gap-3 md:grid-cols-2">
               <div className="rounded-xl border bg-background p-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Beneficiary</p>
-                <p className="mt-2 text-sm font-medium">{beneficiaryUid || "Linked beneficiary"}</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{primaryEntity}</p>
+                <p className="mt-2 text-sm font-medium">{beneficiaryUid || `Linked ${primaryEntityLower}`}</p>
                 <p className="mt-1 text-xs text-muted-foreground">Submission {clientSubmissionId || issue.submissionId}</p>
               </div>
               <div className="rounded-xl border bg-background p-3">
@@ -2109,7 +2128,7 @@ function IssueOverview({ issue }: { issue: QualityIssue }) {
                   ))}
                 </div>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  Approve only when the new submission values are verified and should become the official beneficiary profile. Reject when the submission is informative, incomplete, or should remain history only.
+                  Approve only when the new submission values are verified and should become the official {primaryEntityLower} profile. Reject when the submission is informative, incomplete, or should remain history only.
                 </p>
                 {sensitiveFieldCount ? (
                   <p className="mt-2 text-xs font-medium text-foreground">
@@ -2135,7 +2154,7 @@ function IssueOverview({ issue }: { issue: QualityIssue }) {
   );
 }
 
-function IssueRelatedSubmission({ issue }: { issue: QualityIssue }) {
+function IssueRelatedSubmission({ issue, primaryEntityLower }: { issue: QualityIssue; primaryEntityLower: string }) {
   const beneficiaryUid = evidenceText(issue, "beneficiary_uid");
   const clientSubmissionId = evidenceText(issue, "client_submission_id");
   const decisionBlocker = profileConflictDecisionBlocker(issue);
@@ -2154,7 +2173,7 @@ function IssueRelatedSubmission({ issue }: { issue: QualityIssue }) {
     ["Location", issue.location],
     ["Source", source || "Not recorded"],
   ];
-  if (beneficiaryUid) rows.push(["Beneficiary", beneficiaryUid]);
+  if (beneficiaryUid) rows.push([titleCase(primaryEntityLower), beneficiaryUid]);
   if (decisionState) rows.push(["Decision state", decisionState.label]);
   if (decisionBlocker) rows.push(["Decision blocker", decisionBlocker]);
   if (matchedFields) rows.push(["Matched Fields", matchedFields]);
@@ -2167,12 +2186,14 @@ function IssueResolution({
   onOpenProfileConflictQueue,
   onOpenRejectProposal,
   onOpenSubmission,
+  primaryEntityLower,
 }: {
   issue: QualityIssue;
   onOpenApproveProposal?: () => void;
   onOpenProfileConflictQueue?: (focus: ProfileConflictFocusFilter, decisionFilter?: ProfileConflictDecisionFilter) => void;
   onOpenRejectProposal?: () => void;
   onOpenSubmission?: (submissionId: string) => void;
+  primaryEntityLower: string;
 }) {
   const profileChanges = profileConflictChangesFromEvidence(issue.evidenceJson);
   if (!profileChanges.length) {
@@ -2197,10 +2218,10 @@ function IssueResolution({
         : "Similar profile conflicts";
   const similarQueueDescription =
     similarQueueDecisionFilter === "ready"
-      ? "Jump back into the ready-to-decide queue with the same profile-conflict focus so related beneficiary approvals can be handled together."
+      ? `Jump back into the ready-to-decide queue with the same profile-conflict focus so related ${primaryEntityLower} approvals can be handled together.`
       : similarQueueDecisionFilter === "blocked"
-        ? "Jump back into the blocked queue with the same profile-conflict focus so missing beneficiary or submission context can be resolved together."
-        : "Jump back into the queue with the same profile-conflict focus so related beneficiary decisions can be handled together.";
+        ? `Jump back into the blocked queue with the same profile-conflict focus so missing ${primaryEntityLower} or submission context can be resolved together.`
+        : `Jump back into the queue with the same profile-conflict focus so related ${primaryEntityLower} decisions can be handled together.`;
   return (
     <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
       <KeyValuePanel
@@ -2230,13 +2251,13 @@ function IssueResolution({
           <div className="rounded-xl border bg-background p-3">
             <p className="text-sm font-medium">Approve update</p>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Atlas will replace the official beneficiary values for the listed fields, keep lineage to this approved submission, and remove the conflict from the reconciliation queue.
+              Atlas will replace the official {primaryEntityLower} values for the listed fields, keep lineage to this approved submission, and remove the conflict from the reconciliation queue.
             </p>
           </div>
           <div className="rounded-xl border bg-background p-3">
             <p className="text-sm font-medium">Reject update</p>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Atlas will keep the current official beneficiary profile unchanged, record the decision in audit history, and still preserve the submission as historical evidence.
+              Atlas will keep the current official {primaryEntityLower} profile unchanged, record the decision in audit history, and still preserve the submission as historical evidence.
             </p>
           </div>
           {onOpenSubmission && issue.submissionId !== "Not linked" ? (
@@ -2308,6 +2329,7 @@ function InvestigationPanel({
   onEscalate,
   onOpenResolution,
   onUpdateStatus,
+  primaryEntityLower,
 }: {
   isUpdating: boolean;
   issue: QualityIssue;
@@ -2315,6 +2337,7 @@ function InvestigationPanel({
   onEscalate: () => void;
   onOpenResolution?: () => void;
   onUpdateStatus: (status: "assigned" | "under_investigation" | "resolved" | "closed", comment: string) => void;
+  primaryEntityLower: string;
 }) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const requiresDecision = requiresProfileConflictDecision(issue);
@@ -2355,7 +2378,7 @@ function InvestigationPanel({
       <Panel title="Investigation Actions">
         {requiresDecision ? (
           <div className="mb-3 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-foreground">
-            {onDecisionBlocker ?? "Profile conflicts that propose beneficiary field changes need an explicit approve or reject decision before they can leave the queue."}
+            {onDecisionBlocker ?? `Profile conflicts that propose ${primaryEntityLower} field changes need an explicit approve or reject decision before they can leave the queue.`}
           </div>
         ) : null}
         <div className="space-y-2">
