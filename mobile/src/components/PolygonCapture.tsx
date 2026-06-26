@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Polygon as SvgPolygon } from "react-native-svg";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 
@@ -96,6 +97,19 @@ export function PolygonCapture({ value, onChange, required = false, minVertices 
     }
   }
 
+  async function locateMe() {
+    const last = lastFixRef.current;
+    if (last) {
+      sendCommand({ type: "setLocation", latitude: last.latitude, longitude: last.longitude, recenter: true });
+      return;
+    }
+    const gps = await capture();
+    if (gps) {
+      lastFixRef.current = { latitude: gps.latitude, longitude: gps.longitude };
+      sendCommand({ type: "setLocation", latitude: gps.latitude, longitude: gps.longitude, accuracy: gps.accuracy, recenter: true });
+    }
+  }
+
   // Always release the GPS watch when the editor closes or the component unmounts.
   useEffect(() => {
     if (!editing && watchSubRef.current) {
@@ -149,80 +163,97 @@ export function PolygonCapture({ value, onChange, required = false, minVertices 
     }
   }
 
+  const instruction = walking
+    ? autoTrace
+      ? `Walking the boundary — a point drops automatically every ${intervalSec}s. Use "Add point" at sharp corners.`
+      : `Walking — tap "Add point" at each corner of the boundary.`
+    : `Walk the boundary with GPS, tap the map, or add points manually. Need ${minVertices}+ points, then tap "Done".`;
+
   if (editing) {
     return (
-      <View style={{ gap: 10 }}>
-        <View style={styles.mapContainer}>
-          <WebView
-            onMessage={handleMessage}
-            originWhitelist={["*"]}
-            ref={webviewRef}
-            source={{ html: buildPolygonMapHtml() }}
-            style={styles.webview}
-          />
-        </View>
-        <View style={styles.walkPanel}>
-          <View style={styles.walkRow}>
-            <Pressable onPress={toggleWalking} style={[styles.walkButton, walking ? styles.walkButtonActive : null]}>
-              <Text style={[styles.walkButtonText, walking ? styles.walkButtonTextActive : null]}>
-                {walking ? "■ Stop walking" : "▶ Walk boundary"}
+      <Modal animationType="slide" onRequestClose={() => setEditing(false)} presentationStyle="fullScreen" statusBarTranslucent visible>
+        <SafeAreaView edges={["top", "bottom"]} style={styles.fullScreen}>
+          <View style={styles.topBar}>
+            <View style={styles.topBarText}>
+              <Text style={styles.topTitle}>Draw boundary</Text>
+              <Text style={styles.topSubtitle}>
+                {vertexCount} point{vertexCount === 1 ? "" : "s"} · {minVertices} minimum
               </Text>
-            </Pressable>
-            <Pressable onPress={() => void addPointNow()} style={styles.secondaryButton}>
-              <Text style={styles.secondaryButtonText}>Add point here</Text>
+            </View>
+            <Pressable accessibilityLabel="Close boundary editor" onPress={() => setEditing(false)} style={styles.closeButton}>
+              <Text style={styles.closeButtonText}>✕</Text>
             </Pressable>
           </View>
-          {walking ? (
-            <View style={styles.walkRow}>
-              <Pressable
-                onPress={() => setAutoTrace((current) => !current)}
-                style={[styles.toggleChip, autoTrace ? styles.toggleChipActive : null]}
-              >
-                <Text style={[styles.toggleChipText, autoTrace ? styles.toggleChipTextActive : null]}>
-                  {autoTrace ? "Auto-trace on" : "Auto-trace off"}
-                </Text>
-              </Pressable>
-              {[5, 10, 30].map((sec) => (
-                <Pressable
-                  key={sec}
-                  onPress={() => setIntervalSec(sec)}
-                  style={[styles.intervalChip, intervalSec === sec ? styles.intervalChipActive : null]}
-                >
-                  <Text style={[styles.intervalChipText, intervalSec === sec ? styles.intervalChipTextActive : null]}>
-                    {sec}s
-                  </Text>
-                </Pressable>
-              ))}
+
+          <View style={styles.mapFull}>
+            <WebView
+              onMessage={handleMessage}
+              originWhitelist={["*"]}
+              ref={webviewRef}
+              source={{ html: buildPolygonMapHtml() }}
+              style={styles.webview}
+            />
+            <Pressable accessibilityLabel="Center map on my location" onPress={() => void locateMe()} style={styles.locateButton}>
+              <Text style={styles.locateButtonText}>◎</Text>
+            </Pressable>
+          </View>
+
+          {mapError ? (
+            <View style={styles.errorCard}>
+              <Text style={styles.errorText}>{mapError}</Text>
             </View>
           ) : null}
-        </View>
-        <Text style={styles.helperText}>
-          {walking
-            ? autoTrace
-              ? `Walking the boundary — a point drops automatically every ${intervalSec}s. Tap "Add point here" at sharp corners. ${vertexCount} added.`
-              : `Walking — tap "Add point here" at each corner. ${vertexCount} added.`
-            : `Walk the boundary with GPS, tap the map, or add points manually (${vertexCount} added, ${minVertices} minimum). Tap "Done" to close the shape.`}
-        </Text>
-        {mapError && (
-          <View style={styles.errorCard}>
-            <Text style={styles.errorText}>{mapError}</Text>
+
+          <View style={styles.bottomPanel}>
+            <Text style={styles.instruction}>{instruction}</Text>
+            <View style={styles.walkRow}>
+              <Pressable onPress={toggleWalking} style={[styles.walkButton, styles.flexButton, walking ? styles.walkButtonActive : null]}>
+                <Text style={[styles.walkButtonText, walking ? styles.walkButtonTextActive : null]}>
+                  {walking ? "■ Stop walking" : "▶ Walk boundary"}
+                </Text>
+              </Pressable>
+              <Pressable onPress={() => void addPointNow()} style={[styles.secondaryButton, styles.flexButton]}>
+                <Text style={styles.secondaryButtonText}>＋ Add point</Text>
+              </Pressable>
+            </View>
+            {walking ? (
+              <View style={styles.walkRow}>
+                <Pressable
+                  onPress={() => setAutoTrace((current) => !current)}
+                  style={[styles.toggleChip, autoTrace ? styles.toggleChipActive : null]}
+                >
+                  <Text style={[styles.toggleChipText, autoTrace ? styles.toggleChipTextActive : null]}>
+                    {autoTrace ? "Auto-trace on" : "Auto-trace off"}
+                  </Text>
+                </Pressable>
+                <Text style={styles.intervalLabel}>every</Text>
+                {[5, 10, 30].map((sec) => (
+                  <Pressable
+                    key={sec}
+                    onPress={() => setIntervalSec(sec)}
+                    style={[styles.intervalChip, intervalSec === sec ? styles.intervalChipActive : null]}
+                  >
+                    <Text style={[styles.intervalChipText, intervalSec === sec ? styles.intervalChipTextActive : null]}>
+                      {sec}s
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+            <View style={styles.controlsRow}>
+              <Pressable onPress={() => sendCommand({ type: "undo" })} style={[styles.secondaryButton, styles.flexButton]}>
+                <Text style={styles.secondaryButtonText}>Undo</Text>
+              </Pressable>
+              <Pressable onPress={() => sendCommand({ type: "clear" })} style={[styles.secondaryButton, styles.flexButton]}>
+                <Text style={styles.secondaryButtonText}>Clear</Text>
+              </Pressable>
+              <Pressable onPress={() => sendCommand({ type: "close" })} style={[styles.primaryButton, styles.flexButton]}>
+                <Text style={styles.primaryButtonText}>Done</Text>
+              </Pressable>
+            </View>
           </View>
-        )}
-        <View style={styles.controlsRow}>
-          <Pressable onPress={() => sendCommand({ type: "undo" })} style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonText}>Undo</Text>
-          </Pressable>
-          <Pressable onPress={() => sendCommand({ type: "clear" })} style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonText}>Clear</Text>
-          </Pressable>
-          <Pressable onPress={() => setEditing(false)} style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonText}>Cancel</Text>
-          </Pressable>
-          <Pressable onPress={() => sendCommand({ type: "close" })} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonText}>Done</Text>
-          </Pressable>
-        </View>
-      </View>
+        </SafeAreaView>
+      </Modal>
     );
   }
 
@@ -285,22 +316,94 @@ function PolygonPreview({ ring }: { ring: number[][] }) {
 }
 
 const styles = StyleSheet.create({
-  mapContainer: {
-    borderColor: "#dbe7e2",
-    borderRadius: 12,
-    borderWidth: 1,
-    height: 320,
-    overflow: "hidden",
-  },
   webview: {
     flex: 1,
   },
-  helperText: {
-    color: "#49635a",
-    fontSize: 12,
+  fullScreen: {
+    backgroundColor: "#0b1f1a",
+    flex: 1,
   },
-  walkPanel: {
-    gap: 8,
+  topBar: {
+    alignItems: "center",
+    backgroundColor: "#0b1f1a",
+    flexDirection: "row",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  topBarText: {
+    flex: 1,
+  },
+  topTitle: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  topSubtitle: {
+    color: "#9bb6ab",
+    fontSize: 12,
+    marginTop: 2,
+  },
+  closeButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 999,
+    height: 36,
+    justifyContent: "center",
+    width: 36,
+  },
+  closeButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  mapFull: {
+    flex: 1,
+    overflow: "hidden",
+    position: "relative",
+  },
+  locateButton: {
+    alignItems: "center",
+    backgroundColor: "white",
+    borderRadius: 999,
+    bottom: 16,
+    elevation: 4,
+    height: 48,
+    justifyContent: "center",
+    position: "absolute",
+    right: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    width: 48,
+  },
+  locateButtonText: {
+    color: "#12332b",
+    fontSize: 22,
+    fontWeight: "700",
+  },
+  bottomPanel: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 6,
+  },
+  instruction: {
+    color: "#49635a",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  flexButton: {
+    flex: 1,
+  },
+  intervalLabel: {
+    color: "#8aa79b",
+    fontSize: 12,
+    fontWeight: "600",
   },
   walkRow: {
     alignItems: "center",
@@ -309,10 +412,11 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   walkButton: {
+    alignItems: "center",
     backgroundColor: "#12332b",
     borderRadius: 10,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   walkButtonActive: {
     backgroundColor: "#b42318",
@@ -385,12 +489,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   secondaryButton: {
+    alignItems: "center",
     backgroundColor: "#f0f5f3",
     borderColor: "#dbe7e2",
     borderRadius: 10,
     borderWidth: 1,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   secondaryButtonText: {
     color: "#12332b",
@@ -398,10 +503,11 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   primaryButton: {
+    alignItems: "center",
     backgroundColor: "#12332b",
     borderRadius: 10,
     paddingHorizontal: 18,
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   primaryButtonWide: {
     alignItems: "center",
