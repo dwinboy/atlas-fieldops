@@ -43,6 +43,7 @@ from app.schemas.operations import (
     EntityRelationshipRead,
     ExportJobCreate,
     ExportJobRead,
+    StoredExportRead,
     FieldVisitRequestRead,
     FieldVisitRequestReview,
     FieldVisitOutcomeReview,
@@ -105,6 +106,7 @@ from app.schemas.operations import (
 )
 from app.services.data_export import DataExportService
 from app.services.operations import FieldPlanningService, OperationsService
+from app.services.storage import StorageService
 
 router = APIRouter()
 
@@ -1397,10 +1399,12 @@ async def export_form_submissions(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_EXPORT))],
     session: Annotated[AsyncSession, Depends(get_session)],
     status_filter: str | None = None,
+    fields: Annotated[list[str] | None, Query()] = None,
 ) -> Response:
+    selected_fields = [item for item in (fields or []) if item] or None
     try:
         artifact = await DataExportService(session).export(
-            organization_uuid(principal), form_id, export_format, status=status_filter
+            organization_uuid(principal), form_id, export_format, status=status_filter, fields=selected_fields
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -1410,6 +1414,76 @@ async def export_form_submissions(
         content=artifact.content,
         media_type=artifact.media_type,
         headers={"Content-Disposition": f'attachment; filename="{artifact.filename}"'},
+    )
+
+
+@router.post(
+    "/data/forms/{form_id}/export-jobs",
+    response_model=StoredExportRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Prepare a downloadable export artifact for a form's submissions",
+)
+async def create_form_export_artifact(
+    form_id: UUID,
+    export_format: str,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_EXPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    status_filter: str | None = None,
+    fields: Annotated[list[str] | None, Query()] = None,
+) -> StoredExportRead:
+    organization_id = organization_uuid(principal)
+    selected_fields = [item for item in (fields or []) if item] or None
+    try:
+        artifact = await DataExportService(session).export(
+            organization_id, form_id, export_format, status=status_filter, fields=selected_fields
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    if artifact is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
+    stored = await StorageService(session).save(
+        organization_id=organization_id,
+        kind="export_artifact",
+        file_name=artifact.filename,
+        media_type=artifact.media_type,
+        content=artifact.content,
+        reference_type="form",
+        reference_id=str(form_id),
+    )
+    await session.commit()
+    return StoredExportRead.model_validate(stored)
+
+
+@router.get(
+    "/data/forms/{form_id}/export-jobs",
+    response_model=list[StoredExportRead],
+    summary="List prepared export artifacts for a form",
+)
+async def list_form_export_artifacts(
+    form_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_EXPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[StoredExportRead]:
+    files = await StorageService(session).list_for_reference(
+        organization_uuid(principal), "form", str(form_id)
+    )
+    files.sort(key=lambda item: item.created_at, reverse=True)
+    return [StoredExportRead.model_validate(item) for item in files]
+
+
+@router.get("/data/exports/{file_id}/download", summary="Download a prepared export artifact")
+async def download_stored_export(
+    file_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_EXPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> Response:
+    stored = await StorageService(session).load(organization_uuid(principal), file_id)
+    if stored is None or stored.kind != "export_artifact":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Export not found")
+    return Response(
+        content=stored.content,
+        media_type=stored.media_type,
+        headers={"Content-Disposition": f'attachment; filename="{stored.file_name}"'},
     )
 
 

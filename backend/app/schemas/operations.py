@@ -1281,6 +1281,18 @@ class ExportJobRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class StoredExportRead(BaseModel):
+    """A prepared export artifact held on the server and downloadable on demand."""
+
+    id: UUID
+    file_name: str
+    media_type: str
+    size_bytes: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class PublicCollectionLinkCreate(BaseModel):
     form_id: UUID
     slug: str = Field(min_length=3, max_length=160, pattern=r"^[a-z0-9-]+$")

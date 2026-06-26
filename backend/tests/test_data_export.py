@@ -83,6 +83,7 @@ async def test_capabilities_are_data_aware() -> None:
     assert caps["has_points"] is True
     assert caps["has_media"] is True
     assert caps["statuses"] == ["approved"]
+    assert "Full name" in caps["columns"]
     by_id = {fmt["id"]: fmt for fmt in caps["formats"]}
     assert by_id["csv"]["available"] and by_id["xlsx"]["available"] and by_id["json"]["available"]
     assert by_id["geojson"]["available"] and by_id["kml"]["available"]
@@ -113,6 +114,44 @@ async def test_capabilities_hide_spatial_when_no_location() -> None:
     assert by_id["geojson"]["available"] is False
     assert by_id["shapefile"]["available"] is False
     assert by_id["gpx"]["available"] is False
+
+
+async def test_export_respects_selected_fields() -> None:
+    session, org_id, form_id = await _seed()
+    csv_art = await DataExportService(session).export(org_id, form_id, "csv", fields=["Full name"])
+    header = csv_art.content.decode("utf-8-sig").splitlines()[0]
+    assert "Full name" in header
+    assert "Farm boundary" not in header
+    # Submission metadata columns are always retained.
+    assert "geometry_wkt" in header
+
+
+async def test_bundle_includes_stored_media_and_manifest() -> None:
+    from sqlalchemy import select
+
+    from app.models.collection import Submission
+    from app.services.storage import StorageService
+
+    session, org_id, form_id = await _seed()
+    poly = (
+        await session.execute(select(Submission).where(Submission.client_submission_id == "sub-polygon-001"))
+    ).scalar_one()
+    await StorageService(session).save(
+        organization_id=org_id, kind="media", file_name="farm.jpg", media_type="image/jpeg",
+        content=b"\xff\xd8\xff\xe0binary-image-bytes", reference_type="submission", reference_id=str(poly.id),
+    )
+    await session.commit()
+
+    bundle = await DataExportService(session).export(org_id, form_id, "bundle")
+    with zipfile.ZipFile(io.BytesIO(bundle.content)) as archive:
+        names = archive.namelist()
+        assert "data/submissions.csv" in names
+        assert "data/submissions.geojson" in names  # form has spatial data
+        assert "media/manifest.csv" in names
+        media_files = [name for name in names if name.startswith(f"media/{poly.id}/")]
+        assert media_files and archive.read(media_files[0]) == b"\xff\xd8\xff\xe0binary-image-bytes"
+        manifest = archive.read("media/manifest.csv").decode("utf-8-sig")
+        assert "farm.jpg" in manifest and "yes" in manifest
 
 
 async def test_export_all_formats_produce_valid_output() -> None:

@@ -25,7 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.collection import DataForm, DataFormVersion, Submission
-from app.models.operations import MediaEvidence
+from app.models.operations import MediaEvidence, StoredFile
 
 # WGS84 projection text written into the shapefile .prj sidecar.
 _WGS84_PRJ = (
@@ -49,6 +49,8 @@ EXPORT_FORMATS: dict[str, dict[str, str]] = {
             "hint": "GPS waypoints for handheld GPS units and field apps."},
     "shapefile": {"label": "Shapefile (.zip)", "media_type": "application/zip", "ext": "zip", "kind": "spatial",
                   "hint": "Classic GIS format, zipped (points and boundaries in separate layers)."},
+    "bundle": {"label": "Data + media (.zip)", "media_type": "application/zip", "ext": "zip", "kind": "tabular",
+               "hint": "Everything in one zip: the data table, a map file, and any captured media files."},
 }
 
 
@@ -292,11 +294,17 @@ class DataExportService:
             "has_polygons": has_polygons,
             "has_media": has_media,
             "statuses": sorted({submission.status for submission in submissions}),
+            "columns": _column_order(records),
             "formats": formats,
         }
 
     async def export(
-        self, organization_id: UUID, form_id: UUID, fmt: str, status: str | None = None
+        self,
+        organization_id: UUID,
+        form_id: UUID,
+        fmt: str,
+        status: str | None = None,
+        fields: list[str] | None = None,
     ) -> ExportArtifact | None:
         if fmt not in EXPORT_FORMATS:
             raise ValueError(f"Unsupported export format: {fmt}")
@@ -305,10 +313,68 @@ class DataExportService:
             return None
         labels = _schema_labels(schema_json)
         records = [self._to_record(submission, labels, media_by_submission.get(submission.id, [])) for submission in submissions]
+        if fields:
+            # Restrict to the chosen attribute columns; geometry, media, and submission
+            # metadata are always retained so the export stays usable.
+            keep = set(fields)
+            for record in records:
+                record.attributes = {key: value for key, value in record.attributes.items() if key in keep}
         base = _safe_slug(form.name) or "submissions"
         ext = EXPORT_FORMATS[fmt]["ext"]
-        content = _SERIALIZERS[fmt](records)
+        if fmt == "bundle":
+            content = await self._build_bundle(organization_id, records)
+        else:
+            content = _SERIALIZERS[fmt](records)
         return ExportArtifact(filename=f"{base}.{ext}", media_type=EXPORT_FORMATS[fmt]["media_type"], content=content)
+
+    async def _build_bundle(self, organization_id: UUID, records: list[_Record]) -> bytes:
+        """Zip the data (CSV + GeoJSON when spatial) together with any captured media files held
+        on the server, plus a manifest. Media whose bytes were never uploaded is listed in the
+        manifest by reference so nothing is silently dropped."""
+        submission_ids = [record.submission_id for record in records]
+        stored_by_submission: dict[str, list[StoredFile]] = {}
+        if submission_ids:
+            rows = (
+                await self.session.execute(
+                    select(StoredFile).where(
+                        StoredFile.organization_id == organization_id,
+                        StoredFile.kind == "media",
+                        StoredFile.reference_type == "submission",
+                        StoredFile.reference_id.in_(submission_ids),
+                    )
+                )
+            ).scalars().all()
+            for stored in rows:
+                stored_by_submission.setdefault(str(stored.reference_id), []).append(stored)
+
+        has_spatial = any(record.geometries for record in records)
+        manifest = io.StringIO()
+        manifest_writer = csv.writer(manifest)
+        manifest_writer.writerow(["submission_id", "file_name", "media_type", "bundled", "reference_url"])
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("data/submissions.csv", _serialize_csv(records))
+            if has_spatial:
+                archive.writestr("data/submissions.geojson", _serialize_geojson(records))
+            used_names: set[str] = set()
+            for record in records:
+                stored_files = stored_by_submission.get(record.submission_id, [])
+                stored_names = {stored.file_name for stored in stored_files}
+                for stored in stored_files:
+                    path = f"media/{record.submission_id}/{stored.file_name}"
+                    if path in used_names:
+                        path = f"media/{record.submission_id}/{stored.id}-{stored.file_name}"
+                    used_names.add(path)
+                    archive.writestr(path, stored.content)
+                    manifest_writer.writerow([record.submission_id, stored.file_name, stored.media_type, "yes", ""])
+                # Media recorded on the submission but without uploaded bytes → reference only.
+                for media in record.media:
+                    if media["file_name"] in stored_names:
+                        continue
+                    manifest_writer.writerow([record.submission_id, media["file_name"], media["media_type"], "no", media["url"]])
+            archive.writestr("media/manifest.csv", manifest.getvalue().encode("utf-8-sig"))
+        return buffer.getvalue()
 
 
 def _safe_slug(value: str) -> str:

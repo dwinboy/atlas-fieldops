@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
@@ -837,6 +837,23 @@ class MediaEvidence(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+
+
+class StoredFile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Server-held binary content (export artifacts, uploaded media) kept in the database so it
+    survives redeploys. A production deployment can swap this for object storage behind the same
+    StorageService interface; the database backing is durable and needs no external credentials."""
+
+    __tablename__ = "stored_files"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(40), index=True)  # "export_artifact" | "media"
+    reference_type: Mapped[str | None] = mapped_column(String(60), nullable=True, index=True)
+    reference_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    file_name: Mapped[str] = mapped_column(String(240), nullable=False)
+    media_type: Mapped[str] = mapped_column(String(160), nullable=False, default="application/octet-stream")
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
 
 
 class BulkEditBatch(UUIDPrimaryKeyMixin, TimestampMixin, Base):

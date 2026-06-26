@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import re
 from datetime import UTC, datetime
 from typing import Any
@@ -1954,7 +1956,28 @@ class MobileService:
             size=payload.size,
             sync_status=payload.sync_status,
         )
-        return MobileActionAcceptedRead(message="Attachment metadata stored.", server_id=str(evidence.id))
+        message = "Attachment metadata stored."
+        # If the device sent the actual file bytes, persist them so the media can be bundled into
+        # exports. Without bytes we keep only the reference recorded on the evidence row.
+        if payload.content_base64 and submission is not None:
+            try:
+                raw = base64.b64decode(payload.content_base64, validate=True)
+            except (ValueError, binascii.Error):
+                raw = b""
+            if raw:
+                from app.services.storage import StorageService
+
+                await StorageService(self.session).save(
+                    organization_id=organization_id,
+                    kind="media",
+                    file_name=evidence.file_name,
+                    media_type=payload.mime_type or "application/octet-stream",
+                    content=raw,
+                    reference_type="submission",
+                    reference_id=str(submission.id),
+                )
+                message = "Attachment file stored."
+        return MobileActionAcceptedRead(message=message, server_id=str(evidence.id))
 
     async def _persist_attachment(
         self,

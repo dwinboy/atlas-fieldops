@@ -302,6 +302,9 @@ class MobileAttachmentRead(MobileSchema):
     mime_type: str
     size: int
     sync_status: str = "Queued"
+    # Optional base64-encoded file bytes. When present the server stores the actual file so it can
+    # be bundled into exports; when absent only the reference (local_uri/remote_url) is recorded.
+    content_base64: str | None = None
 
 
 class MobileNotificationRead(MobileSchema):
