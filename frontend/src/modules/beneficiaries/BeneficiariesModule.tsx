@@ -349,6 +349,18 @@ export function BeneficiariesModule({
     [filteredEntities, isDuplicatesRoute],
   );
   const managerAccess = canManage(principal);
+  const editingEntity = editEntityId
+    ? entities.find((entity) => entity.id === editEntityId)
+    : undefined;
+  const editNameMissing = !editDraft.displayName.trim();
+  const editReasonShort = editDraft.reason.trim().length < 3;
+  const editValidationHint = !managerAccess
+    ? "You need entity-management permission to edit."
+    : editNameMissing
+      ? "Add a display name to save."
+      : editReasonShort
+        ? "Add a reason (3+ characters) — it's recorded in the audit trail."
+        : "";
   const projectOptions = useMemo(() => {
     if (preview) {
       const seen = new Map<string, string>();
@@ -1076,58 +1088,98 @@ export function BeneficiariesModule({
         open={editOpen}
         title="Edit entity profile"
       >
-        <div className="grid gap-3 md:grid-cols-2">
-          <label className="text-sm font-medium">
-            Display name
-            <Input className="mt-2" value={editDraft.displayName} onChange={(event) => setEditDraft((current) => ({ ...current, displayName: event.target.value }))} />
-          </label>
-          <label className="text-sm font-medium">
-            Phone number
-            <Input className="mt-2" value={editDraft.phoneNumber} onChange={(event) => setEditDraft((current) => ({ ...current, phoneNumber: event.target.value }))} />
-          </label>
-          <label className="text-sm font-medium">
-            Region
-            <Input className="mt-2" value={editDraft.region} onChange={(event) => setEditDraft((current) => ({ ...current, region: event.target.value }))} />
-          </label>
-          <label className="text-sm font-medium">
-            District
-            <Input className="mt-2" value={editDraft.district} onChange={(event) => setEditDraft((current) => ({ ...current, district: event.target.value }))} />
-          </label>
-          <label className="text-sm font-medium">
-            Community
-            <Input className="mt-2" value={editDraft.community} onChange={(event) => setEditDraft((current) => ({ ...current, community: event.target.value }))} />
-          </label>
-          <label className="text-sm font-medium">
-            Enrollment status
-            <Select
-              className="mt-2"
-              onChange={(event) => setEditDraft((current) => ({ ...current, status: event.target.value as EntityStatus }))}
-              value={editDraft.status}
-            >
-              {["Active", "Inactive", "Moved", "Deceased", "Duplicate"].map((status) => (
-                <option key={status} value={status}>{status}</option>
-              ))}
-            </Select>
-          </label>
+        <div className="max-h-[70vh] space-y-5 overflow-y-auto px-5 py-4 product-scrollbar">
+          {editingEntity ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-xs">
+              <span className="font-mono font-semibold text-foreground">{editingEntity.entityId}</span>
+              <Badge tone="neutral">{editingEntity.entityType}</Badge>
+              {editingEntity.projectName ? (
+                <span className="text-muted-foreground">{editingEntity.projectName}</span>
+              ) : null}
+            </div>
+          ) : null}
+
+          <section className="space-y-3">
+            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Identity</h3>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="text-sm font-medium">
+                Display name <span aria-hidden="true" className="text-danger">*</span>
+                <Input
+                  aria-invalid={editNameMissing}
+                  className="mt-2"
+                  onChange={(event) => setEditDraft((current) => ({ ...current, displayName: event.target.value }))}
+                  value={editDraft.displayName}
+                />
+              </label>
+              <label className="text-sm font-medium">
+                Phone number
+                <Input className="mt-2" inputMode="tel" onChange={(event) => setEditDraft((current) => ({ ...current, phoneNumber: event.target.value }))} value={editDraft.phoneNumber} />
+              </label>
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Location</h3>
+            <div className="grid gap-3 md:grid-cols-3">
+              <label className="text-sm font-medium">
+                Region
+                <Input className="mt-2" onChange={(event) => setEditDraft((current) => ({ ...current, region: event.target.value }))} value={editDraft.region} />
+              </label>
+              <label className="text-sm font-medium">
+                District
+                <Input className="mt-2" onChange={(event) => setEditDraft((current) => ({ ...current, district: event.target.value }))} value={editDraft.district} />
+              </label>
+              <label className="text-sm font-medium">
+                Community
+                <Input className="mt-2" onChange={(event) => setEditDraft((current) => ({ ...current, community: event.target.value }))} value={editDraft.community} />
+              </label>
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Status</h3>
+            <label className="block text-sm font-medium md:max-w-xs">
+              Enrollment status
+              <Select
+                className="mt-2"
+                onChange={(event) => setEditDraft((current) => ({ ...current, status: event.target.value as EntityStatus }))}
+                value={editDraft.status}
+              >
+                {["Active", "Inactive", "Moved", "Deceased", "Duplicate"].map((status) => (
+                  <option key={status} value={status}>{status}</option>
+                ))}
+              </Select>
+            </label>
+          </section>
+
+          <section className="space-y-1.5">
+            <label className="block text-sm font-medium">
+              Reason for correction <span aria-hidden="true" className="text-danger">*</span>
+              <Textarea
+                aria-invalid={editReasonShort}
+                className="mt-2"
+                onChange={(event) => setEditDraft((current) => ({ ...current, reason: event.target.value }))}
+                placeholder="e.g. Household relocated after verification visit"
+                value={editDraft.reason}
+              />
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Recorded in the audit trail. The entity ID never changes when you edit the profile.
+            </p>
+          </section>
         </div>
-        <label className="mt-3 block text-sm font-medium">
-          Reason for correction
-          <Input
-            className="mt-2"
-            placeholder="e.g. Household relocated after verification visit"
-            value={editDraft.reason}
-            onChange={(event) => setEditDraft((current) => ({ ...current, reason: event.target.value }))}
-          />
-        </label>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button onClick={() => setEditOpen(false)} variant="secondary">Cancel</Button>
-          <Button
-            disabled={!managerAccess || preview || updateEntityMutation.isPending || editDraft.reason.trim().length < 3 || !editDraft.displayName.trim()}
-            onClick={() => updateEntityMutation.mutate()}
-            variant="primary"
-          >
-            {updateEntityMutation.isPending ? "Saving…" : "Save correction"}
-          </Button>
+        <div className="flex items-center justify-between gap-3 border-t bg-panel px-5 py-3">
+          <p className="min-w-0 truncate text-xs text-muted-foreground">{editValidationHint}</p>
+          <div className="flex shrink-0 gap-2">
+            <Button onClick={() => setEditOpen(false)} variant="secondary">Cancel</Button>
+            <Button
+              disabled={!managerAccess || preview || updateEntityMutation.isPending || editReasonShort || editNameMissing}
+              onClick={() => updateEntityMutation.mutate()}
+              variant="primary"
+            >
+              {updateEntityMutation.isPending ? "Saving…" : "Save correction"}
+            </Button>
+          </div>
         </div>
       </Modal>
       <Modal
