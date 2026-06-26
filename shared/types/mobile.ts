@@ -581,6 +581,9 @@ export type MobileAttachment = LocalRecord & {
   encrypted: boolean;
   uploadProgress: number;
   errorMessage: string | null;
+  /** Transient base64 of the file, attached only at upload time so the server can store the
+   * actual bytes for export bundling. Not persisted in the local database. */
+  contentBase64?: string | null;
 };
 
 export type MobileNotification = LocalRecord & {

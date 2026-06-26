@@ -1,9 +1,22 @@
+import * as FileSystem from "expo-file-system";
+
 import { createMobileApis } from "@/api/mobileApis";
 import type { MobileAttachment } from "@/models/contracts";
 import { AuditEventService } from "@/services/auditEventService";
 import { LocalDatabase } from "@/storage/localDatabase";
 import { SyncQueueService } from "@/sync/syncQueue";
 import { createLocalId, nowIso } from "@/utils/ids";
+
+/** Reads a captured file as base64 so the server can store the actual bytes for export bundling.
+ * Best-effort: returns null for synthetic URIs (e.g. signatures) or unreadable files. */
+async function readFileBase64(localUri: string): Promise<string | null> {
+  if (!localUri || !localUri.includes("://") || localUri.startsWith("signature://")) return null;
+  try {
+    return await FileSystem.readAsStringAsync(localUri, { encoding: FileSystem.EncodingType.Base64 });
+  } catch {
+    return null;
+  }
+}
 
 export type AttachmentInput = {
   submissionLocalId?: string;
@@ -75,7 +88,10 @@ export class AttachmentSyncService {
         }
         const result = activity?.serverId
           ? await this.apis.attachments.uploadActivityAttachment(token, activity.serverId, syncingAttachment, activity)
-          : await this.apis.attachments.uploadAttachment(token, syncingAttachment);
+          : await this.apis.attachments.uploadAttachment(token, {
+              ...syncingAttachment,
+              contentBase64: await readFileBase64(attachment.localUri),
+            });
         this.database.attachments.upsert({
           ...attachment,
           serverId: result.status === "accepted" ? (result.serverId ?? attachment.id) : attachment.serverId,
