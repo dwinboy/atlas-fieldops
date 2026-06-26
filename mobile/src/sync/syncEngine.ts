@@ -56,7 +56,10 @@ export class SyncEngine {
     const startedAt = nowIso();
     const logLocalId = createLocalId("sync-log");
     const network = this.network.current();
-    if (!network.isOnline) {
+    // When we already know we're offline, skip automatic/background runs quickly instead of
+    // hanging on a timeout. Manual runs (user tap, foreground probe) always attempt so the
+    // online state can recover once coverage returns.
+    if (!network.isOnline && mode !== "Manual") {
       return this.finishLog(logLocalId, startedAt, mode, 0, 0, 0, "No internet connection. Your submissions remain queued safely.");
     }
     let token = await this.tokenProvider();

@@ -5,7 +5,7 @@ import { AuthService } from "@/auth/authService";
 import { ExpoSecureSessionStore } from "@/auth/expoSecureSessionStore.native";
 import type { MobileSession } from "@/auth/sessionStore";
 import { localDatabase } from "@/storage/localDatabase";
-import { NetworkStatusService } from "@/sync/networkStatus";
+import { networkStatusService } from "@/sync/networkStatus";
 import { SyncEngine, type SyncMode } from "@/sync/syncEngine";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -29,7 +29,9 @@ export type AppContextValue = {
 const AppContext = createContext<AppContextValue | null>(null);
 
 const authService = new AuthService(new ExpoSecureSessionStore());
-const networkService = new NetworkStatusService();
+// Shared singleton so the HTTP client's real request outcomes drive the same connectivity
+// state the UI and sync engine read.
+const networkService = networkStatusService;
 
 // ─── Provider ────────────────────────────────────────────────────────────────
 
@@ -48,21 +50,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }).catch(() => {});
   }, []);
 
-  // AppState listener: sync when returning to foreground
+  // Reflect real connectivity: the HTTP client reports request outcomes to the shared
+  // network service, and we mirror that into React state for the Online/Offline indicator.
+  useEffect(() => {
+    setIsOnline(networkService.current().isOnline);
+    return networkService.subscribe((snapshot) => setIsOnline(snapshot.isOnline));
+  }, []);
+
+  // AppState listener: probe connectivity and sync when returning to foreground.
   useEffect(() => {
     const sub = AppState.addEventListener("change", (nextState) => {
       if (appState.current.match(/inactive|background/) && nextState === "active") {
-        networkService.setOnline();
-        setIsOnline(true);
         if (session?.accessToken) {
-          runSyncQueue().catch(() => {});
+          // A manual-mode run always attempts the network, so it doubles as a connectivity
+          // probe that recovers the online state once the device is back in coverage.
+          runSyncQueue({ mode: "Manual", silent: true }).catch(() => {});
         }
       }
-      if (nextState.match(/inactive|background/)) {
-        appState.current = nextState;
-      } else {
-        appState.current = nextState;
-      }
+      appState.current = nextState;
     });
     return () => sub.remove();
   }, [session]);

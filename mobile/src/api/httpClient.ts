@@ -1,4 +1,5 @@
 import { mobileAppConfig } from "@/config/appConfig";
+import { networkStatusService } from "@/sync/networkStatus";
 
 export type MobileApiSession = {
   accessToken: string | null;
@@ -46,6 +47,8 @@ export class MobileHttpClient {
       signal: controller.signal,
     });
     } catch (error) {
+      // The request never reached the server (no radio, DNS failure, or timeout): we are offline.
+      networkStatusService.reportNetworkError();
       const message =
         error instanceof Error && error.name === "AbortError"
           ? "Connection timed out. Check your internet connection and try again."
@@ -54,6 +57,8 @@ export class MobileHttpClient {
     } finally {
       clearTimeout(timeout);
     }
+    // We got an HTTP response (even an error status), so the server is reachable: we are online.
+    networkStatusService.reportServerReachable();
     const text = await response.text();
     const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
     const looksLikeJson = contentType.includes("application/json") || /^[\s\n\r]*[\[{]/.test(text);

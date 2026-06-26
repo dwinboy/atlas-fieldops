@@ -18,6 +18,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Badge, Button, Card, EmptyState, Input, SectionHeader } from "@/components/ui";
 import { DateTimeField } from "@/components/ui/DateTimeField";
 import { createMobileApis } from "@/api/mobileApis";
+import { MobileApiError } from "@/api/httpClient";
 import { useAppContext } from "@/context/AppContext";
 import { useGPS } from "@/hooks/useGPS";
 import { usePhotoCapture } from "@/hooks/usePhotoCapture";
@@ -85,27 +86,8 @@ export default function VisitRequestsScreen() {
     }
     setSaving(true);
     const location = gps.result;
-    try {
-      if (isOnline && accessToken) {
-        const saved = await apis.visitRequests.create(accessToken, {
-          beneficiaryId: null,
-          activityScope: firstProject ? "project" : "organization",
-          activityType,
-          latitude: location?.latitude ?? null,
-          longitude: location?.longitude ?? null,
-          locationName: locationName.trim(),
-          plannedActivities: [],
-          priority: "normal",
-          projectId: firstProject?.id ?? null,
-          purpose: purpose.trim() || null,
-          requiresApproval: true,
-          requestedEndAt,
-          requestedStartAt,
-          title: title.trim(),
-        });
-        localDatabase.visitRequests.upsert(saved);
-      } else {
-        const localId = createLocalId("visit");
+    const queueVisitLocally = () => {
+      const localId = createLocalId("visit");
         const timestamp = nowIso();
         const localVisit: MobileVisitRequest = {
           id: localId,
@@ -156,6 +138,37 @@ export default function VisitRequestsScreen() {
         };
         localDatabase.visitRequests.upsert(localVisit);
         queue.enqueue("CREATE_VISIT_REQUEST", { visitLocalId: localId });
+    };
+    try {
+      if (isOnline && accessToken) {
+        try {
+          const saved = await apis.visitRequests.create(accessToken, {
+            beneficiaryId: null,
+            activityScope: firstProject ? "project" : "organization",
+            activityType,
+            latitude: location?.latitude ?? null,
+            longitude: location?.longitude ?? null,
+            locationName: locationName.trim(),
+            plannedActivities: [],
+            priority: "normal",
+            projectId: firstProject?.id ?? null,
+            purpose: purpose.trim() || null,
+            requiresApproval: true,
+            requestedEndAt,
+            requestedStartAt,
+            title: title.trim(),
+          });
+          localDatabase.visitRequests.upsert(saved);
+        } catch (error) {
+          // Lost connectivity mid-request: keep the work safely queued instead of losing it.
+          if (error instanceof MobileApiError && error.status === 0) {
+            queueVisitLocally();
+          } else {
+            throw error;
+          }
+        }
+      } else {
+        queueVisitLocally();
       }
       audit.queue("mobile.operational_activity_requested", { activityType, locationName, requestedStartAt });
       setTitle("");
@@ -181,47 +194,59 @@ export default function VisitRequestsScreen() {
       return;
     }
     const timestamp = location.timestamp;
+    const queueEvidenceLocally = () => {
+      localDatabase.visitRequests.upsert({
+        ...visit,
+        status: mode === "check-in" ? "checked_in" : "completed",
+        syncStatus: "Queued",
+        updatedAt: nowIso(),
+        checkInAt: mode === "check-in" ? timestamp : visit.checkInAt,
+        checkInLatitude: mode === "check-in" ? location.latitude : visit.checkInLatitude,
+        checkInLongitude: mode === "check-in" ? location.longitude : visit.checkInLongitude,
+        checkInAccuracy: mode === "check-in" ? location.accuracy : visit.checkInAccuracy,
+        checkOutAt: mode === "check-out" ? timestamp : visit.checkOutAt,
+        checkOutLatitude: mode === "check-out" ? location.latitude : visit.checkOutLatitude,
+        checkOutLongitude: mode === "check-out" ? location.longitude : visit.checkOutLongitude,
+        checkOutAccuracy: mode === "check-out" ? location.accuracy : visit.checkOutAccuracy,
+      });
+      queue.enqueue(mode === "check-in" ? "VISIT_CHECK_IN" : "VISIT_CHECK_OUT", {
+        accuracy: location.accuracy,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        timestamp,
+        visitLocalId: visit.localId,
+      });
+    };
     try {
       if (isOnline && accessToken && visit.serverId) {
-        const saved =
-          mode === "check-in"
-            ? await apis.visitRequests.checkIn(accessToken, visit.serverId, {
-                accuracy: location.accuracy,
-                latitude: location.latitude,
-                longitude: location.longitude,
-                note: "Arrived at planned visit location.",
-                timestamp,
-              })
-            : await apis.visitRequests.checkOut(accessToken, visit.serverId, {
-                accuracy: location.accuracy,
-                latitude: location.latitude,
-                longitude: location.longitude,
-                summary: "Visit completed from mobile.",
-                timestamp,
-              });
-        localDatabase.visitRequests.upsert(saved);
+        try {
+          const saved =
+            mode === "check-in"
+              ? await apis.visitRequests.checkIn(accessToken, visit.serverId, {
+                  accuracy: location.accuracy,
+                  latitude: location.latitude,
+                  longitude: location.longitude,
+                  note: "Arrived at planned visit location.",
+                  timestamp,
+                })
+              : await apis.visitRequests.checkOut(accessToken, visit.serverId, {
+                  accuracy: location.accuracy,
+                  latitude: location.latitude,
+                  longitude: location.longitude,
+                  summary: "Visit completed from mobile.",
+                  timestamp,
+                });
+          localDatabase.visitRequests.upsert(saved);
+        } catch (error) {
+          // Lost connectivity mid-request: keep the evidence queued instead of losing it.
+          if (error instanceof MobileApiError && error.status === 0) {
+            queueEvidenceLocally();
+          } else {
+            throw error;
+          }
+        }
       } else {
-        localDatabase.visitRequests.upsert({
-          ...visit,
-          status: mode === "check-in" ? "checked_in" : "completed",
-          syncStatus: "Queued",
-          updatedAt: nowIso(),
-          checkInAt: mode === "check-in" ? timestamp : visit.checkInAt,
-          checkInLatitude: mode === "check-in" ? location.latitude : visit.checkInLatitude,
-          checkInLongitude: mode === "check-in" ? location.longitude : visit.checkInLongitude,
-          checkInAccuracy: mode === "check-in" ? location.accuracy : visit.checkInAccuracy,
-          checkOutAt: mode === "check-out" ? timestamp : visit.checkOutAt,
-          checkOutLatitude: mode === "check-out" ? location.latitude : visit.checkOutLatitude,
-          checkOutLongitude: mode === "check-out" ? location.longitude : visit.checkOutLongitude,
-          checkOutAccuracy: mode === "check-out" ? location.accuracy : visit.checkOutAccuracy,
-        });
-        queue.enqueue(mode === "check-in" ? "VISIT_CHECK_IN" : "VISIT_CHECK_OUT", {
-          accuracy: location.accuracy,
-          latitude: location.latitude,
-          longitude: location.longitude,
-          timestamp,
-          visitLocalId: visit.localId,
-        });
+        queueEvidenceLocally();
       }
       audit.queue(mode === "check-in" ? "mobile.visit_checked_in" : "mobile.visit_checked_out", {
         accuracy: location.accuracy,
