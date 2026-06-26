@@ -1270,6 +1270,17 @@ function FieldTranslationsEditor({
     });
   }
 
+  function patchOption(language: string, optionIndex: number, value: string) {
+    const optionCount = field.options?.length ?? 0;
+    const current = [...(translations[language]?.options ?? [])];
+    while (current.length < optionCount) current.push("");
+    current[optionIndex] = value;
+    onChange({
+      ...translations,
+      [language]: { ...translations[language], options: current },
+    });
+  }
+
   return (
     <section className="rounded-md border bg-background p-3">
       <div className="flex items-center justify-between gap-2">
@@ -1302,6 +1313,21 @@ function FieldTranslationsEditor({
                 placeholder={`Help text in ${language} (optional)`}
                 value={translations[language]?.hint ?? ""}
               />
+              {(field.options ?? []).length > 0 ? (
+                <div className="mt-2 space-y-1">
+                  <p className="text-[11px] font-semibold text-muted-foreground">Option labels</p>
+                  {(field.options ?? []).map((option, index) => (
+                    <Input
+                      aria-label={`${language} translation for option ${option}`}
+                      className="text-xs"
+                      key={`${language}-option-${index}`}
+                      onChange={(event) => patchOption(language, index, event.target.value)}
+                      placeholder={option}
+                      value={translations[language]?.options?.[index] ?? ""}
+                    />
+                  ))}
+                </div>
+              ) : null}
             </div>
           ))}
         </div>

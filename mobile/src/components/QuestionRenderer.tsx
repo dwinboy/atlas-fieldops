@@ -120,7 +120,7 @@ export function QuestionRenderer({
       {/* Input by type */}
       {question.readOnly && question.type !== "CalculatedField" && String(question.type) !== "Calculated"
         ? renderReadOnlyValue(question, value)
-        : renderInput(question, value, answer, responses, referenceLists ?? [])}
+        : renderInput(question, value, answer, responses, referenceLists ?? [], activeLanguage)}
 
       {changedPrefilledValue ? (
         <View style={{ gap: 6 }}>
@@ -183,6 +183,22 @@ function customRuleSuffix(question: MobileQuestion, prefix: string): string | nu
 
 function questionAllowsOther(question: MobileQuestion): boolean {
   return question.validationRules.some((item) => item.ruleType === "Custom" && item.value === "allowOther:true");
+}
+
+/** Overrides static option labels with the active language's translations (parallel to the
+ * question's original option order). Options sourced from reference lists are left unchanged. */
+function localizeOptions(question: MobileQuestion, options: SimpleOption[], activeLanguage?: string): SimpleOption[] {
+  const translated = activeLanguage && question.translations ? question.translations[activeLanguage]?.options : undefined;
+  if (!Array.isArray(translated) || translated.length === 0) return options;
+  const indexByValue = new Map(question.options.map((option, index) => [option.value, index]));
+  return options.map((option) => {
+    const index = indexByValue.get(option.value);
+    const label =
+      index !== undefined && typeof translated[index] === "string" && translated[index].trim()
+        ? translated[index]
+        : option.label;
+    return { ...option, label };
+  });
 }
 
 /** Single/multi choice list that adds a filter box for long option lists so field officers can
@@ -383,6 +399,7 @@ function renderInput(
   answer: (v: unknown) => void,
   allResponses: Map<string, unknown>,
   referenceLists: MobileReferenceList[],
+  activeLanguage?: string,
 ) {
   const { type } = question;
 
@@ -512,7 +529,7 @@ function renderInput(
         </View>
       );
     }
-    const cascadeOptions = resolveQuestionOptions(question, allResponses, referenceLists);
+    const cascadeOptions = localizeOptions(question, resolveQuestionOptions(question, allResponses, referenceLists), activeLanguage);
     if (cascadeOptions.length === 0) {
       return (
         <View style={emptySubCard}>
@@ -534,7 +551,7 @@ function renderInput(
         </View>
       );
     }
-    const cascadeOptions = resolveQuestionOptions(question, allResponses, referenceLists);
+    const cascadeOptions = localizeOptions(question, resolveQuestionOptions(question, allResponses, referenceLists), activeLanguage);
     if (cascadeOptions.length === 0) {
       return (
         <View style={emptySubCard}>
