@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Polygon as SvgPolygon } from "react-native-svg";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 
+import { mobileAppConfig } from "@/config/appConfig";
 import { useGPS } from "@/hooks/useGPS";
 import type { MobilePolygonGeometry } from "@/models/contracts";
 import { buildPolygonMapHtml, parsePolygonMapEvent, type PolygonMapCommand } from "@/webview/polygonMapHtml";
@@ -32,6 +33,12 @@ export function PolygonCapture({ value, onChange, required = false, minVertices 
   const intervalRef = useRef(intervalSec);
   autoTraceRef.current = autoTrace;
   intervalRef.current = intervalSec;
+
+  // Stable so re-renders during capture (point count, walking state) never reload the map.
+  const mapHtml = useMemo(
+    () => buildPolygonMapHtml({ tileUrl: mobileAppConfig.mapTileUrl, maxZoom: mobileAppConfig.mapTileMaxZoom }),
+    [],
+  );
 
   function sendCommand(command: PolygonMapCommand) {
     webviewRef.current?.injectJavaScript(`window.dispatchMapCommand(${JSON.stringify(command)}); true;`);
@@ -190,7 +197,7 @@ export function PolygonCapture({ value, onChange, required = false, minVertices 
               onMessage={handleMessage}
               originWhitelist={["*"]}
               ref={webviewRef}
-              source={{ html: buildPolygonMapHtml() }}
+              source={{ html: mapHtml }}
               style={styles.webview}
             />
             <Pressable accessibilityLabel="Center map on my location" onPress={() => void locateMe()} style={styles.locateButton}>

@@ -57,10 +57,13 @@ function isCoordinatePair(value: unknown): value is number[] {
   return Array.isArray(value) && value.length === 2 && value.every((item) => typeof item === "number" && Number.isFinite(item));
 }
 
-/** Builds the offline-bundled Leaflet HTML page used for tap-to-add-vertex polygon drawing. */
-export function buildPolygonMapHtml(): string {
+/** Builds the bundled-Leaflet HTML page used for GPS/tap polygon drawing. The basemap tile
+ * source is configurable so production can use a keyed provider (Mapbox/MapTiler/satellite). */
+export function buildPolygonMapHtml(options: { tileUrl?: string; maxZoom?: number } = {}): string {
   const css = LEAFLET_CSS.replace(/<\/style/gi, "<\\/style");
   const js = LEAFLET_JS.replace(/<\/script/gi, "<\\/script");
+  const tileUrl = options.tileUrl || "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+  const maxZoom = typeof options.maxZoom === "number" && options.maxZoom > 0 ? Math.floor(options.maxZoom) : 19;
 
   return `<!DOCTYPE html>
 <html>
@@ -79,8 +82,8 @@ export function buildPolygonMapHtml(): string {
 
       // Real basemap imagery so the boundary is drawn over actual terrain/roads (online).
       // Offline, tiles simply fail to load and the captured shape still renders.
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
+      L.tileLayer(${JSON.stringify(tileUrl)}, {
+        maxZoom: ${maxZoom},
         crossOrigin: true,
       }).addTo(map);
 

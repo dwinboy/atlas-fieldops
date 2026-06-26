@@ -5,6 +5,8 @@ export type MobileAppConfig = {
   requestTimeoutMs: number;
   syncBatchSize: number;
   appVersion: string;
+  mapTileUrl: string;
+  mapTileMaxZoom: number;
 };
 
 type RuntimeGlobal = typeof globalThis & {
@@ -37,6 +39,8 @@ function normalizeApiBaseUrl(value: string): string {
   return `${trimmed}/api/v1`;
 }
 
+const configuredMapTileMaxZoom = Number(runtimeEnv.EXPO_PUBLIC_MAP_TILE_MAX_ZOOM);
+
 export const mobileAppConfig: MobileAppConfig = {
   appEnv,
   apiBaseUrl: normalizeApiBaseUrl(configuredApiBaseUrl),
@@ -44,4 +48,10 @@ export const mobileAppConfig: MobileAppConfig = {
   requestTimeoutMs: 30000,
   syncBatchSize: 25,
   appVersion: runtimeEnv.EXPO_PUBLIC_APP_VERSION ?? "1.0.0",
+  // Map basemap tiles. Defaults to OpenStreetMap; set EXPO_PUBLIC_MAP_TILE_URL to a keyed
+  // provider (e.g. Mapbox/MapTiler satellite) for production field use.
+  mapTileUrl:
+    runtimeEnv.EXPO_PUBLIC_MAP_TILE_URL ??
+    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  mapTileMaxZoom: Number.isFinite(configuredMapTileMaxZoom) && configuredMapTileMaxZoom > 0 ? configuredMapTileMaxZoom : 19,
 };
