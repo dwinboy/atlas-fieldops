@@ -60,6 +60,7 @@ import {
 } from "@/lib/api";
 import type { EntityHierarchyRead } from "@/lib/api";
 import { formatSubmissionId } from "@/lib/identifiers";
+import { useSectorTerminology } from "@/lib/sectorTerminology";
 import { cn } from "@/lib/utils";
 import {
   submissionSectionFromPath,
@@ -462,6 +463,9 @@ export function SubmissionsModule({
   );
   const localSubmissions = useWorkspaceStore((state) => state.localSubmissions);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const terminology = useSectorTerminology(token);
+  const primaryEntity = terminology.primaryEntity;
+  const primaryEntityLower = primaryEntity.toLowerCase();
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const setPendingMapFeatureId = useWorkspaceStore((state) => state.setPendingMapFeatureId);
   const preview = isPreview(token);
@@ -684,14 +688,14 @@ export function SubmissionsModule({
       const processingNote =
         variables.action === "approve" && processing?.status === "processed"
           ? processing.action === "created"
-            ? ` Beneficiary ${processing.beneficiaryUid ?? ""} was created.`
-            : ` Submission was linked to beneficiary ${processing.beneficiaryUid ?? ""}.`
+            ? ` ${primaryEntity} ${processing.beneficiaryUid ?? ""} was created.`
+            : ` Submission was linked to ${primaryEntityLower} ${processing.beneficiaryUid ?? ""}.`
           : variables.action === "approve" && processing?.status === "reconciliation_required"
-            ? " Beneficiary processing needs reconciliation before it becomes official entity data."
+            ? ` ${primaryEntity} processing needs reconciliation before it becomes official entity data.`
             : "";
       const approvalNote =
         variables.action === "approve"
-          ? " Approved data is now eligible for beneficiary/entity linking, indicators, analysis, and reports."
+          ? ` Approved data is now eligible for ${primaryEntityLower}/entity linking, indicators, analysis, and reports.`
           : "";
       setReviewResult(
         `${displaySubmissionId(submission)} is now ${formatSubmissionStatus(submission.status)}.${approvalNote}${processingNote} Reviewer note: ${variables.comment}`,
@@ -1784,6 +1788,7 @@ function SubmissionDetailWorkspace({
   tab: SubmissionDetailTab;
   token: string | null;
 }) {
+  const terminology = useSectorTerminology(token);
   const entityHierarchyQuery = useQuery({
     queryKey: ["submission-entity-hierarchy", token, submission.entity_id],
     queryFn: () => getEntityHierarchy(token ?? "", submission.entity_id ?? ""),
@@ -1843,6 +1848,7 @@ function SubmissionDetailWorkspace({
         <OverviewTab
           entityHierarchy={entityHierarchy}
           entityHierarchyLoading={entityHierarchyQuery.isLoading}
+          primaryEntity={terminology.primaryEntity}
           submission={submission}
         />
       ) : null}
@@ -1895,14 +1901,17 @@ function SubmissionDetailWorkspace({
 function OverviewTab({
   entityHierarchy,
   entityHierarchyLoading,
+  primaryEntity,
   submission,
 }: {
   entityHierarchy: EntityHierarchyRead;
   entityHierarchyLoading: boolean;
+  primaryEntity: string;
   submission: SubmissionRecord;
 }) {
   const integrity = getMobileIntegrity(submission);
   const processing = getBeneficiaryProcessingStatus(submission);
+  const primaryEntityLower = primaryEntity.toLowerCase();
   const hierarchyLinkCount = entityHierarchy.parents.length + entityHierarchy.children.length;
   return (
     <div className="space-y-4">
@@ -1965,16 +1974,16 @@ function OverviewTab({
                 <p className="text-sm font-semibold">
                   {processing.status === "processed"
                     ? processing.action === "created"
-                      ? "Beneficiary created from approved submission"
-                      : "Submission linked to beneficiary"
-                    : "Beneficiary reconciliation required"}
+                      ? `${primaryEntity} created from approved submission`
+                      : `Submission linked to ${primaryEntityLower}`
+                    : `${primaryEntity} reconciliation required`}
                 </p>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
                   {processing.beneficiaryUid
-                    ? `Beneficiary code: ${processing.beneficiaryUid}`
+                    ? `${primaryEntity} code: ${processing.beneficiaryUid}`
                     : processing.candidateBeneficiaryUid
-                      ? `Possible existing beneficiary: ${processing.candidateBeneficiaryUid}`
-                      : processing.reason ?? "Approval processing has not produced a beneficiary code yet."}
+                      ? `Possible existing ${primaryEntityLower}: ${processing.candidateBeneficiaryUid}`
+                      : processing.reason ?? `Approval processing has not produced a ${primaryEntityLower} code yet.`}
                 </p>
                 {processing.profileUpdateProposals ? (
                   <p className="mt-1 text-xs font-medium text-warning">
@@ -2001,7 +2010,7 @@ function OverviewTab({
                 <p className="text-sm font-semibold">Primary linked entity</p>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                {submission.entity_type ?? "Beneficiary"}
+                {submission.entity_type ?? primaryEntity}
                 {submission.beneficiary_code ? ` · ${submission.beneficiary_code}` : ""}
               </p>
             </div>
@@ -2016,10 +2025,10 @@ function OverviewTab({
           <div className="rounded-xl border border-warning/30 bg-warning/10 p-3">
             <div className="flex items-center gap-2">
               <ShieldAlert aria-hidden="true" className="text-warning" size={16} />
-              <p className="text-sm font-semibold">This submission is not linked to a beneficiary.</p>
+              <p className="text-sm font-semibold">This submission is not linked to a {primaryEntityLower}.</p>
             </div>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              If this form collects beneficiary data, approve-time processing will send it to Data Quality reconciliation so a data manager can link it to an existing beneficiary or create a controlled new record.
+              If this form collects {primaryEntityLower} data, approve-time processing will send it to Data Quality reconciliation so a data manager can link it to an existing {primaryEntityLower} or create a controlled new record.
             </p>
           </div>
         )}

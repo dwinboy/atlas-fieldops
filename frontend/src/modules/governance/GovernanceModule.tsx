@@ -52,6 +52,7 @@ import {
   type RetentionPolicyRead,
   type ValidationRuleRead,
 } from "@/lib/api";
+import { useSectorTerminology } from "@/lib/sectorTerminology";
 import { cn } from "@/lib/utils";
 import {
   governanceSectionFromPath,
@@ -262,6 +263,8 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const preview = isPreview(token);
   const enabled = Boolean(token && !preview);
+  const terminology = useSectorTerminology(token);
+  const primaryEntityLower = terminology.primaryEntity.toLowerCase();
   const canManageGovernance = Boolean(
     principal?.platform_admin ||
       principal?.permissions?.some((permission) =>
@@ -457,7 +460,7 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
   ];
 
   const consentColumns: TableColumn<ConsentRecordRead>[] = [
-    { key: "subject", header: "Subject", value: (record) => record.subject_identifier, render: (record) => <div><p className="font-medium">{record.subject_identifier}</p><p className="text-xs text-muted-foreground">{record.beneficiary_id ?? "No beneficiary link"}</p></div> },
+    { key: "subject", header: "Subject", value: (record) => record.subject_identifier, render: (record) => <div><p className="font-medium">{record.subject_identifier}</p><p className="text-xs text-muted-foreground">{record.beneficiary_id ?? `No ${primaryEntityLower} link`}</p></div> },
     { key: "type", header: "Type", value: (record) => record.consent_type, render: (record) => record.consent_type },
     { key: "status", header: "Status", value: (record) => record.status, render: (record) => <Badge tone={severityTone(record.status)}>{record.status}</Badge> },
     { key: "captured", header: "Captured", value: (record) => record.captured_at ?? "", render: (record) => formatDate(record.captured_at) },
@@ -658,7 +661,7 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
           <DataTable
             columns={retentionColumns}
             emptyAction={canCreateGovernance ? { label: "Create retention rule", onClick: () => setRetentionModalOpen(true) } : undefined}
-            emptyDescription="Retention rules govern how long beneficiary, submission, and audit records are kept and how they are archived or anonymized."
+            emptyDescription={`Retention rules govern how long ${primaryEntityLower}, submission, and audit records are kept and how they are archived or anonymized.`}
             emptyLabel="No retention rules are configured."
             rows={retentionRules}
             searchLabel="Search retention rules"
@@ -756,7 +759,7 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
         <ModalBody className="grid gap-3 md:grid-cols-2">
           <label className="text-sm font-medium md:col-span-2">
             Policy name
-            <Input className="mt-2" onChange={(event) => setPolicyDraft((current) => ({ ...current, name: event.target.value }))} placeholder="e.g. Beneficiary data protection policy" value={policyDraft.name} />
+            <Input className="mt-2" onChange={(event) => setPolicyDraft((current) => ({ ...current, name: event.target.value }))} placeholder={`e.g. ${terminology.primaryEntity} data protection policy`} value={policyDraft.name} />
           </label>
           <label className="text-sm font-medium">
             Policy type
@@ -806,7 +809,7 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
           <div className="grid gap-3 md:grid-cols-2">
           <label className="text-sm font-medium md:col-span-2">
             Record type
-            <Input className="mt-2" onChange={(event) => setRetentionDraft((current) => ({ ...current, recordType: event.target.value }))} placeholder="e.g. beneficiary, submission, consent" value={retentionDraft.recordType} />
+            <Input className="mt-2" onChange={(event) => setRetentionDraft((current) => ({ ...current, recordType: event.target.value }))} placeholder={`e.g. ${primaryEntityLower}, submission, consent`} value={retentionDraft.recordType} />
           </label>
           <label className="text-sm font-medium">
             Retention years
