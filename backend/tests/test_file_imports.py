@@ -99,3 +99,35 @@ def test_parse_shapefile_zip_upload() -> None:
     assert "name" in columns
     assert rows[0]["name"] == "Bali farm"
     assert rows[0]["geometry"]["type"] == "Point"
+
+
+def test_import_routes_geometry_to_polygon_and_gps_questions() -> None:
+    from app.schemas.collection import FormSchema
+    from app.services.collection import _form_import_issues_for_row, _imported_geometry
+
+    schema = FormSchema.model_validate(
+        {
+            "sections": [
+                {
+                    "id": "s1",
+                    "title": "Boundary",
+                    "fields": [
+                        {"id": "q_boundary", "variable_name": "boundary", "type": "polygon", "label": "Farm boundary"},
+                        {"id": "q_loc", "variable_name": "location", "type": "gps", "label": "Location"},
+                    ],
+                }
+            ]
+        }
+    )
+
+    polygon_row = {"name": "Plot A", "geometry": {"type": "Polygon", "coordinates": [[[0, 0], [0, 1], [1, 1], [0, 0]]]}}
+    responses, _ = _form_import_issues_for_row(
+        row_number=1, row=polygon_row, schema=schema, geometry=_imported_geometry(polygon_row)
+    )
+    assert responses["boundary"] == polygon_row["geometry"]
+
+    point_row = {"geometry": {"type": "Point", "coordinates": [10.0, 5.0]}}
+    responses2, _ = _form_import_issues_for_row(
+        row_number=1, row=point_row, schema=schema, geometry=_imported_geometry(point_row)
+    )
+    assert responses2["location"] == {"latitude": 5.0, "longitude": 10.0}

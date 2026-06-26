@@ -412,11 +412,37 @@ def _parse_import_complex_value(field: FormField, value: object) -> object:
     return parsed
 
 
+def _imported_geometry(row: dict[str, object]) -> dict[str, object] | None:
+    """A GeoJSON geometry parsed from a GeoJSON/KML/Shapefile upload lands under a `geometry` key."""
+    for key, value in row.items():
+        if _normalized_import_header(key) == "geometry" and isinstance(value, dict) and value.get("type") in {"Point", "Polygon"}:
+            return value
+    return None
+
+
+def _geometry_value_for_field(field: FormField, geometry: dict[str, object] | None) -> object | None:
+    """Routes an imported geometry to the matching question: a Polygon to a polygon field, a Point
+    to a GPS/location field. Returns the answer value, or None when it does not apply."""
+    if geometry is None:
+        return None
+    if field.type == "polygon" and geometry.get("type") == "Polygon":
+        return geometry
+    if field.type in {"gps", "geolocation", "map", "geofence"} and geometry.get("type") == "Point":
+        coords = geometry.get("coordinates")
+        if isinstance(coords, list) and len(coords) >= 2:
+            try:
+                return {"latitude": float(coords[1]), "longitude": float(coords[0])}
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
 def _form_import_issues_for_row(
     *,
     row_number: int,
     row: dict[str, object],
     schema: FormSchema,
+    geometry: dict[str, object] | None = None,
 ) -> tuple[dict[str, object], list[FormDataImportIssue]]:
     responses: dict[str, object] = {}
     issues: list[FormDataImportIssue] = []
@@ -426,6 +452,10 @@ def _form_import_issues_for_row(
             has_column, value = _import_value_for_field(row, field)
             if has_column and not _is_blank(value):
                 responses[field_key] = _parse_import_complex_value(field, value)
+                continue
+            geometry_value = _geometry_value_for_field(field, geometry)
+            if geometry_value is not None:
+                responses[field_key] = geometry_value
                 continue
             issue_type = "missing_value" if has_column else "missing_column"
             severity = "warning" if field.required else "info"
@@ -2518,13 +2548,24 @@ class SubmissionService:
         for row_number, raw_row in enumerate(payload.rows, start=1):
             row = {str(key).strip(): value for key, value in raw_row.items() if str(key).strip()}
             normalized_row = {_normalized_import_header(key): value for key, value in row.items()}
-            responses, row_issues = _form_import_issues_for_row(row_number=row_number, row=row, schema=schema)
+            geometry = _imported_geometry(row)
+            responses, row_issues = _form_import_issues_for_row(
+                row_number=row_number, row=row, schema=schema, geometry=geometry
+            )
 
             submitted_at = _parse_import_datetime(normalized_row.get("submitted_at"), now)
             captured_at = _parse_import_datetime(normalized_row.get("captured_at"), submitted_at)
             location_captured_at = _parse_import_datetime(normalized_row.get("location_captured_at"), captured_at)
             latitude = _parse_import_float(normalized_row.get("latitude"))
             longitude = _parse_import_float(normalized_row.get("longitude"))
+            # Derive the record's GPS fix from an imported point when no lat/long columns were given.
+            if not latitude and not longitude and isinstance(geometry, dict) and geometry.get("type") == "Point":
+                coords = geometry.get("coordinates")
+                if isinstance(coords, list) and len(coords) >= 2:
+                    try:
+                        latitude, longitude = float(coords[1]), float(coords[0])
+                    except (TypeError, ValueError):
+                        pass
             accuracy = (
                 _parse_import_float(normalized_row.get("accuracy"))
                 if normalized_row.get("accuracy") not in (None, "")
