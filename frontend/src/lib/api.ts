@@ -4415,6 +4415,7 @@ export type FormExportCapabilities = {
   has_points: boolean;
   has_polygons: boolean;
   has_media: boolean;
+  statuses: string[];
   formats: ExportFormatOption[];
 };
 

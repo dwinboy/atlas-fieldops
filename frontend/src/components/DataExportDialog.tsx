@@ -35,6 +35,7 @@ export function DataExportDialog({
   onClose: () => void;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState("");
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState("");
 
@@ -52,7 +53,7 @@ export function DataExportDialog({
     setDownloading(true);
     setError("");
     try {
-      await downloadFormExport(token, formId, selected);
+      await downloadFormExport(token, formId, selected, statusFilter || undefined);
       onClose();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Export failed. Try again.");
@@ -83,6 +84,24 @@ export function DataExportDialog({
               {capabilities.has_polygons ? <Badge tone="accent">Boundaries</Badge> : null}
               {capabilities.has_media ? <Badge tone="accent">Media files</Badge> : null}
             </div>
+
+            {capabilities.statuses.length > 1 ? (
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                Scope:
+                <select
+                  className="rounded-lg border bg-background px-2 py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+                  onChange={(event) => setStatusFilter(event.target.value)}
+                  value={statusFilter}
+                >
+                  <option value="">All statuses</option>
+                  {capabilities.statuses.map((status) => (
+                    <option key={status} value={status}>
+                      {status.replace(/_/g, " ")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
 
             {KIND_GROUPS.map((group) => {
               const groupFormats = formats.filter((format) => format.kind === group.kind);

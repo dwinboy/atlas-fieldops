@@ -82,6 +82,7 @@ async def test_capabilities_are_data_aware() -> None:
     assert caps["has_polygons"] is True
     assert caps["has_points"] is True
     assert caps["has_media"] is True
+    assert caps["statuses"] == ["approved"]
     by_id = {fmt["id"]: fmt for fmt in caps["formats"]}
     assert by_id["csv"]["available"] and by_id["xlsx"]["available"] and by_id["json"]["available"]
     assert by_id["geojson"]["available"] and by_id["kml"]["available"]

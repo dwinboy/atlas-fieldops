@@ -291,6 +291,7 @@ class DataExportService:
             "has_points": has_points,
             "has_polygons": has_polygons,
             "has_media": has_media,
+            "statuses": sorted({submission.status for submission in submissions}),
             "formats": formats,
         }
 
