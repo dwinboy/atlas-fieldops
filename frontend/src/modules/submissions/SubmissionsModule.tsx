@@ -19,7 +19,9 @@ import {
   History,
   Link2,
   MapPin,
+  Maximize2,
   MessageSquareWarning,
+  Minimize2,
   Paperclip,
   RotateCcw,
   Save,
@@ -31,6 +33,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { createPortal } from "react-dom";
 import type { ReactNode } from "react";
 import { useContextualBack } from "@/hooks/useContextualBack";
 import { useEffect, useMemo, useState } from "react";
@@ -2646,6 +2649,21 @@ function DataExplorerSection({
   const requestedView = searchParams.get("view") ?? DATA_EXPLORER_MAIN_VIEW;
   const [selectedFormId, setSelectedFormId] = useState(requestedFormId);
   const [activeView, setActiveView] = useState(requestedView);
+  const [explorerFullscreen, setExplorerFullscreen] = useState(false);
+
+  useEffect(() => {
+    if (!explorerFullscreen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExplorerFullscreen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [explorerFullscreen]);
   const dataExplorerForms = useMemo(() => {
     if (forms.length) return forms;
     const byId = new Map<string, Pick<DataFormRead, "id" | "name">>();
@@ -2816,7 +2834,21 @@ function DataExplorerSection({
     updateExplorerRoute(selectedFormId, nextView);
   }
 
-  return (
+  const content = (
+    <>
+      {explorerFullscreen ? (
+        <div
+          aria-hidden="true"
+          className="fixed inset-0 z-40 bg-foreground/30 backdrop-blur-sm"
+          onClick={() => setExplorerFullscreen(false)}
+        />
+      ) : null}
+      <div
+        className={cn(
+          explorerFullscreen &&
+            "fixed inset-2 z-50 flex flex-col overflow-auto rounded-2xl border bg-background p-3 shadow-2xl sm:inset-4",
+        )}
+      >
     <Panel
       action={
         <div className="flex flex-wrap items-center gap-2">
@@ -2836,6 +2868,14 @@ function DataExplorerSection({
           >
             <Download aria-hidden="true" />
             Export CSV
+          </Button>
+          <Button
+            onClick={() => setExplorerFullscreen((value) => !value)}
+            size="icon"
+            title={explorerFullscreen ? "Exit full screen" : "Open full screen"}
+            variant="ghost"
+          >
+            {explorerFullscreen ? <Minimize2 aria-hidden="true" /> : <Maximize2 aria-hidden="true" />}
           </Button>
         </div>
       }
@@ -2996,7 +3036,13 @@ function DataExplorerSection({
         </div>
       )}
     </Panel>
+      </div>
+    </>
   );
+
+  return explorerFullscreen && typeof document !== "undefined"
+    ? createPortal(content, document.body)
+    : content;
 }
 
 function ResponseEditor({
