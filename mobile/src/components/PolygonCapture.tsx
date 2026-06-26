@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, Polygon as SvgPolygon } from "react-native-svg";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
@@ -18,12 +18,96 @@ export function PolygonCapture({ value, onChange, required = false, minVertices 
   const [editing, setEditing] = useState(false);
   const [vertexCount, setVertexCount] = useState(0);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [walking, setWalking] = useState(false);
+  const [autoTrace, setAutoTrace] = useState(true);
+  const [intervalSec, setIntervalSec] = useState(10);
   const webviewRef = useRef<WebView>(null);
-  const { capture } = useGPS();
+  const { capture, watchPosition } = useGPS();
+  const watchSubRef = useRef<{ remove: () => void } | null>(null);
+  const lastFixRef = useRef<{ latitude: number; longitude: number } | null>(null);
+  const lastDropRef = useRef(0);
+  // Read latest auto-trace settings inside the long-lived watch callback.
+  const autoTraceRef = useRef(autoTrace);
+  const intervalRef = useRef(intervalSec);
+  autoTraceRef.current = autoTrace;
+  intervalRef.current = intervalSec;
 
   function sendCommand(command: PolygonMapCommand) {
     webviewRef.current?.injectJavaScript(`window.dispatchMapCommand(${JSON.stringify(command)}); true;`);
   }
+
+  function stopWalking() {
+    watchSubRef.current?.remove();
+    watchSubRef.current = null;
+    setWalking(false);
+  }
+
+  async function startWalking() {
+    if (watchSubRef.current) return;
+    lastDropRef.current = 0;
+    const subscription = await watchPosition(
+      (fix) => {
+        lastFixRef.current = { latitude: fix.latitude, longitude: fix.longitude };
+        sendCommand({
+          type: "setLocation",
+          latitude: fix.latitude,
+          longitude: fix.longitude,
+          accuracy: fix.accuracy,
+          recenter: true,
+        });
+        if (autoTraceRef.current) {
+          const now = Date.now();
+          if (now - lastDropRef.current >= intervalRef.current * 1000) {
+            lastDropRef.current = now;
+            sendCommand({ type: "addPoint", latitude: fix.latitude, longitude: fix.longitude });
+          }
+        }
+      },
+      { timeInterval: 2000, distanceInterval: 1 },
+    );
+    if (subscription) {
+      watchSubRef.current = subscription;
+      setMapError(null);
+      setWalking(true);
+    } else {
+      setMapError("Location permission is needed to walk the boundary.");
+    }
+  }
+
+  function toggleWalking() {
+    if (walking) {
+      stopWalking();
+    } else {
+      void startWalking();
+    }
+  }
+
+  async function addPointNow() {
+    const fix = lastFixRef.current;
+    if (fix) {
+      lastDropRef.current = Date.now();
+      sendCommand({ type: "addPoint", latitude: fix.latitude, longitude: fix.longitude });
+      return;
+    }
+    const gps = await capture();
+    if (gps) {
+      lastDropRef.current = Date.now();
+      sendCommand({ type: "addPoint", latitude: gps.latitude, longitude: gps.longitude });
+    }
+  }
+
+  // Always release the GPS watch when the editor closes or the component unmounts.
+  useEffect(() => {
+    if (!editing && watchSubRef.current) {
+      watchSubRef.current.remove();
+      watchSubRef.current = null;
+      setWalking(false);
+    }
+    return () => {
+      watchSubRef.current?.remove();
+      watchSubRef.current = null;
+    };
+  }, [editing]);
 
   function startEditing() {
     setMapError(null);
@@ -77,8 +161,47 @@ export function PolygonCapture({ value, onChange, required = false, minVertices 
             style={styles.webview}
           />
         </View>
+        <View style={styles.walkPanel}>
+          <View style={styles.walkRow}>
+            <Pressable onPress={toggleWalking} style={[styles.walkButton, walking ? styles.walkButtonActive : null]}>
+              <Text style={[styles.walkButtonText, walking ? styles.walkButtonTextActive : null]}>
+                {walking ? "■ Stop walking" : "▶ Walk boundary"}
+              </Text>
+            </Pressable>
+            <Pressable onPress={() => void addPointNow()} style={styles.secondaryButton}>
+              <Text style={styles.secondaryButtonText}>Add point here</Text>
+            </Pressable>
+          </View>
+          {walking ? (
+            <View style={styles.walkRow}>
+              <Pressable
+                onPress={() => setAutoTrace((current) => !current)}
+                style={[styles.toggleChip, autoTrace ? styles.toggleChipActive : null]}
+              >
+                <Text style={[styles.toggleChipText, autoTrace ? styles.toggleChipTextActive : null]}>
+                  {autoTrace ? "Auto-trace on" : "Auto-trace off"}
+                </Text>
+              </Pressable>
+              {[5, 10, 30].map((sec) => (
+                <Pressable
+                  key={sec}
+                  onPress={() => setIntervalSec(sec)}
+                  style={[styles.intervalChip, intervalSec === sec ? styles.intervalChipActive : null]}
+                >
+                  <Text style={[styles.intervalChipText, intervalSec === sec ? styles.intervalChipTextActive : null]}>
+                    {sec}s
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+        </View>
         <Text style={styles.helperText}>
-          Tap the map to add points ({vertexCount} added, {minVertices} minimum). Tap "Done" to close the shape.
+          {walking
+            ? autoTrace
+              ? `Walking the boundary — a point drops automatically every ${intervalSec}s. Tap "Add point here" at sharp corners. ${vertexCount} added.`
+              : `Walking — tap "Add point here" at each corner. ${vertexCount} added.`
+            : `Walk the boundary with GPS, tap the map, or add points manually (${vertexCount} added, ${minVertices} minimum). Tap "Done" to close the shape.`}
         </Text>
         {mapError && (
           <View style={styles.errorCard}>
@@ -175,6 +298,74 @@ const styles = StyleSheet.create({
   helperText: {
     color: "#49635a",
     fontSize: 12,
+  },
+  walkPanel: {
+    gap: 8,
+  },
+  walkRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  walkButton: {
+    backgroundColor: "#12332b",
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  walkButtonActive: {
+    backgroundColor: "#b42318",
+  },
+  walkButtonText: {
+    color: "white",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  walkButtonTextActive: {
+    color: "white",
+  },
+  toggleChip: {
+    backgroundColor: "#f0f5f3",
+    borderColor: "#dbe7e2",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  toggleChipActive: {
+    backgroundColor: "#dcfce7",
+    borderColor: "#86efac",
+  },
+  toggleChipText: {
+    color: "#49635a",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  toggleChipTextActive: {
+    color: "#15803d",
+  },
+  intervalChip: {
+    backgroundColor: "#f0f5f3",
+    borderColor: "#dbe7e2",
+    borderRadius: 999,
+    borderWidth: 1,
+    minWidth: 40,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  intervalChipActive: {
+    backgroundColor: "#12332b",
+    borderColor: "#12332b",
+  },
+  intervalChipText: {
+    color: "#49635a",
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  intervalChipTextActive: {
+    color: "white",
   },
   errorCard: {
     backgroundColor: "#fee2e2",

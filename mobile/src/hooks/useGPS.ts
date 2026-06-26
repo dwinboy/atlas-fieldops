@@ -68,5 +68,40 @@ export function useGPS() {
     setState({ status: "idle", result: null, error: null, isCapturing: false });
   }, []);
 
-  return { ...state, capture, reset };
+  const watchPosition = useCallback(
+    async (
+      onUpdate: (result: GPSResult) => void,
+      options?: { timeInterval?: number; distanceInterval?: number },
+    ): Promise<Location.LocationSubscription | null> => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        setState((s) => ({
+          ...s,
+          status: "denied",
+          error: "Location permission was denied. Enable it in your device settings.",
+        }));
+        return null;
+      }
+      return Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.High,
+          timeInterval: options?.timeInterval ?? 3000,
+          distanceInterval: options?.distanceInterval ?? 0,
+        },
+        (location) => {
+          onUpdate({
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            altitude: location.coords.altitude ?? null,
+            accuracy: location.coords.accuracy ?? null,
+            timestamp: new Date(location.timestamp).toISOString(),
+            source: "GPS",
+          });
+        },
+      );
+    },
+    [],
+  );
+
+  return { ...state, capture, watchPosition, reset };
 }

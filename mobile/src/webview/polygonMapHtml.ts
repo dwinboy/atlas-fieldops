@@ -7,6 +7,14 @@ export type PolygonMapCommand =
       existingPolygon?: number[][][] | null;
       minVertices?: number;
     }
+  | { type: "addPoint"; latitude: number; longitude: number }
+  | {
+      type: "setLocation";
+      latitude: number;
+      longitude: number;
+      accuracy?: number | null;
+      recenter?: boolean;
+    }
   | { type: "undo" }
   | { type: "clear" }
   | { type: "close" };
@@ -69,10 +77,43 @@ export function buildPolygonMapHtml(): string {
     <script>
       var map = L.map("map", { zoomControl: true, attributionControl: false }).setView([0, 0], 3);
 
+      // Real basemap imagery so the boundary is drawn over actual terrain/roads (online).
+      // Offline, tiles simply fail to load and the captured shape still renders.
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        crossOrigin: true,
+      }).addTo(map);
+
       var vertices = [];
       var markers = [];
       var shapeLayer = null;
       var minVertices = 3;
+      var locationMarker = null;
+      var accuracyCircle = null;
+
+      function setLocation(lat, lng, accuracy, recenter) {
+        var latlng = [lat, lng];
+        if (!locationMarker) {
+          locationMarker = L.circleMarker(latlng, {
+            radius: 7, color: "#ffffff", weight: 2, fillColor: "#2563eb", fillOpacity: 1,
+          }).addTo(map);
+        } else {
+          locationMarker.setLatLng(latlng);
+        }
+        if (typeof accuracy === "number" && accuracy > 0) {
+          if (!accuracyCircle) {
+            accuracyCircle = L.circle(latlng, {
+              radius: accuracy, color: "#3b82f6", weight: 1, fillColor: "#3b82f6", fillOpacity: 0.08,
+            }).addTo(map);
+          } else {
+            accuracyCircle.setLatLng(latlng);
+            accuracyCircle.setRadius(accuracy);
+          }
+        }
+        if (recenter) {
+          map.setView(latlng, Math.max(map.getZoom(), 17));
+        }
+      }
 
       var VERTEX_STYLE = { radius: 6, color: "#12332b", weight: 2, fillColor: "#ffffff", fillOpacity: 1 };
       var SHAPE_STYLE = { color: "#12332b", weight: 2, fillColor: "#12332b", fillOpacity: 0.15 };
@@ -152,6 +193,10 @@ export function buildPolygonMapHtml(): string {
           } else if (command.center) {
             map.setView([command.center.latitude, command.center.longitude], 16);
           }
+        } else if (command.type === "addPoint") {
+          addVertex({ lat: command.latitude, lng: command.longitude });
+        } else if (command.type === "setLocation") {
+          setLocation(command.latitude, command.longitude, command.accuracy, command.recenter);
         } else if (command.type === "undo") {
           undo();
         } else if (command.type === "clear") {
