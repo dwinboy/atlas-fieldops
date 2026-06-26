@@ -15,10 +15,20 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AuthService } from "@/auth/authService";
+import { MobileApiError } from "@/api/httpClient";
 import { ExpoSecureSessionStore } from "@/auth/expoSecureSessionStore.native";
 import { Button, Card, Input } from "@/components/ui";
 import { useAppContext } from "@/context/AppContext";
 import { colors, fontFamily, radii, spacing, tone, typography } from "@/theme";
+
+/** First sign-in always needs the network (it authenticates and downloads assigned work),
+ * so a connectivity failure gets specific guidance instead of a generic "login failed". */
+function loginErrorMessage(err: unknown): string {
+  if (err instanceof MobileApiError && err.status === 0) {
+    return "You appear to be offline. Connect to Wi-Fi or mobile data and sign in once — this downloads your assigned forms and records so you can then collect data offline in the field.";
+  }
+  return err instanceof Error ? err.message : "Login failed. Check credentials and try again.";
+}
 
 const authService = new AuthService(new ExpoSecureSessionStore());
 const atlasLogo = require("../assets/atlas-fieldops-logo.png");
@@ -37,12 +47,13 @@ function messageIsError(message: string) {
     "could not",
     "expired",
     "check credentials",
+    "offline",
   ].some((term) => normalized.includes(term));
 }
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { setSession } = useAppContext();
+  const { setSession, isOnline } = useAppContext();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -65,7 +76,7 @@ export default function LoginScreen() {
       setSession(s);
       router.replace("/(tabs)/home");
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Login failed. Check credentials and try again.");
+      setMessage(loginErrorMessage(err));
     } finally {
       setIsLoading(false);
     }
@@ -85,7 +96,13 @@ export default function LoginScreen() {
       router.replace("/(tabs)/home");
     } catch (err) {
       setQrScanned(false);
-      setMessage(err instanceof Error ? err.message : "QR login failed. Ask your supervisor to confirm your account is active.");
+      setMessage(
+        err instanceof MobileApiError && err.status === 0
+          ? loginErrorMessage(err)
+          : err instanceof Error
+            ? err.message
+            : "QR login failed. Ask your supervisor to confirm your account is active.",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -118,6 +135,15 @@ export default function LoginScreen() {
               <Text style={styles.subtitle}>Sign in to access your assigned field work.</Text>
             </View>
           </View>
+
+          {!isOnline ? (
+            <View style={[styles.messageBanner, styles.offlineBanner]}>
+              <Text style={[styles.messageText, { color: tone("warning").fg }]}>
+                You're offline. Connect to Wi-Fi or mobile data to sign in. Your first sign-in needs
+                internet to download your assignments — after that you can collect data offline.
+              </Text>
+            </View>
+          ) : null}
 
           <Card padding="lg" style={{ gap: spacing.md }}>
             <View style={styles.modeSwitch}>
@@ -221,6 +247,7 @@ export default function LoginScreen() {
           ) : null}
 
           <Text style={styles.footerHint}>
+            Sign in once with internet to download your assigned work, then collect offline in the field.
             Contact your supervisor for your organization code and credentials.
           </Text>
         </ScrollView>
@@ -272,6 +299,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginTop: spacing.lg,
     padding: spacing.md,
+  },
+  offlineBanner: {
+    backgroundColor: tone("warning").bg,
+    borderColor: tone("warning").border,
+    marginBottom: spacing.md,
+    marginTop: spacing.md,
   },
   messageText: {
     ...typography.body,

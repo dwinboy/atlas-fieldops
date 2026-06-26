@@ -1,12 +1,38 @@
 import { Tabs, useRouter } from "expo-router";
 import { Bell, ClipboardList, FileText, Home, RefreshCw, Send } from "lucide-react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import { IconButton, Logo } from "@/components/ui";
+import { useAppContext } from "@/context/AppContext";
+import { localDatabase } from "@/storage/localDatabase";
 import { colors, fontFamily, spacing, typography } from "@/theme";
 
-export default function TabsLayout() {
+/** Header bell with an unread badge so field officers notice returned-for-correction
+ * submissions and supervisor messages without opening the notifications screen. */
+function NotificationBell() {
   const router = useRouter();
+  const { refreshKey } = useAppContext();
+  // refreshKey is read so the badge recomputes after a sync or a read/unread change.
+  void refreshKey;
+  const unreadCount = localDatabase.notifications.list().filter((notification) => !notification.readAt).length;
+  return (
+    <View style={styles.bellWrap}>
+      <IconButton
+        icon={Bell}
+        accessibilityLabel={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
+        color={colors.primary}
+        onPress={() => router.push("/notifications")}
+      />
+      {unreadCount > 0 ? (
+        <View pointerEvents="none" style={styles.badge}>
+          <Text style={styles.badgeText}>{unreadCount > 9 ? "9+" : unreadCount}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
 
+export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
@@ -27,15 +53,7 @@ export default function TabsLayout() {
         tabBarInactiveTintColor: colors.mutedForeground,
         tabBarLabelStyle: { ...typography.micro, fontFamily: fontFamily.medium, fontWeight: "500" },
         headerLeft: () => <Logo size={28} style={{ marginLeft: spacing.lg }} />,
-        headerRight: () => (
-          <IconButton
-            icon={Bell}
-            accessibilityLabel="Notifications"
-            color={colors.primary}
-            onPress={() => router.push("/notifications")}
-            style={{ marginRight: 8 }}
-          />
-        ),
+        headerRight: () => <NotificationBell />,
       }}
     >
       <Tabs.Screen
@@ -76,3 +94,29 @@ export default function TabsLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  badge: {
+    alignItems: "center",
+    backgroundColor: colors.danger,
+    borderRadius: 999,
+    height: 16,
+    justifyContent: "center",
+    minWidth: 16,
+    paddingHorizontal: 3,
+    position: "absolute",
+    right: 2,
+    top: 2,
+  },
+  badgeText: {
+    color: "#ffffff",
+    fontFamily: fontFamily.semibold,
+    fontSize: 10,
+    fontWeight: "700",
+    lineHeight: 13,
+  },
+  bellWrap: {
+    marginRight: 8,
+    position: "relative",
+  },
+});

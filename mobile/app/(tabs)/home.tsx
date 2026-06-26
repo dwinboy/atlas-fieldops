@@ -6,11 +6,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Button, Card } from "@/components/ui";
 import { useAppContext } from "@/context/AppContext";
 import { localDatabase } from "@/storage/localDatabase";
-import { colors, fontFamily, radii, spacing, typography } from "@/theme";
+import { colors, fontFamily, radii, spacing, tone, typography } from "@/theme";
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { session, refreshKey, isSyncing, lastSyncMessage, syncWork, syncQueue } = useAppContext();
+  const { session, refreshKey, isSyncing, isOnline, lastSyncMessage, syncWork, syncQueue } = useAppContext();
 
   if (!session) {
     router.replace("/login");
@@ -29,6 +29,17 @@ export default function HomeScreen() {
   const queueCount = localDatabase.syncQueue.list().filter((q) => q.status === "Queued" || q.status === "Failed").length;
   const failedCount = localDatabase.syncQueue.list().filter((q) => q.status === "Failed").length;
   const entityCount = localDatabase.entities.list().length;
+  const formCount = localDatabase.forms.list().length;
+  const referenceListCount = localDatabase.referenceLists.list().length;
+  // Everything needed to collect offline is downloaded once assigned work + a usable form exist.
+  const offlineReady = readyCount > 0 || (formCount > 0 && assignments.length > 0);
+  const lastSyncedAt =
+    localDatabase.syncLogs
+      .list()
+      .map((log) => log.completedAt)
+      .filter((value): value is string => Boolean(value))
+      .sort()
+      .at(-1) ?? null;
   const syncedToday = localDatabase.draftSubmissions.list().filter(
     (d) => d.status === "Synced" && d.updatedAt?.startsWith(new Date().toISOString().slice(0, 10)),
   ).length;
@@ -74,6 +85,27 @@ export default function HomeScreen() {
             Good {greeting()}, {firstName(userName)}
           </Text>
           <Text style={styles.orgName}>{orgName}</Text>
+        </View>
+
+        <View style={[styles.readinessCard, offlineReady ? styles.readinessReady : styles.readinessWarn]}>
+          <View style={styles.readinessHeader}>
+            <Text style={[styles.readinessTitle, offlineReady ? styles.readinessTitleReady : styles.readinessTitleWarn]}>
+              {offlineReady ? "✓ Ready for offline use" : "Connect and sync before the field"}
+            </Text>
+            <View style={[styles.netChip, isOnline ? styles.netChipOnline : styles.netChipOffline]}>
+              <Text style={[styles.netChipText, isOnline ? styles.netChipTextOnline : styles.netChipTextOffline]}>
+                {isOnline ? "Online" : "Offline"}
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.readinessBody}>
+            {offlineReady
+              ? `${formCount} form${formCount === 1 ? "" : "s"} · ${assignments.length} assignment${assignments.length === 1 ? "" : "s"} · ${entityCount} record${entityCount === 1 ? "" : "s"}${referenceListCount > 0 ? ` · ${referenceListCount} option list${referenceListCount === 1 ? "" : "s"}` : ""} saved to this device. You can collect without a connection — submissions upload when you reconnect.`
+              : "No assigned work is downloaded yet. Connect to Wi-Fi or mobile data and run a full sync so your forms and records are available offline in the field."}
+          </Text>
+          <Text style={styles.readinessSync}>
+            {lastSyncedAt ? `Last synced ${relativeTime(lastSyncedAt)}` : "Not synced yet"}
+          </Text>
         </View>
 
         <Card tone="primary" padding="lg" style={{ gap: spacing.md }}>
@@ -185,6 +217,18 @@ function firstName(name: string) {
   return name.split(" ")[0] ?? name;
 }
 
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "recently";
+  const minutes = Math.round((Date.now() - then) / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
 const styles = StyleSheet.create({
   actionSubtitle: {
     ...typography.small,
@@ -255,6 +299,66 @@ const styles = StyleSheet.create({
   orgName: {
     ...typography.body,
     color: colors.mutedForeground,
+  },
+  netChip: {
+    borderRadius: radii.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+  },
+  netChipOffline: {
+    backgroundColor: tone("warning").bg,
+  },
+  netChipOnline: {
+    backgroundColor: tone("success").bg,
+  },
+  netChipText: {
+    ...typography.micro,
+    fontFamily: fontFamily.semibold,
+    fontWeight: "600",
+  },
+  netChipTextOffline: {
+    color: tone("warning").fg,
+  },
+  netChipTextOnline: {
+    color: tone("success").fg,
+  },
+  readinessBody: {
+    ...typography.small,
+    color: colors.foreground,
+    marginTop: spacing.xs,
+  },
+  readinessCard: {
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    padding: spacing.md,
+  },
+  readinessHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  readinessReady: {
+    backgroundColor: tone("success").bg,
+    borderColor: tone("success").border,
+  },
+  readinessSync: {
+    ...typography.micro,
+    color: colors.mutedForeground,
+    marginTop: spacing.xs,
+  },
+  readinessTitle: {
+    ...typography.headingSm,
+    fontFamily: fontFamily.semibold,
+  },
+  readinessTitleReady: {
+    color: tone("success").fg,
+  },
+  readinessTitleWarn: {
+    color: tone("warning").fg,
+  },
+  readinessWarn: {
+    backgroundColor: tone("warning").bg,
+    borderColor: tone("warning").border,
   },
   quickActionsTitle: {
     ...typography.headingSm,
