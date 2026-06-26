@@ -177,7 +177,7 @@ export function DataTable<T>({
             Showing {filteredRows.length} of {rows.length}
           </p>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex items-center gap-2">
           <label className="relative w-full sm:min-w-64">
             <span className="sr-only">{searchLabel}</span>
             <Search
@@ -186,21 +186,25 @@ export function DataTable<T>({
               size={15}
             />
             <Input
-              className="h-8 pl-9 text-xs"
+              className={cn("h-8 pl-9 text-xs", query && "pr-8")}
               placeholder={searchLabel}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
+            {query ? (
+              <button
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+                onClick={() => setQuery("")}
+                type="button"
+              >
+                <X aria-hidden="true" size={14} />
+              </button>
+            ) : null}
           </label>
-          {query ? (
-            <Button size="sm" variant="secondary" onClick={() => setQuery("")}>
-              <X aria-hidden="true" />
-              Clear
-            </Button>
-          ) : null}
           <Button
             aria-label={isFullscreen ? "Exit full screen" : "Open full screen"}
-            className="shrink-0"
+            className="h-8 w-8 shrink-0 px-0"
             onClick={() => setIsFullscreen((value) => !value)}
             size="sm"
             title={isFullscreen ? "Exit full screen" : "Open full screen"}
