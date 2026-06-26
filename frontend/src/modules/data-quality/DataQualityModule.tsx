@@ -33,7 +33,7 @@ import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Textarea } from "@/components/ui/input";
-import { Modal } from "@/components/ui/modal";
+import { Modal, ModalBody, ModalFooter } from "@/components/ui/modal";
 import {
   bulkUpdateImportCleaningRows,
   confirmImportedFormDataRows,
@@ -719,7 +719,7 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
         open={proposalReviewOpen}
         title={proposalReviewDraft.action === "approve" ? "Approve profile update" : "Reject profile update"}
       >
-        <div className="space-y-3">
+        <ModalBody className="space-y-3">
           <div className="rounded-lg border bg-background p-3 text-sm">
             <p className="font-medium">{proposalReviewDraft.entityName || "Profile conflict decision"}</p>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -735,8 +735,9 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
             </div>
           ) : null}
           <label className="block text-sm font-medium">
-            Decision comment
+            Decision comment <span aria-hidden="true" className="text-danger">*</span>
             <Textarea
+              aria-invalid={proposalReviewDraft.comment.trim().length < 3}
               className="mt-2"
               placeholder={
                 proposalReviewDraft.action === "approve"
@@ -748,8 +749,8 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
               onChange={(event) => setProposalReviewDraft((current) => ({ ...current, comment: event.target.value }))}
             />
           </label>
-        </div>
-        <div className="mt-4 flex justify-end gap-2">
+        </ModalBody>
+        <ModalFooter>
           <Button onClick={() => setProposalReviewOpen(false)} variant="secondary">Cancel</Button>
           <Button
             disabled={preview || reviewProposalMutation.isPending || proposalReviewDraft.comment.trim().length < 3}
@@ -762,7 +763,7 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
                 ? "Approve update"
                 : "Reject update"}
           </Button>
-        </div>
+        </ModalFooter>
       </Modal>
     </section>
   );

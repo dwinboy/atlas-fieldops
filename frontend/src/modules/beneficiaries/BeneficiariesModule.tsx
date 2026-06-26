@@ -1200,7 +1200,7 @@ export function BeneficiariesModule({
         open={proposalReviewOpen}
         title={proposalReviewDraft.action === "approve" ? "Approve profile update" : "Reject profile update"}
       >
-        <div className="space-y-3">
+        <ModalBody className="space-y-3">
           <div className="rounded-lg border bg-background p-3 text-sm">
             <p className="font-medium">{proposalReviewDraft.entityName || "Selected entity"}</p>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -1208,8 +1208,9 @@ export function BeneficiariesModule({
             </p>
           </div>
           <label className="block text-sm font-medium">
-            Review comment
+            Review comment <span aria-hidden="true" className="text-danger">*</span>
             <Textarea
+              aria-invalid={proposalReviewDraft.comment.trim().length < 3}
               className="mt-2"
               placeholder={
                 proposalReviewDraft.action === "approve"
@@ -1221,8 +1222,8 @@ export function BeneficiariesModule({
               onChange={(event) => setProposalReviewDraft((current) => ({ ...current, comment: event.target.value }))}
             />
           </label>
-        </div>
-        <div className="mt-4 flex justify-end gap-2">
+        </ModalBody>
+        <ModalFooter>
           <Button onClick={() => setProposalReviewOpen(false)} variant="secondary">Cancel</Button>
           <Button
             disabled={!managerAccess || preview || proposalReviewMutation.isPending || proposalReviewDraft.comment.trim().length < 3}
@@ -1235,7 +1236,7 @@ export function BeneficiariesModule({
                 ? "Approve update"
                 : "Reject update"}
           </Button>
-        </div>
+        </ModalFooter>
       </Modal>
     </section>
   );
