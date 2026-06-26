@@ -393,6 +393,38 @@ function LookupQuestion({
   return <SearchableOptionList multi={false} onChange={answer} options={options} value={value} />;
 }
 
+/** Date/date-time field that pre-fills today on first open when the question is set to default
+ * to today. The default is applied once and the officer can still change it. */
+function DefaultableDate({
+  question,
+  value,
+  answer,
+}: {
+  question: MobileQuestion;
+  value: unknown;
+  answer: (v: unknown) => void;
+}) {
+  useEffect(() => {
+    const empty = value === null || value === undefined || value === "";
+    const wantsToday = question.validationRules.some(
+      (rule) => rule.ruleType === "Custom" && rule.value === "defaultToday:true",
+    );
+    if (empty && wantsToday) {
+      const today = new Date().toISOString().slice(0, 10);
+      answer(question.type === "DateTime" ? `${today} 00:00` : today);
+    }
+    // Apply once on mount only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <DateTimeField
+      mode={question.type === "DateTime" ? "datetime" : "date"}
+      onChange={(next) => answer(next)}
+      value={String(value ?? "")}
+    />
+  );
+}
+
 function renderInput(
   question: MobileQuestion,
   value: unknown,
@@ -565,13 +597,7 @@ function renderInput(
 
   // ── Date / DateTime ───────────────────────────────────────────────────────
   if (type === "Date" || type === "DateTime") {
-    return (
-      <DateTimeField
-        mode={type === "DateTime" ? "datetime" : "date"}
-        value={String(value ?? "")}
-        onChange={(next) => answer(next)}
-      />
-    );
+    return <DefaultableDate answer={answer} question={question} value={value} />;
   }
 
   // ── Time ─────────────────────────────────────────────────────────────────
@@ -1010,7 +1036,10 @@ function CountDrivenRepeatGroup({
       );
       answer([...rows, ...additions]);
     } else {
-      answer(rows.slice(0, desired));
+      // Count decreased: only drop trailing rows that have no answers, so entered data is never lost.
+      let end = rows.length;
+      while (end > desired && isRepeatRowEmpty(rows[end - 1], fields)) end -= 1;
+      if (end !== rows.length) answer(rows.slice(0, end));
     }
     // Re-sync only when the source count changes — not on every row edit (which would loop).
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1375,6 +1404,10 @@ function setRepeatFieldValue(row: Record<string, unknown>, field: MobileQuestion
   if (field.variableName && field.variableName !== field.id && field.variableName in row) {
     row[field.variableName] = value;
   }
+}
+
+function isRepeatRowEmpty(row: Record<string, unknown>, fields: MobileQuestion[]): boolean {
+  return fields.every((field) => !hasRepeatFieldAnswer(row[field.id] ?? row[field.variableName], field.type));
 }
 
 function hasRepeatFieldAnswer(value: unknown, questionType: MobileQuestion["type"]): boolean {

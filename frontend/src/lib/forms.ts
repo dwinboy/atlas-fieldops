@@ -99,6 +99,8 @@ export type FormField = {
     /** Number questions: limit decimal places and show a unit (e.g. kg, ha, %). */
     decimalPlaces?: number;
     unit?: string;
+    /** Date questions: pre-fill today's date when the question is first opened. */
+    defaultToday?: boolean;
   };
   logic?: LogicRule[];
   appearance?: {

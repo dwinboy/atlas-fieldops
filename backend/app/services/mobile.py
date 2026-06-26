@@ -427,6 +427,8 @@ def _validation_rules(field: dict[str, Any]) -> list[dict[str, Any]]:
                             "severity": "Block",
                         }
                     )
+            if bool(validation.get("defaultToday")):
+                rules.append({"ruleType": "Custom", "value": "defaultToday:true", "message": "", "severity": "Info"})
     if field_type == "polygon":
         polygon_config = _as_dict(field.get("polygon"))
         min_vertices = polygon_config.get("minVertices", 3)
