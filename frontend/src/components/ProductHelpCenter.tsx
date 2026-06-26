@@ -920,6 +920,51 @@ const helpTopics: HelpTopic[] = [
     ],
   },
   {
+    id: "data-export",
+    title: "Export data to other platforms",
+    purpose:
+      "Download a form's submissions in the format another platform needs — spreadsheets for analysis, or GIS formats for mapping tools — with all answers, locations, boundaries, and media references included.",
+    audience: "Data manager",
+    view: "forms",
+    icon: Download,
+    whenToUse:
+      "Use this when you need to analyze data in Excel, hand it to a GIS team (QGIS, ArcGIS, Google Earth), or move it into a partner or donor system.",
+    beforeYouStart: [
+      "Open the form whose data you want to export, or pick the form in the Submissions data explorer.",
+      "Make sure the submissions you need are approved or visible in your current view.",
+    ],
+    steps: [
+      "Open the form and choose Export data, or in Submissions open the data explorer, select the form, and choose More formats.",
+      "The dialog shows what the data contains — number of submissions, and whether it has GPS points, boundaries, or media.",
+      "Pick a format. Table formats (CSV, Excel, JSON) are always available; map formats (GeoJSON, KML, Shapefile) and GPS formats (GPX) appear only when the data has locations or boundaries.",
+      "Read the short hint under each format to choose the right one for your target tool.",
+      "Select the format and choose Download; the file is prepared and saved to your device.",
+    ],
+    dataLanguage: [
+      "CSV / Excel — spreadsheets",
+      "JSON — structured records",
+      "GeoJSON / KML — maps and GIS",
+      "Shapefile (.zip) — classic GIS",
+      "GPX — GPS devices",
+      "Media references — photo/audio/file URLs",
+    ],
+    goodPractice: [
+      "Use GeoJSON or KML when you need both the map shape and the answer attributes together.",
+      "Use Shapefile when the receiving GIS team specifically asks for it; points and boundaries arrive as separate layers in the zip.",
+      "Open CSV or Excel in a spreadsheet; the geometry travels in a geometry column so nothing is lost.",
+    ],
+    avoid: [
+      "Do not expect map formats when the form collected no GPS or boundary data — they will be greyed out with the reason shown.",
+      "Do not treat exported media URLs as permanent public links; access still follows your platform permissions.",
+    ],
+    result:
+      "A clean, well-structured file in the chosen format, ready to open in the destination platform with attributes and geometry intact.",
+    nextActions: [
+      { label: "Open forms", view: "forms" },
+      { label: "Review submissions", view: "submissions" },
+    ],
+  },
+  {
     id: "indicators",
     title: "Track metrics and indicators",
     purpose:
