@@ -61,6 +61,7 @@ import {
 import type { EntityHierarchyRead } from "@/lib/api";
 import { formatSubmissionId } from "@/lib/identifiers";
 import { useSectorTerminology } from "@/lib/sectorTerminology";
+import { DataExportDialog } from "@/components/DataExportDialog";
 import { cn } from "@/lib/utils";
 import {
   submissionSectionFromPath,
@@ -2726,6 +2727,7 @@ function DataExplorerSection({
   const [selectedFormId, setSelectedFormId] = useState(requestedFormId);
   const [activeView, setActiveView] = useState(requestedView);
   const [explorerFullscreen, setExplorerFullscreen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
 
   useEffect(() => {
     if (!explorerFullscreen) return;
@@ -2946,6 +2948,15 @@ function DataExplorerSection({
             Export CSV
           </Button>
           <Button
+            disabled={preview || !selectedFormId}
+            onClick={() => setExportOpen(true)}
+            size="sm"
+            variant="secondary"
+            title="Export to Excel, GeoJSON, KML, GPX, Shapefile, and more"
+          >
+            More formats
+          </Button>
+          <Button
             onClick={() => setExplorerFullscreen((value) => !value)}
             size="icon"
             title={explorerFullscreen ? "Exit full screen" : "Open full screen"}
@@ -2957,6 +2968,13 @@ function DataExplorerSection({
       }
       title="Field data by form"
     >
+      <DataExportDialog
+        token={token}
+        formId={selectedFormId || null}
+        formName={dataExplorerForms.find((form) => form.id === selectedFormId)?.name}
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+      />
       {!selectedFormId ? (
         <EmptyMini label="Select a form to view its collected data." />
       ) : formSchemaQuery.isLoading ? (
