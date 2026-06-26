@@ -112,12 +112,22 @@ export class AuthService {
   async currentSession(): Promise<MobileSession | null> {
     const session = await this.store.load();
     if (!session) return null;
+
+    // An explicitly blocked account is the only reason to drop the session locally.
+    if (session.bootstrap.blockedState.blocked) {
+      await this.store.clear();
+      return null;
+    }
+
     const expiresAt = session.expiresAt ? new Date(session.expiresAt).getTime() : null;
-    if (expiresAt && expiresAt <= Date.now() + 60_000) {
-      if (!session.refreshToken) {
-        await this.store.clear();
-        return null;
-      }
+    const nearExpiry = expiresAt !== null && expiresAt <= Date.now() + 60_000;
+
+    // Best-effort token refresh when near/past expiry. Crucially, a failed refresh (no
+    // network, transient server error, or a missing refresh token) must NOT log the field
+    // officer out — that strands returned-for-correction work offline and is the cause of
+    // the "tap to correct → logged out" bug. We keep the existing session; the server still
+    // enforces token validity on every request, and sync refreshes/retries when back online.
+    if (nearExpiry && session.refreshToken) {
       try {
         const token = await this.apis.auth.refresh(session.refreshToken);
         const refreshed: MobileSession = {
@@ -129,18 +139,10 @@ export class AuthService {
         await this.store.save(refreshed);
         return refreshed;
       } catch {
-        await this.store.clear();
-        return null;
+        return session;
       }
     }
-    if (expiresAt && expiresAt <= Date.now()) {
-      await this.store.clear();
-      return null;
-    }
-    if (session.bootstrap.blockedState.blocked) {
-      await this.store.clear();
-      return null;
-    }
+
     return session;
   }
 
