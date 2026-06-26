@@ -152,6 +152,9 @@ export type FormField = {
   };
   variableName?: string;
   children?: FormField[];
+  /** Per-language overrides for label/hint/options, keyed by language name (e.g. "French").
+   * The base label/hint/options are the form's default language. */
+  translations?: Record<string, { label?: string; hint?: string; options?: string[] }>;
 };
 
 export type FormPage = {
@@ -186,6 +189,8 @@ export type DynamicForm = {
   fields: FormField[];
   history?: FormVersionHistory[];
   updatedAt: string;
+  /** Extra languages this form is translated into (the first/base language is the default). */
+  languages?: string[];
 };
 
 export type MobileDeployment = {
@@ -244,6 +249,7 @@ type ExportedSchemaField = {
   lookup?: FormField["lookup"];
   media?: FormField["media"];
   gps?: FormField["gps"];
+  translations?: FormField["translations"];
   children: ExportedSchemaField[];
 };
 
@@ -782,6 +788,7 @@ export function toMobileSchema(form: DynamicForm) {
       lookup: field.lookup,
       media: field.media,
       gps: field.gps,
+      translations: field.translations,
       children: (field.children ?? []).map((child) => exportField(child)),
     };
   };
@@ -790,6 +797,7 @@ export function toMobileSchema(form: DynamicForm) {
     name: normalized.name,
     version: normalized.version,
     language: "en",
+    languages: normalized.languages ?? [],
     offline_compatible: true,
     pages: defaultPages(normalized).map((page) => ({
       id: page.id,

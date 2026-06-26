@@ -404,6 +404,8 @@ export type MobileQuestion = {
     addButtonLabel: string | null;
     countFromVariable?: string | null;
   } | null;
+  /** Per-language overrides keyed by language name; base label/helpText are the default language. */
+  translations?: Record<string, { label?: string; hint?: string; options?: string[] }> | null;
   order: number;
 };
 

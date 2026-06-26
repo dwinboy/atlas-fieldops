@@ -86,6 +86,20 @@ export default function FormFillScreen() {
     [formVersion],
   );
 
+  // Languages a field officer can switch between — derived from the questions' translations.
+  const availableLanguages = useMemo<string[]>(() => {
+    const set = new Set<string>();
+    for (const section of formVersion?.sections ?? []) {
+      for (const question of section.questions ?? []) {
+        if (question.translations) {
+          for (const language of Object.keys(question.translations)) set.add(language);
+        }
+      }
+    }
+    return Array.from(set);
+  }, [formVersion]);
+  const [activeLanguage, setActiveLanguage] = useState<string>("");
+
   const currentSection = sections[sectionIndex] ?? null;
 
   const currentQuestions: MobileQuestion[] = useMemo(
@@ -523,6 +537,36 @@ export default function FormFillScreen() {
         </View>
       ) : null}
 
+      {availableLanguages.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 8, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}
+        >
+          {["", ...availableLanguages].map((language) => {
+            const selected = activeLanguage === language;
+            return (
+              <Pressable
+                key={language || "default"}
+                onPress={() => setActiveLanguage(language)}
+                style={{
+                  backgroundColor: selected ? colors.primary : colors.panel,
+                  borderColor: selected ? colors.primary : colors.border,
+                  borderRadius: radii.full,
+                  borderWidth: 1,
+                  paddingHorizontal: spacing.md,
+                  paddingVertical: 6,
+                }}
+              >
+                <Text style={{ color: selected ? colors.primaryForeground : colors.mutedForeground, fontSize: 12, fontWeight: "700" }}>
+                  {language || "Default"}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+
       {submitAttempted && sectionIssues.filter((i) => i.severity === "Error").length > 0 ? (
         <Card tone="danger" padding="md" style={styles.sectionErrorCard}>
           <AlertTriangle size={16} color={tone("danger").fg} />
@@ -552,6 +596,7 @@ export default function FormFillScreen() {
                 visible={visible}
                 allResponses={allResponses}
                 referenceLists={referenceLists}
+                activeLanguage={activeLanguage}
               />
             );
           })

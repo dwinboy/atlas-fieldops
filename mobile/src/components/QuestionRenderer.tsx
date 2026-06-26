@@ -47,7 +47,21 @@ type QuestionRendererProps = {
   visible?: boolean;
   allResponses?: Map<string, unknown>;
   referenceLists?: MobileReferenceList[];
+  /** Active language name; when it matches a question translation, the label/hint are localized. */
+  activeLanguage?: string;
 };
+
+/** Resolves a question's label and help text for the active language, falling back to the base text. */
+export function localizedQuestionText(
+  question: MobileQuestion,
+  activeLanguage?: string,
+): { label: string; helpText: string | null } {
+  const translation = activeLanguage && question.translations ? question.translations[activeLanguage] : undefined;
+  return {
+    label: translation?.label?.trim() ? translation.label : question.label,
+    helpText: translation?.hint?.trim() ? translation.hint : question.helpText,
+  };
+}
 
 export function QuestionRenderer({
   question,
@@ -57,8 +71,11 @@ export function QuestionRenderer({
   visible = true,
   allResponses,
   referenceLists,
+  activeLanguage,
 }: QuestionRendererProps) {
   if (!visible || question.type === "Hidden") return null;
+
+  const localized = localizedQuestionText(question, activeLanguage);
 
   const hasError = issues.some((i) => i.questionId === question.id && i.severity === "Error");
   const hasWarning = issues.some((i) => i.questionId === question.id && i.severity === "Warning");
@@ -88,14 +105,14 @@ export function QuestionRenderer({
       <View style={{ gap: 4 }}>
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }}>
           <Text style={{ color: "#12332b", fontWeight: "800", fontSize: 15, flex: 1 }}>
-            {question.label}
+            {localized.label}
           </Text>
           {question.required && (
             <Text style={{ color: "#b42318", fontWeight: "800", marginTop: 2 }}>*</Text>
           )}
         </View>
-        {question.helpText ? (
-          <Text style={{ color: "#49635a", fontSize: 13 }}>{question.helpText}</Text>
+        {localized.helpText ? (
+          <Text style={{ color: "#49635a", fontSize: 13 }}>{localized.helpText}</Text>
         ) : null}
         <QuestionControlHints question={question} />
       </View>

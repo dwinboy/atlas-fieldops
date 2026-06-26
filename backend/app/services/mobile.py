@@ -697,6 +697,7 @@ def _build_question_field(
         "privacyControls": privacy_controls,
         "mobileControls": _field_mobile_controls(field),
         "governanceControls": _field_governance_controls(field),
+        "translations": field.get("translations") if isinstance(field.get("translations"), dict) else None,
         "order": order,
     }
 

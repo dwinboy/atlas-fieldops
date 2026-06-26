@@ -1247,6 +1247,91 @@ function RepeatChildrenEditor({
   );
 }
 
+/** Authors per-language label/hint for a question. Languages are shared across the form (the
+ * union of every field's translations); adding one here makes it available on all questions. */
+function FieldTranslationsEditor({
+  field,
+  formLanguages,
+  onChange,
+  onAddLanguage,
+}: {
+  field: FormField;
+  formLanguages: string[];
+  onChange: (translations: NonNullable<FormField["translations"]>) => void;
+  onAddLanguage: (language: string) => void;
+}) {
+  const translations = field.translations ?? {};
+  const [newLanguage, setNewLanguage] = useState("");
+
+  function patch(language: string, key: "label" | "hint", value: string) {
+    onChange({
+      ...translations,
+      [language]: { ...translations[language], [key]: value || undefined },
+    });
+  }
+
+  return (
+    <section className="rounded-md border bg-background p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold">Translations</p>
+        <HelpHint label="About translations" title="Translations">
+          The base label/help text is the form&apos;s default language. Add translated text per
+          language; field officers switch language on the mobile app while collecting.
+        </HelpHint>
+      </div>
+      {formLanguages.length === 0 ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          No additional languages yet. Add one (e.g. French, Swahili) to translate this question.
+        </p>
+      ) : (
+        <div className="mt-3 space-y-3">
+          {formLanguages.map((language) => (
+            <div className="rounded-md border p-2" key={language}>
+              <p className="text-xs font-semibold text-muted-foreground">{language}</p>
+              <Input
+                aria-label={`${language} label`}
+                className="mt-2"
+                onChange={(event) => patch(language, "label", event.target.value)}
+                placeholder={`Label in ${language}`}
+                value={translations[language]?.label ?? ""}
+              />
+              <Input
+                aria-label={`${language} help text`}
+                className="mt-2"
+                onChange={(event) => patch(language, "hint", event.target.value)}
+                placeholder={`Help text in ${language} (optional)`}
+                value={translations[language]?.hint ?? ""}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Input
+          aria-label="New language name"
+          className="max-w-[200px]"
+          onChange={(event) => setNewLanguage(event.target.value)}
+          placeholder="Add a language (e.g. French)"
+          value={newLanguage}
+        />
+        <Button
+          disabled={!newLanguage.trim() || formLanguages.includes(newLanguage.trim())}
+          onClick={() => {
+            onAddLanguage(newLanguage.trim());
+            setNewLanguage("");
+          }}
+          size="sm"
+          type="button"
+          variant="secondary"
+        >
+          <Plus aria-hidden="true" size={14} />
+          Add language
+        </Button>
+      </div>
+    </section>
+  );
+}
+
 function ChoiceOptionsEditor({
   onChange,
   options,
@@ -14318,6 +14403,22 @@ export function DynamicForms({
                           </span>
                         </label>
                       ) : null}
+                      <FieldTranslationsEditor
+                        field={selectedField}
+                        formLanguages={Array.from(
+                          new Set(selectedForm.fields.flatMap((candidate) => Object.keys(candidate.translations ?? {}))),
+                        )}
+                        onAddLanguage={(language) =>
+                          updateSelectedForm(
+                            updateField(selectedForm, selectedField.id, {
+                              translations: { ...(selectedField.translations ?? {}), [language]: { label: "" } },
+                            }),
+                          )
+                        }
+                        onChange={(translations) =>
+                          updateSelectedForm(updateField(selectedForm, selectedField.id, { translations }))
+                        }
+                      />
                     </div>
                   ) : null}
 
