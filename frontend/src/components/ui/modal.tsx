@@ -53,3 +53,43 @@ export function Modal({
     </Dialog.Root>
   );
 }
+
+/**
+ * Scrollable, consistently-padded modal body. Use inside <Modal> so content never sits
+ * flush against the dialog edges and long forms scroll instead of clipping. Opt-in: the
+ * Modal primitive renders children as-is, so existing custom/full-bleed modals are
+ * unaffected until migrated.
+ */
+export function ModalBody({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex-1 overflow-y-auto px-5 py-4 product-scrollbar", className)}>
+      {children}
+    </div>
+  );
+}
+
+/** Sticky, bordered, padded footer for modal actions. Sits below the scrollable body. */
+export function ModalFooter({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex shrink-0 items-center justify-end gap-2 border-t bg-panel px-5 py-3",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}

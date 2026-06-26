@@ -26,7 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
-import { Modal } from "@/components/ui/modal";
+import { Modal, ModalBody, ModalFooter } from "@/components/ui/modal";
 import {
   createEntityRelationship,
   createBeneficiary,
@@ -1088,7 +1088,7 @@ export function BeneficiariesModule({
         open={editOpen}
         title="Edit entity profile"
       >
-        <div className="max-h-[70vh] space-y-5 overflow-y-auto px-5 py-4 product-scrollbar">
+        <ModalBody className="space-y-5">
           {editingEntity ? (
             <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-xs">
               <span className="font-mono font-semibold text-foreground">{editingEntity.entityId}</span>
@@ -1167,8 +1167,8 @@ export function BeneficiariesModule({
               Recorded in the audit trail. The entity ID never changes when you edit the profile.
             </p>
           </section>
-        </div>
-        <div className="flex items-center justify-between gap-3 border-t bg-panel px-5 py-3">
+        </ModalBody>
+        <ModalFooter className="justify-between">
           <p className="min-w-0 truncate text-xs text-muted-foreground">{editValidationHint}</p>
           <div className="flex shrink-0 gap-2">
             <Button onClick={() => setEditOpen(false)} variant="secondary">Cancel</Button>
@@ -1180,7 +1180,7 @@ export function BeneficiariesModule({
               {updateEntityMutation.isPending ? "Saving…" : "Save correction"}
             </Button>
           </div>
-        </div>
+        </ModalFooter>
       </Modal>
       <Modal
         contentClassName="max-w-lg"
@@ -2233,7 +2233,7 @@ function MergeBeneficiariesModal({
       open={open}
       title="Merge duplicate entities"
     >
-      <div className="space-y-4">
+      <ModalBody className="space-y-4">
         {preview ? (
           <div className="rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
             Preview data can show the workflow, but merging requires a signed-in tenant account with entity management permission.
@@ -2287,15 +2287,15 @@ function MergeBeneficiariesModal({
         <div className="rounded-xl border bg-muted/40 p-3 text-sm text-muted-foreground">
           Merging never hard-deletes an entity. Linked submissions and quality signals move to the master record, the duplicate remains traceable, and the reason is stored for audit.
         </div>
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button onClick={() => onOpenChange(false)} type="button" variant="secondary">
-            Cancel
-          </Button>
-          <Button disabled={!canSubmit} onClick={onSubmit} type="button" variant="primary">
-            {saving ? "Merging..." : "Merge records"}
-          </Button>
-        </div>
-      </div>
+      </ModalBody>
+      <ModalFooter>
+        <Button onClick={() => onOpenChange(false)} type="button" variant="secondary">
+          Cancel
+        </Button>
+        <Button disabled={!canSubmit} onClick={onSubmit} type="button" variant="primary">
+          {saving ? "Merging..." : "Merge records"}
+        </Button>
+      </ModalFooter>
     </Modal>
   );
 }
@@ -2399,7 +2399,7 @@ function RegisterEntityModal({
       open={open}
       title="Register entity"
     >
-      <div className="max-h-[70vh] space-y-4 overflow-y-auto product-scrollbar pr-1">
+      <ModalBody className="space-y-4">
         {preview ? (
           <div className="rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
             Preview data can show the workflow, but registering a new entity requires a signed-in tenant account with entity management permission.
@@ -2628,15 +2628,15 @@ function RegisterEntityModal({
             </p>
           </div>
         ) : null}
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button onClick={() => onOpenChange(false)} type="button" variant="secondary">
-            Cancel
-          </Button>
-          <Button disabled={!canSubmit} onClick={onSubmit} type="button" variant="primary">
-            {saving ? "Registering..." : "Register entity"}
-          </Button>
-        </div>
-      </div>
+      </ModalBody>
+      <ModalFooter>
+        <Button onClick={() => onOpenChange(false)} type="button" variant="secondary">
+          Cancel
+        </Button>
+        <Button disabled={!canSubmit} onClick={onSubmit} type="button" variant="primary">
+          {saving ? "Registering..." : "Register entity"}
+        </Button>
+      </ModalFooter>
     </Modal>
   );
 }
