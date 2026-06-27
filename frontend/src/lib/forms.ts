@@ -56,7 +56,8 @@ export type FieldType =
   | "counter"
   | "date_range"
   | "measurement"
-  | "constant_sum";
+  | "constant_sum"
+  | "slider";
 
 /** A single row filter applied to a dataset- or record-backed selection. `fromVariable` makes the
  * filter dynamic — it compares against another question's answer (the basis for cascading lookups).
@@ -156,6 +157,8 @@ export type FormField = {
     unit?: string;
     /** Date questions: pre-fill today's date when the question is first opened. */
     defaultToday?: boolean;
+    /** Slider questions: increment between notches (e.g. 1, 5, 0.5). */
+    step?: number;
   };
   logic?: LogicRule[];
   appearance?: {
@@ -405,6 +408,7 @@ export const fieldCatalog: {
       { type: "textarea", label: "Long text", description: "Narrative notes and observations" },
       { type: "number", label: "Number", description: "Integer values and counts" },
       { type: "counter", label: "Counter / tally", description: "Tap − / + to count quickly" },
+      { type: "slider", label: "Slider / scale", description: "Drag along a scale (min–max)" },
       { type: "percentage", label: "Percentage", description: "0–100 with a % sign" },
       { type: "measurement", label: "Measurement", description: "A number plus a unit (kg, ha…)" },
       { type: "email", label: "Email", description: "Validated email capture" },
@@ -552,6 +556,7 @@ export const fieldTypeHelp: Record<FieldType, string> = {
   date_range: "A period with a start and end date in one question (e.g. a project or absence period).",
   measurement: "A number plus a chosen unit (kg/lb, ha/acre, m/ft) so officers record the unit they used.",
   constant_sum: "Distribute a fixed total (e.g. 100 points) across options — for priorities or budget shares.",
+  slider: "Drag a handle along a scale to pick a number between a minimum and maximum (set the step for finer or coarser answers).",
 };
 
 const choiceFieldTypes: FieldType[] = ["select", "dropdown", "multiselect", "radio", "checkbox", "ranking", "likert", "yes_no", "constant_sum"];
@@ -563,7 +568,7 @@ const shapeFieldTypes: FieldType[] = ["polygon", "path"];
 const displayOnlyFieldTypes: FieldType[] = ["article", "auto_id", "hidden"];
 
 /** Question types that capture a numeric answer. */
-const numericFieldTypes: FieldType[] = ["number", "decimal", "currency", "rating", "nps", "percentage", "counter", "measurement"];
+const numericFieldTypes: FieldType[] = ["number", "decimal", "currency", "rating", "nps", "percentage", "counter", "measurement", "slider"];
 /** Numeric types that can carry a fractional part (so decimal-places / unit make sense). */
 const decimalFieldTypes: FieldType[] = ["decimal", "currency", "measurement"];
 /** Question types whose answer is free text (so length / pattern make sense). */
@@ -764,7 +769,9 @@ export function createField(type: FieldType, sectionId: string, pageId?: string)
             ? { min: 0, integerOnly: true }
             : type === "constant_sum"
               ? { max: 100 }
-              : undefined,
+              : type === "slider"
+                ? { min: 0, max: 100, step: 1 }
+                : undefined,
     appearance: { width: "full" },
     matrix: ["matrix_single", "matrix_multi", "grid"].includes(type)
       ? { rows: ["Row 1", "Row 2", "Row 3"], columns: ["Option 1", "Option 2", "Option 3"] }
@@ -1254,7 +1261,8 @@ function toXlsType(field: FormField, listName = fieldVariableName(field)): strin
     counter: "integer",
     date_range: "text",
     measurement: "decimal",
-    constant_sum: "text"
+    constant_sum: "text",
+    slider: "range"
   };
   return typeMap[field.type];
 }

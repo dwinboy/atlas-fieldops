@@ -196,6 +196,7 @@ def _mobile_question_type(value: str) -> str:
         "date_range": "Text",
         "measurement": "Text",
         "constant_sum": "Text",
+        "slider": "Number",
     }.get(value.lower(), "Text")
 
 
@@ -488,6 +489,9 @@ def _validation_rules(field: dict[str, Any]) -> list[dict[str, Any]]:
         if field_type in {"number", "decimal", "currency"} and validation.get("unit"):
             # Display-only hint (the unit shown next to the input); never blocks submission.
             rules.append({"ruleType": "Custom", "value": f"unit:{validation['unit']}", "message": "", "severity": "Info"})
+        if field_type == "slider" and validation.get("step") is not None:
+            # Drives the slider's notch size on the app; not a blocking constraint.
+            rules.append({"ruleType": "Custom", "value": f"step:{validation['step']}", "message": "", "severity": "Info"})
         if field_type in {"multiselect", "checkbox"}:
             for source, label in (("minSelections", "at least"), ("maxSelections", "at most")):
                 if validation.get(source) is not None:
@@ -833,6 +837,7 @@ def _build_question_field(
             "date_range": ["date-range"],
             "measurement": ["measurement"],
             "constant_sum": ["constant-sum"],
+            "slider": ["slider"],
         }.get(raw_type, [])
     )
     read_only = bool(field.get("readOnly", False)) or raw_type in {"article", "auto_id"}

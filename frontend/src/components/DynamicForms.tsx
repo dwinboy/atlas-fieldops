@@ -218,6 +218,7 @@ const fieldTypeIcons: Record<FieldType, typeof Type> = {
   date_range: Calendar,
   measurement: SlidersHorizontal,
   constant_sum: SlidersHorizontal,
+  slider: SlidersHorizontal,
 };
 
 function asSettingsRecord(value: unknown): Record<string, unknown> {
@@ -13388,7 +13389,7 @@ export function DynamicForms({
                                   </label>
                                 </div>
                               ) : null}
-                              {["number", "decimal", "currency", "rating", "nps"].includes(selectedField.type) ? (
+                              {["number", "decimal", "currency", "rating", "nps", "slider", "percentage", "counter", "measurement"].includes(selectedField.type) ? (
                                 <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                                   <label className="text-sm font-semibold">
                                     Minimum
@@ -13412,6 +13413,25 @@ export function DynamicForms({
                                       value={selectedField.validation?.max ?? ""}
                                     />
                                   </label>
+                                  {selectedField.type === "slider" ? (
+                                    <label className="text-sm font-semibold">
+                                      <span className="inline-flex items-center gap-1.5">
+                                        Step
+                                        <HelpHint label="About slider step" title="Step">
+                                          How far the slider moves per notch (e.g. 1, 5, or 0.5). Smaller steps allow finer answers.
+                                        </HelpHint>
+                                      </span>
+                                      <Input
+                                        className="mt-2"
+                                        min={0}
+                                        onChange={(event) =>
+                                          updateSelectedFieldValidation({ step: event.target.value === "" ? undefined : Number(event.target.value) })
+                                        }
+                                        type="number"
+                                        value={selectedField.validation?.step ?? ""}
+                                      />
+                                    </label>
+                                  ) : null}
                                   {["decimal", "currency"].includes(selectedField.type) ? (
                                     <>
                                       <label className="text-sm font-semibold">

@@ -159,5 +159,10 @@ describe("question response type changes", () => {
     const constantSum = typeChangePatchForField(baseField, "constant_sum");
     expect(constantSum).toMatchObject({ type: "constant_sum", validation: { max: 100 } });
     expect(constantSum.options).toEqual(["Option 1", "Option 2", "Option 3"]);
+
+    expect(typeChangePatchForField(baseField, "slider")).toMatchObject({
+      type: "slider",
+      validation: { min: 0, max: 100, step: 1 },
+    });
   });
 });

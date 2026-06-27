@@ -249,6 +249,22 @@ def test_mobile_question_type_maps_new_response_types() -> None:
     assert _mobile_question_type("date_range") == "Text"
     assert _mobile_question_type("measurement") == "Text"
     assert _mobile_question_type("constant_sum") == "Text"
+    assert _mobile_question_type("slider") == "Number"
+
+
+def test_build_question_field_slider_carries_step_and_bounds() -> None:
+    question = _build_question_field(
+        {"id": "score", "label": "Confidence", "type": "slider", "validation": {"min": 0, "max": 10, "step": 0.5}},
+        field_id="score",
+        section_id="main",
+        order=1,
+    )
+
+    assert "slider" in question["metadataTags"]
+    bounds = {rule["ruleType"]: rule["value"] for rule in question["validationRules"] if rule["ruleType"] in {"Min", "Max"}}
+    assert bounds.get("Min") == 0
+    assert bounds.get("Max") == 10
+    assert "step:0.5" in {rule["value"] for rule in question["validationRules"] if rule["ruleType"] == "Custom"}
 
 
 def test_build_question_field_tags_specialised_response_types() -> None:

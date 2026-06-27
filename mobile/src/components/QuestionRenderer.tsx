@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  type LayoutChangeEvent,
+  PanResponder,
   Pressable,
   ScrollView,
   Text,
@@ -887,6 +889,104 @@ function ConstantSumField({
   );
 }
 
+/** Slider / scale: drag a handle (or tap −/+) to pick a number between min and max, snapped to step. */
+function SliderField({
+  question,
+  value,
+  answer,
+}: {
+  question: MobileQuestion;
+  value: unknown;
+  answer: (v: unknown) => void;
+}) {
+  const min = numericRule(question, "min:") ?? 0;
+  const max = numericRule(question, "max:") ?? 100;
+  const step = (numericRule(question, "step:") ?? 1) || 1;
+  const parsed = typeof value === "number" ? value : Number(value);
+  const hasValue = Number.isFinite(parsed);
+  const safeValue = hasValue ? Math.min(max, Math.max(min, parsed)) : min;
+  const [trackWidth, setTrackWidth] = useState(0);
+
+  // The PanResponder is created once but must read the latest geometry/answer, so funnel through a ref.
+  const stateRef = useRef({ min, max, step, trackWidth, answer });
+  stateRef.current = { min, max, step, trackWidth, answer };
+
+  const snap = (raw: number): number => {
+    const live = stateRef.current;
+    const clamped = Math.min(live.max, Math.max(live.min, raw));
+    const snapped = Math.round((clamped - live.min) / live.step) * live.step + live.min;
+    const decimals = (String(live.step).split(".")[1] ?? "").length;
+    return Number(Math.min(live.max, Math.max(live.min, snapped)).toFixed(decimals));
+  };
+
+  const handleAt = (x: number): void => {
+    const live = stateRef.current;
+    if (live.trackWidth <= 0) return;
+    const ratio = Math.min(1, Math.max(0, x / live.trackWidth));
+    live.answer(snap(live.min + ratio * (live.max - live.min)));
+  };
+
+  const responder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (event) => handleAt(event.nativeEvent.locationX),
+        onPanResponderMove: (event) => handleAt(event.nativeEvent.locationX),
+      }),
+    [],
+  );
+
+  const ratio = max > min ? (safeValue - min) / (max - min) : 0;
+  const fillWidth = trackWidth * ratio;
+  return (
+    <View style={{ gap: 12 }}>
+      <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
+        <Text style={{ color: "#7c948b", fontSize: 12 }}>{min}</Text>
+        <Text style={{ color: "#12695a", fontSize: 22, fontWeight: "800" }}>{hasValue ? safeValue : "—"}</Text>
+        <Text style={{ color: "#7c948b", fontSize: 12 }}>{max}</Text>
+      </View>
+      <View
+        {...responder.panHandlers}
+        onLayout={(event: LayoutChangeEvent) => setTrackWidth(event.nativeEvent.layout.width)}
+        style={{ height: 44, justifyContent: "center" }}
+      >
+        <View style={{ backgroundColor: "#dbe7e2", borderRadius: 4, height: 8 }}>
+          <View style={{ backgroundColor: "#12695a", borderRadius: 4, height: 8, width: fillWidth }} />
+        </View>
+        <View
+          style={{
+            backgroundColor: "white",
+            borderColor: "#12695a",
+            borderRadius: 14,
+            borderWidth: 3,
+            height: 28,
+            left: Math.max(0, Math.min(trackWidth - 28, fillWidth - 14)),
+            position: "absolute",
+            width: 28,
+          }}
+        />
+      </View>
+      <View style={{ flexDirection: "row", gap: 16, justifyContent: "center" }}>
+        <Pressable
+          disabled={safeValue <= min}
+          onPress={() => answer(snap(safeValue - step))}
+          style={{ ...counterButton, opacity: safeValue <= min ? 0.4 : 1 }}
+        >
+          <Text style={counterButtonText}>−</Text>
+        </Pressable>
+        <Pressable
+          disabled={safeValue >= max}
+          onPress={() => answer(snap(safeValue + step))}
+          style={{ ...counterButton, opacity: safeValue >= max ? 0.4 : 1 }}
+        >
+          <Text style={counterButtonText}>+</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 function renderInput(
   question: MobileQuestion,
   value: unknown,
@@ -930,6 +1030,9 @@ function renderInput(
   }
   if (tags.includes("constant-sum")) {
     return <ConstantSumField answer={answer} question={question} value={value} />;
+  }
+  if (tags.includes("slider")) {
+    return <SliderField answer={answer} question={question} value={value} />;
   }
 
   // ── GPS ──────────────────────────────────────────────────────────────────

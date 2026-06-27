@@ -334,6 +334,7 @@ class FormSchema(BaseModel):
             "date_range",
             "measurement",
             "constant_sum",
+            "slider",
         }
         def validate_fields(fields: list[FormField]) -> None:
             for field in fields:
