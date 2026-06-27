@@ -12,6 +12,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.permissions import canonical_role
+from app.field_types import field_behavior_tags, mobile_input_mode, mobile_runtime_type
 from app.models.administration import PlatformReferenceList, PlatformReferenceValue
 from app.models.collection import DataForm, DataFormVersion, FieldOfficerProfile, FieldWorkAssignment, MobileNotification, OfficerAssignment, Project
 from app.models.collection import Submission
@@ -139,65 +140,7 @@ def _review_status(submission_status: str) -> str:
 
 
 def _mobile_question_type(value: str) -> str:
-    return {
-        "text": "Text",
-        "textarea": "LongText",
-        "number": "Number",
-        "decimal": "Decimal",
-        "currency": "Currency",
-        "date": "Date",
-        "time": "Time",
-        "datetime": "DateTime",
-        "select": "SingleSelect",
-        "radio": "SingleSelect",
-        "dropdown": "Dropdown",
-        "multiselect": "MultiSelect",
-        "checkbox": "MultiSelect",
-        "likert": "SingleSelect",
-        "gps": "GPS",
-        "geolocation": "GPS",
-        "map": "GPS",
-        "geofence": "GPS",
-        "photo": "Photo",
-        "image": "Photo",
-        "audio": "Audio",
-        "video": "Video",
-        "file": "FileUpload",
-        "signature": "Signature",
-        "barcode": "Barcode",
-        "qr": "QRCode",
-        "consent": "Consent",
-        "calculated": "CalculatedField",
-        "repeat_group": "RepeatGroup",
-        "repeatable_group": "RepeatGroup",
-        "subform": "RepeatGroup",
-        "matrix_single": "Matrix",
-        "matrix_multi": "Matrix",
-        "grid": "Matrix",
-        "ranking": "Ranking",
-        "nps": "Nps",
-        "rating": "Rating",
-        "hidden": "Hidden",
-        "polygon": "Polygon",
-        "path": "Polygon",
-        "lookup": "Lookup",
-        "user_select": "Lookup",
-        "org_select": "Lookup",
-        "auto_id": "Text",
-        "month": "Date",
-        "day_of_week": "SingleSelect",
-        "pdf": "FileUpload",
-        "scan_document": "FileUpload",
-        "fingerprint": "Text",
-        "article": "Text",
-        "percentage": "Number",
-        "counter": "Number",
-        "yes_no": "SingleSelect",
-        "date_range": "Text",
-        "measurement": "Text",
-        "constant_sum": "Text",
-        "slider": "Number",
-    }.get(value.lower(), "Text")
+    return mobile_runtime_type(value)
 
 
 def _mobile_selection(field: dict[str, Any], variable_to_id: dict[str, str]) -> dict[str, Any] | None:
@@ -281,11 +224,7 @@ def _mobile_selection(field: dict[str, Any], variable_to_id: dict[str, str]) -> 
 
 
 def _mobile_input_mode(value: str) -> str | None:
-    return {
-        "phone": "phone",
-        "email": "email",
-        "url": "url",
-    }.get(value.lower())
+    return mobile_input_mode(value)
 
 
 def _field_options(options: list[Any]) -> list[dict[str, Any]]:
@@ -820,26 +759,12 @@ def _build_question_field(
             cascading_parent = selection["cascadingParentQuestionId"]
     privacy_controls = _field_privacy_controls(field)
     raw_type = str(field.get("type") or "text").lower()
-    # Display-only / system types render specially on mobile: an `article` is read-only guidance
-    # (no input), and an `auto_id` is a read-only, device-generated reference. We carry the behavior
-    # in metadataTags so the app can branch without inventing new question types.
-    behavior_tags: list[str] = []
-    if raw_type == "article":
-        behavior_tags.append("display-note")
-    if raw_type == "auto_id":
-        behavior_tags.append("auto-id")
+    # The type-driven behaviour tags (display-note for `article`, auto-id, counter/slider/measurement/
+    # date-range/constant-sum, …) come from the field-type registry so the app can branch without the
+    # backend inventing a new runtime type per authoring variant. Validation-driven tags stay inline.
+    behavior_tags: list[str] = field_behavior_tags(raw_type)
     if _as_dict(field.get("validation")).get("warnOnly"):
         behavior_tags.append("validation-warn-only")
-    # Tag the new specialised numeric/structured types so the app renders the right control.
-    behavior_tags.extend(
-        {
-            "counter": ["counter"],
-            "date_range": ["date-range"],
-            "measurement": ["measurement"],
-            "constant_sum": ["constant-sum"],
-            "slider": ["slider"],
-        }.get(raw_type, [])
-    )
     read_only = bool(field.get("readOnly", False)) or raw_type in {"article", "auto_id"}
     return {
         "id": field_id,

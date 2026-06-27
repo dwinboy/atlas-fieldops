@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.field_types import SUPPORTED_FIELD_TYPES
+
 
 class FormStatus(StrEnum):
     DRAFT = "draft"
@@ -273,69 +275,8 @@ class FormSchema(BaseModel):
 
     @model_validator(mode="after")
     def ensure_offline_safe_fields(self) -> "FormSchema":
-        supported = {
-            "text",
-            "textarea",
-            "number",
-            "decimal",
-            "currency",
-            "phone",
-            "email",
-            "url",
-            "password",
-            "select",
-            "dropdown",
-            "multiselect",
-            "radio",
-            "checkbox",
-            "consent",
-            "ranking",
-            "likert",
-            "matrix_single",
-            "matrix_multi",
-            "nps",
-            "rating",
-            "gps",
-            "geolocation",
-            "map",
-            "geofence",
-            "polygon",
-            "photo",
-            "image",
-            "signature",
-            "barcode",
-            "qr",
-            "audio",
-            "video",
-            "file",
-            "date",
-            "time",
-            "datetime",
-            "hidden",
-            "repeat_group",
-            "repeatable_group",
-            "calculated",
-            "grid",
-            "lookup",
-            "subform",
-            "auto_id",
-            "month",
-            "day_of_week",
-            "path",
-            "pdf",
-            "scan_document",
-            "fingerprint",
-            "article",
-            "user_select",
-            "org_select",
-            "percentage",
-            "yes_no",
-            "counter",
-            "date_range",
-            "measurement",
-            "constant_sum",
-            "slider",
-        }
+        # The offline-safe allowlist is the field-type registry's key set (single source of truth).
+        supported = SUPPORTED_FIELD_TYPES
         def validate_fields(fields: list[FormField]) -> None:
             for field in fields:
                 if field.type not in supported:
