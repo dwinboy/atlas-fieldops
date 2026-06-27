@@ -177,7 +177,17 @@ def _mobile_question_type(value: str) -> str:
         "rating": "Rating",
         "hidden": "Hidden",
         "polygon": "Polygon",
+        "path": "Polygon",
         "lookup": "Lookup",
+        "user_select": "Lookup",
+        "org_select": "Lookup",
+        "auto_id": "Text",
+        "month": "Date",
+        "day_of_week": "SingleSelect",
+        "pdf": "FileUpload",
+        "scan_document": "FileUpload",
+        "fingerprint": "Text",
+        "article": "Text",
     }.get(value.lower(), "Text")
 
 

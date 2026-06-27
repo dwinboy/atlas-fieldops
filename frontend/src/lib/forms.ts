@@ -39,7 +39,17 @@ export type FieldType =
   | "calculated"
   | "repeat_group"
   | "grid"
-  | "lookup";
+  | "lookup"
+  | "auto_id"
+  | "month"
+  | "day_of_week"
+  | "path"
+  | "pdf"
+  | "scan_document"
+  | "fingerprint"
+  | "article"
+  | "user_select"
+  | "org_select";
 
 export type LogicRule = {
   id: string;
@@ -292,7 +302,10 @@ export const fieldCatalog: {
       { type: "url", label: "URL", description: "Website or document link" },
       { type: "date", label: "Date", description: "Calendar date capture" },
       { type: "time", label: "Time", description: "Time of day capture" },
-      { type: "datetime", label: "Datetime", description: "Date and time together" }
+      { type: "datetime", label: "Datetime", description: "Date and time together" },
+      { type: "month", label: "Month picker", description: "Pick a month and year" },
+      { type: "day_of_week", label: "Day of week", description: "Pick a weekday (Mon–Sun)" },
+      { type: "auto_id", label: "Auto generated ID", description: "System-generated unique reference" }
     ]
   },
   {
@@ -335,7 +348,9 @@ export const fieldCatalog: {
       { type: "photo", label: "Photo evidence", description: "Offline media queue" },
       { type: "video", label: "Video capture", description: "Record or upload video" },
       { type: "audio", label: "Audio capture", description: "Voice notes and interviews" },
-      { type: "file", label: "File upload", description: "Attach supporting documents" }
+      { type: "file", label: "File upload", description: "Attach supporting documents" },
+      { type: "pdf", label: "PDF file", description: "Attach a PDF document" },
+      { type: "scan_document", label: "Scan document", description: "Scan a paper document with the camera" }
     ]
   },
   {
@@ -345,7 +360,17 @@ export const fieldCatalog: {
       { type: "geolocation", label: "Geolocation", description: "Lat, long, accuracy, timestamp" },
       { type: "map", label: "Map selection", description: "Pick a point from a map" },
       { type: "geofence", label: "Geofence", description: "Validate collection area" },
-      { type: "polygon", label: "Polygon / Boundary", description: "Draw a farm or project boundary on the map" }
+      { type: "polygon", label: "Polygon / Boundary", description: "Draw a farm or project boundary on the map" },
+      { type: "path", label: "Path / Line", description: "Trace a road, river, or route as a line" }
+    ]
+  },
+  {
+    group: "Special inputs",
+    fields: [
+      { type: "fingerprint", label: "Fingerprint", description: "Capture a fingerprint for identity" },
+      { type: "article", label: "Article / Note", description: "Show read-only guidance or content — no answer collected" },
+      { type: "user_select", label: "Users", description: "Pick a user from your organization" },
+      { type: "org_select", label: "Organisation", description: "Pick an organization" }
     ]
   }
 ];
@@ -397,11 +422,25 @@ export const fieldTypeHelp: Record<FieldType, string> = {
   repeat_group: "Repeats a set of questions for each item — household members, crops, assets, or visits — as many times as needed.",
   grid: "A structured table for entering several values in rows and columns.",
   lookup: "Lets the field officer search a list — registered records, categories, or reference data — and pick a value, even offline.",
+  auto_id: "A unique reference number generated automatically for each submission — the officer never types it. Useful as a record ID.",
+  month: "Pick a month and year (no day) — e.g. a reporting period or a month of birth.",
+  day_of_week: "Pick a day of the week (Monday–Sunday) — e.g. a market day or preferred visit day.",
+  path: "Trace a line on the map — a road, river, fence, or walking route. Captures the path and its length.",
+  pdf: "Attach a PDF document to the submission, such as a signed form or report.",
+  scan_document: "Use the camera to scan a paper document into the submission (captured as an image/PDF).",
+  fingerprint: "Capture a fingerprint to confirm a beneficiary's identity (requires a capable device).",
+  article: "Read-only content shown to the officer — instructions, consent text, or guidance. It collects no answer.",
+  user_select: "Pick a user from your organization — e.g. assign a responsible officer or supervisor.",
+  org_select: "Pick an organization — e.g. a partner, implementing agency, or referral body.",
 };
 
 const choiceFieldTypes: FieldType[] = ["select", "dropdown", "multiselect", "radio", "checkbox", "ranking", "likert"];
-const locationFieldTypes: FieldType[] = ["gps", "geolocation", "map", "geofence", "polygon"];
-const mediaFieldTypes: FieldType[] = ["photo", "image", "signature", "audio", "video", "file"];
+const locationFieldTypes: FieldType[] = ["gps", "geolocation", "map", "geofence", "polygon", "path"];
+const mediaFieldTypes: FieldType[] = ["photo", "image", "signature", "audio", "video", "file", "pdf", "scan_document"];
+/** Geometry types drawn as multiple vertices on a map (no single-point GPS metadata). */
+const shapeFieldTypes: FieldType[] = ["polygon", "path"];
+/** Read-only / system question types that collect no validated answer from the officer. */
+const displayOnlyFieldTypes: FieldType[] = ["article", "auto_id", "hidden"];
 
 /** Question types that capture a numeric answer. */
 const numericFieldTypes: FieldType[] = ["number", "decimal", "currency", "rating", "nps"];
@@ -410,7 +449,7 @@ const decimalFieldTypes: FieldType[] = ["decimal", "currency"];
 /** Question types whose answer is free text (so length / pattern make sense). */
 const textFieldTypes: FieldType[] = ["text", "textarea", "email", "url", "phone", "password"];
 /** Question types whose answer is a date/time (so date range / future-past make sense). */
-const dateFieldTypes: FieldType[] = ["date", "time", "datetime"];
+const dateFieldTypes: FieldType[] = ["date", "time", "datetime", "month"];
 /** Choice types where picking more than one answer is possible (so min/max selections apply). */
 const multiSelectFieldTypes: FieldType[] = ["multiselect", "checkbox"];
 
@@ -434,7 +473,26 @@ export type FieldValidationCapabilities = {
   dontKnowRefused: boolean;
 };
 
+const NO_VALIDATION_CAPABILITIES: FieldValidationCapabilities = {
+  numericRange: false,
+  wholeNumberToggle: false,
+  decimals: false,
+  textLength: false,
+  pattern: false,
+  dateRange: false,
+  selections: false,
+  allowOther: false,
+  gpsAccuracy: false,
+  fileLimits: false,
+  uniqueness: false,
+  dontKnowRefused: false,
+};
+
 export function fieldValidationCapabilities(type: FieldType): FieldValidationCapabilities {
+  // Read-only / system questions (article, auto ID, hidden) collect no validated answer.
+  if (displayOnlyFieldTypes.includes(type)) {
+    return { ...NO_VALIDATION_CAPABILITIES };
+  }
   const isNumeric = numericFieldTypes.includes(type);
   const isText = textFieldTypes.includes(type);
   const isDate = dateFieldTypes.includes(type);
@@ -467,11 +525,11 @@ export function logicValueInputForField(field: FormField | undefined): {
   options?: string[];
 } {
   if (!field) return { kind: "text" };
-  if (choiceFieldTypes.includes(field.type)) {
+  if (choiceFieldTypes.includes(field.type) || field.type === "day_of_week") {
     return { kind: "select", options: field.options ?? [] };
   }
   if (numericFieldTypes.includes(field.type)) return { kind: "number" };
-  if (field.type === "date") return { kind: "date" };
+  if (field.type === "date" || field.type === "month") return { kind: "date" };
   if (field.type === "datetime") return { kind: "datetime" };
   if (field.type === "time") return { kind: "time" };
   return { kind: "text" };
@@ -532,21 +590,34 @@ export function createField(type: FieldType, sectionId: string, pageId?: string)
     pageId,
     sectionId,
     hint: catalogField?.description,
-    options: choiceFieldTypes.includes(type) ? ["Yes", "No"] : undefined,
-    validation: locationFieldTypes.includes(type) ? { accuracyMax: 25 } : undefined,
+    options: choiceFieldTypes.includes(type)
+      ? ["Yes", "No"]
+      : type === "day_of_week"
+        ? ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        : undefined,
+    validation: locationFieldTypes.includes(type) && !shapeFieldTypes.includes(type) ? { accuracyMax: 25 } : undefined,
     appearance: { width: "full" },
     matrix: ["matrix_single", "matrix_multi", "grid"].includes(type)
       ? { rows: ["Row 1", "Row 2", "Row 3"], columns: ["Option 1", "Option 2", "Option 3"] }
       : undefined,
     repeat: type === "repeat_group" ? { min: 0, max: 10, allowNested: false } : undefined,
-    lookup: type === "lookup" ? { source: "entities" as const } : undefined,
+    lookup:
+      type === "lookup"
+        ? { source: "entities" as const }
+        : type === "user_select"
+          ? { source: "reference" as const }
+          : type === "org_select"
+            ? { source: "reference" as const }
+            : undefined,
     media: mediaFieldTypes.includes(type) ? { compression: "standard", metadata: true } : undefined,
-    gps: locationFieldTypes.includes(type) && type !== "polygon"
+    gps: locationFieldTypes.includes(type) && !shapeFieldTypes.includes(type)
       ? { latitude: true, longitude: true, altitude: true, accuracy: true, timestamp: true, geofenceRadius: type === "geofence" ? 250 : undefined }
       : undefined,
     polygon: type === "polygon"
       ? { minVertices: 3, requireClosed: true, overlapCheck: true, overlapScope: "form" }
-      : undefined,
+      : type === "path"
+        ? { minVertices: 2, requireClosed: false, overlapCheck: false }
+        : undefined,
     calculation: type === "calculated" ? { expression: "sum(${field_a}, ${field_b})", preview: "Waiting for source fields" } : undefined,
     variableName: slugifyName(id),
     logic:
@@ -958,7 +1029,17 @@ function toXlsType(field: FormField, listName = fieldVariableName(field)): strin
     calculated: "calculate",
     repeat_group: "begin_repeat",
     grid: "table-list",
-    lookup: "select_one_external"
+    lookup: "select_one_external",
+    auto_id: "calculate",
+    month: "date",
+    day_of_week: "select_one",
+    path: "geotrace",
+    pdf: "file",
+    scan_document: "image",
+    fingerprint: "text",
+    article: "note",
+    user_select: "select_one_external",
+    org_select: "select_one_external"
   };
   return typeMap[field.type];
 }

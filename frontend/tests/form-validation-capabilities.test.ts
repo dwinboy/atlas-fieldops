@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   createField,
+  fieldCatalog,
+  fieldTypeHelp,
   fieldValidationCapabilities,
   logicValueInputForField,
   type FormField,
@@ -41,6 +43,50 @@ describe("fieldValidationCapabilities", () => {
     expect(fieldValidationCapabilities("multiselect").selections).toBe(true);
     expect(fieldValidationCapabilities("checkbox").selections).toBe(true);
     expect(fieldValidationCapabilities("radio").selections).toBe(false);
+  });
+
+  it("treats a month picker as a date and a path as geometry", () => {
+    expect(fieldValidationCapabilities("month").dateRange).toBe(true);
+    expect(fieldValidationCapabilities("pdf").fileLimits).toBe(true);
+    expect(fieldValidationCapabilities("scan_document").fileLimits).toBe(true);
+  });
+
+  it("offers no validation settings for read-only / system question types", () => {
+    for (const type of ["article", "auto_id", "hidden"] as const) {
+      const caps = fieldValidationCapabilities(type);
+      expect(Object.values(caps).some(Boolean)).toBe(false);
+    }
+  });
+});
+
+describe("new response types are registered", () => {
+  const newTypes = [
+    "auto_id",
+    "month",
+    "day_of_week",
+    "path",
+    "pdf",
+    "scan_document",
+    "fingerprint",
+    "article",
+    "user_select",
+    "org_select",
+  ] as const;
+
+  it("appears in the field catalog with a help description", () => {
+    const catalogTypes = new Set(
+      fieldCatalog.flatMap((group) => group.fields).map((entry) => entry.type),
+    );
+    for (const type of newTypes) {
+      expect(catalogTypes.has(type)).toBe(true);
+      expect(fieldTypeHelp[type]).toBeTruthy();
+    }
+  });
+
+  it("creates a usable field for each new type", () => {
+    expect(createField("day_of_week", "main").options).toContain("Monday");
+    expect(createField("path", "main").polygon?.requireClosed).toBe(false);
+    expect(createField("user_select", "main").lookup?.source).toBe("reference");
   });
 });
 
