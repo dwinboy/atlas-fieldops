@@ -270,3 +270,15 @@ def test_logic_rules_compile_and_or_conditions() -> None:
     # Single-condition rule stays simple (no conditions array).
     assert "conditions" not in by_id["r3"]
     assert by_id["r3"]["sourceQuestionId"] == "q-age"
+
+
+def test_warn_only_validation_emits_tag() -> None:
+    from app.services.mobile import _build_question_field
+
+    q = _build_question_field(
+        {"id": "n", "type": "number", "label": "N", "validation": {"warnOnly": True, "min": 0}},
+        field_id="n",
+        section_id="s",
+        order=1,
+    )
+    assert "validation-warn-only" in q["metadataTags"]

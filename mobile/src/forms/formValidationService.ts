@@ -162,13 +162,16 @@ export class FormValidationService {
     context: { responses: Map<string, unknown>; referenceLists: MobileReferenceList[] },
   ): FormValidationIssue[] {
     const issues: FormValidationIssue[] = [];
+    // "Warn instead of block": the builder can make this question's value rules advisory — they
+    // surface as warnings the officer can proceed past, rather than hard errors.
+    const warnOnly = question.metadataTags?.includes("validation-warn-only") ?? false;
     const addIssue = (message: string, severity: "Error" | "Warning" = "Error", fixHint?: string) => {
       issues.push({
         questionId: question.id,
         label: question.label,
         message: question.mobileControls?.blockedHelp ?? message,
         fixHint: question.mobileControls?.blockedHelp ? `${fixHint ?? ""} ${question.mobileControls.blockedHelp}`.trim() : fixHint,
-        severity,
+        severity: warnOnly && severity === "Error" ? "Warning" : severity,
       });
     };
 

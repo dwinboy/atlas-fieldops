@@ -13517,6 +13517,21 @@ export function DynamicForms({
                                 </span>{" "}
                                 answer.
                               </p>
+                              <label className="mt-3 flex items-center gap-2 text-sm font-semibold">
+                                <input
+                                  checked={Boolean(selectedField.validation?.warnOnly)}
+                                  className="h-4 w-4"
+                                  onChange={(event) => updateSelectedFieldValidation({ warnOnly: event.target.checked || undefined })}
+                                  type="checkbox"
+                                />
+                                <span className="inline-flex items-center gap-1.5">
+                                  Warn instead of block
+                                  <HelpHint label="About warn vs block" title="Warn instead of block">
+                                    These rules become advisory — the officer sees a warning but can still submit. Use for
+                                    “unusual but possible” values; leave off for rules that must be enforced.
+                                  </HelpHint>
+                                </span>
+                              </label>
                               <div className="mt-3 grid gap-3 lg:grid-cols-4">
                                 {fieldValidationCapabilities(selectedField.type)
                                   .numericRange ? (

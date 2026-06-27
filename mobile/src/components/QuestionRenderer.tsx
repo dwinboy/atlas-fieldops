@@ -629,6 +629,33 @@ function LookupQuestion({
   );
 }
 
+/** Options for record/question sources (shared by Lookup and Ranking) — linked-form records,
+ * registered entities (type/relationship filtered), or another question's answers. */
+function recordSourceOptions(question: MobileQuestion, allResponses: Map<string, unknown>): SimpleOption[] {
+  const selection = question.selection ?? null;
+  if (!selection) return [];
+  if (selection.source === "question") {
+    return optionsFromAnswer(allResponses.get(selection.fromQuestionId ?? ""), selection);
+  }
+  if (selection.source === "record" && selection.recordSource === "form") {
+    return localDatabase.linkedRecords
+      .list()
+      .filter((record) => (selection.recordFormId ? record.formId === selection.recordFormId : true))
+      .filter((record) => (selection.showOnlyVerified ? record.verified : true))
+      .filter((record) => recordOldEnough(record, selection.minimumAgeDays))
+      .filter((record) => matchesLinkedRecordFilters(record, selection, allResponses))
+      .map((record) => ({ id: record.id, label: record.label, value: record.id }));
+  }
+  if (selection.source === "record") {
+    return localDatabase.entities
+      .list()
+      .filter((entity) => (selection.entityType ? entity.entityType === selection.entityType : true))
+      .filter((entity) => matchesEntityFilters(entity, selection, allResponses))
+      .map((entity) => ({ id: entity.id, label: entity.name || entity.entityUid, value: entity.id }));
+  }
+  return [];
+}
+
 /** Whether a linked record is at least `minimumAgeDays` old (based on its source submission time). */
 function recordOldEnough(record: MobileLinkedRecord, minimumAgeDays?: number): boolean {
   if (!minimumAgeDays || minimumAgeDays <= 0) return true;
@@ -1544,7 +1571,11 @@ function renderRanking(
       </View>
     );
   }
-  const options = resolveQuestionOptions(question, allResponses, referenceLists);
+  const rankingSelection = question.selection ?? null;
+  const options =
+    rankingSelection && (rankingSelection.source === "record" || rankingSelection.source === "question")
+      ? recordSourceOptions(question, allResponses)
+      : resolveQuestionOptions(question, allResponses, referenceLists);
   if (options.length === 0) {
     return (
       <View style={emptySubCard}>

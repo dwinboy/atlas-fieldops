@@ -118,6 +118,8 @@ export type FormField = {
   defaultValue?: unknown;
   options?: string[];
   validation?: {
+    /** When true, this question's value rules surface as warnings (officer can proceed) instead of blocking. */
+    warnOnly?: boolean;
     min?: number;
     max?: number;
     pattern?: string;

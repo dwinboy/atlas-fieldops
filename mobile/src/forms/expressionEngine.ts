@@ -8,8 +8,28 @@ type Token =
   | { type: "ident"; value: string }
   | { type: "op"; value: OpValue };
 
+/** Flattens all function arguments (numbers or arrays) into a single numeric list — the basis for
+ * roster aggregates over repeat-group columns, e.g. avg(${members.age}). */
+function flattenArgs(args: EvalResult[]): number[] {
+  return args.flatMap((arg) => (Array.isArray(arg) ? arg : [arg]));
+}
+
 const FUNCTIONS: Record<string, (args: EvalResult[]) => number> = {
   sum: (args) => args.reduce((total: number, arg) => total + flattenSum(arg), 0),
+  count: (args) => flattenArgs(args).length,
+  avg: (args) => {
+    const values = flattenArgs(args);
+    return values.length ? values.reduce((total, value) => total + value, 0) / values.length : 0;
+  },
+  min: (args) => {
+    const values = flattenArgs(args);
+    return values.length ? Math.min(...values) : 0;
+  },
+  max: (args) => {
+    const values = flattenArgs(args);
+    return values.length ? Math.max(...values) : 0;
+  },
+  round: (args) => Math.round(flattenSum(args[0] ?? 0)),
 };
 
 /**
