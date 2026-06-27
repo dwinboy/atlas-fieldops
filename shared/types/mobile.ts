@@ -916,6 +916,14 @@ export type MobileBootstrapPackage = {
   };
 };
 
+/** A record collected by another form, synced for offline linked-record lookups. */
+export type MobileLinkedRecord = LocalRecord & {
+  id: string;
+  formId: string;
+  label: string;
+  data: Record<string, unknown>;
+};
+
 export type MobileSyncPackage = {
   bootstrap: MobileBootstrapPackage;
   assignments: MobileAssignment[];
@@ -927,5 +935,6 @@ export type MobileSyncPackage = {
   referenceLists: MobileReferenceList[];
   returnedSubmissions: MobileSubmission[];
   submissionStatuses: MobileSubmissionStatus[];
+  linkedRecords: MobileLinkedRecord[];
   notifications: MobileNotification[];
 };

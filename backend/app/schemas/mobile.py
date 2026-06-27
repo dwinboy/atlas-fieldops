@@ -361,6 +361,15 @@ class MobileBootstrapRead(MobileSchema):
     last_sync: dict[str, Any] = Field(default_factory=dict)
 
 
+class MobileLinkedRecordRead(MobileSchema):
+    """A record collected by another form, made available offline for linked-record lookups."""
+
+    id: str
+    form_id: str
+    label: str
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
 class MobileSyncPackageRead(MobileSchema):
     bootstrap: MobileBootstrapRead
     assignments: list[MobileAssignmentRead] = Field(default_factory=list)
@@ -372,6 +381,7 @@ class MobileSyncPackageRead(MobileSchema):
     reference_lists: list[MobileReferenceListRead] = Field(default_factory=list)
     returned_submissions: list[MobileSubmissionRead] = Field(default_factory=list)
     submission_statuses: list[MobileSubmissionStatusRead] = Field(default_factory=list)
+    linked_records: list[MobileLinkedRecordRead] = Field(default_factory=list)
     notifications: list[MobileNotificationRead] = Field(default_factory=list)
 
 

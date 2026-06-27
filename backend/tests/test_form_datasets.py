@@ -1,10 +1,12 @@
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models import Base, Organization, User
-from app.models.collection import DataForm
+from app.models.collection import DataForm, DataFormVersion, Submission
+from app.schemas.mobile import MobileFormVersionRead
 from app.services.collection import FormService
 from app.services.mobile import MobileService
 
@@ -67,3 +69,64 @@ async def test_form_dataset_upload_creates_cascading_reference_list() -> None:
         # Listing returns the dataset for the builder's dataset picker.
         datasets = await FormService(session).list_form_datasets(organization_id=org_id, form_id=form_id)
         assert datasets and datasets[0]["columns"] == ["district", "region", "code"]
+
+
+@pytest.mark.asyncio
+async def test_linked_records_index_exposes_other_form_submissions() -> None:
+    factory = await _session()
+    async with factory() as session:
+        org_id = uuid4()
+        user_id = uuid4()
+        farm_form_id = uuid4()
+        farm_version_id = uuid4()
+        session.add(Organization(id=org_id, name="LR Org", slug="lr-org"))
+        session.add(User(id=user_id, email="o@lr.org", full_name="O", password_hash="x"))
+        session.add(
+            DataForm(id=farm_form_id, organization_id=org_id, created_by_user_id=user_id, name="Farm", slug="farm", controls_json={})
+        )
+        session.add(
+            DataFormVersion(id=farm_version_id, organization_id=org_id, form_id=farm_form_id, version=1, schema_json={})
+        )
+        now = datetime.now(UTC)
+        session.add(
+            Submission(
+                id=uuid4(),
+                organization_id=org_id,
+                form_id=farm_form_id,
+                form_version_id=farm_version_id,
+                client_submission_id="farm-001",
+                status="submitted",
+                payload_json={"_mobile_responses": [{"variableName": "farm_name", "value": "Green Acres"}, {"variableName": "region", "value": "Ashanti"}]},
+                device_id="dev-1",
+                captured_at=now,
+                submitted_at=now,
+                sync_received_at=now,
+                latitude=0.0,
+                longitude=0.0,
+                location_captured_at=now,
+            )
+        )
+        await session.flush()
+
+        # A visit form references the Farm form's records.
+        version_reads = [
+            MobileFormVersionRead(
+                id=str(uuid4()),
+                form_id=str(uuid4()),
+                version=1,
+                sections=[
+                    {
+                        "id": "s1",
+                        "questions": [
+                            {"id": "q1", "selection": {"source": "record", "recordSource": "form", "recordFormId": str(farm_form_id)}}
+                        ],
+                    }
+                ],
+            )
+        ]
+        records = await MobileService(session)._linked_records(org_id, version_reads)
+        assert len(records) == 1
+        assert records[0].id == "farm-001"
+        assert records[0].form_id == str(farm_form_id)
+        assert records[0].label == "Green Acres"
+        assert records[0].data["region"] == "Ashanti"

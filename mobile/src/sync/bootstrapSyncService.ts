@@ -89,6 +89,9 @@ export class BootstrapSyncService {
     for (const returnedSubmission of syncPackage.returnedSubmissions) {
       this.database.draftSubmissions.upsert(this.hydrateReturnedSubmission(returnedSubmission));
     }
+    this.database.linkedRecords.replaceAll(
+      (syncPackage.linkedRecords ?? []).map((record) => this.database.importServerRecord(record)),
+    );
     for (const submissionStatus of syncPackage.submissionStatuses) {
       const draft = this.database.draftSubmissions.get(submissionStatus.clientSubmissionId);
       if (!draft) continue;

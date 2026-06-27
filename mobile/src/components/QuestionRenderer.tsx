@@ -22,6 +22,7 @@ import type { GPSResult } from "@/hooks/useGPS";
 import type { PhotoResult } from "@/hooks/usePhotoCapture";
 import type {
   MobileEntity,
+  MobileLinkedRecord,
   MobileLogicRule,
   MobilePolygonGeometry,
   MobileQuestion,
@@ -399,6 +400,35 @@ function matchesEntityFilters(
   return true;
 }
 
+/** Applies a linked-record (form) selection's column/relationship filters offline against the
+ * record's stored answers (`data`), keyed by the source question's variable name. */
+function matchesLinkedRecordFilters(
+  record: MobileLinkedRecord,
+  selection: NonNullable<MobileQuestion["selection"]> | null,
+  responses: Map<string, unknown>,
+): boolean {
+  for (const filter of selection?.filters ?? []) {
+    const target = (
+      filter.fromQuestionId ? responseScalar(responses.get(filter.fromQuestionId)) : filter.value ?? ""
+    )
+      .trim()
+      .toLowerCase();
+    if (!target) continue;
+    const raw = record.data?.[filter.column];
+    const actual = (raw === null || raw === undefined ? "" : String(raw)).trim().toLowerCase();
+    const ok =
+      filter.op === "neq"
+        ? actual !== target
+        : filter.op === "contains"
+          ? actual.includes(target)
+          : filter.op === "in"
+            ? target.split(",").map((item) => item.trim()).includes(actual)
+            : actual === target;
+    if (!ok) return false;
+  }
+  return true;
+}
+
 /** Search-and-pick over an on-device dataset: registered records (entities), entity categories,
  * or reference data. Works offline from the local database; reuses the searchable option list. */
 function LookupQuestion({
@@ -440,6 +470,23 @@ function LookupQuestion({
     }
     if (source === "reference") {
       return resolveQuestionOptions(question, allResponses, referenceLists);
+    }
+    if (source === "form") {
+      // Records collected by another form, synced offline. Filter to the referenced form and
+      // apply any column/relationship filters against the record's stored answers.
+      return localDatabase.linkedRecords
+        .list()
+        .filter((record) => (selection?.recordFormId ? record.formId === selection.recordFormId : true))
+        .filter((record) => matchesLinkedRecordFilters(record, selection, allResponses))
+        .map((record) => ({
+          id: record.id,
+          label: record.label,
+          value: record.id,
+          search: Object.values(record.data ?? {})
+            .filter((entry) => entry !== null && entry !== undefined)
+            .map((entry) => String(entry))
+            .join(" "),
+        }));
     }
     // Registered records (entities). Honor an entity-type filter and any dynamic relationship
     // filters (e.g. only children of the household chosen in another question) so cross-form

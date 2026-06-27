@@ -41,6 +41,7 @@ from app.schemas.mobile import (
     MobileFormVersionRead,
     MobileLocationRead,
     MobileNotificationRead,
+    MobileLinkedRecordRead,
     MobileOfflineRulesRead,
     MobileOfficerProfileRead,
     MobileOrganizationRead,
@@ -1660,6 +1661,7 @@ class MobileService:
         )
 
         notifications = await self._notifications(organization_id, user_id)
+        linked_records = await self._linked_records(organization_id, version_reads)
         return MobileSyncPackageRead(
             bootstrap=self._bootstrap(principal, project_reads, officer=officer, assigned_counts=assigned_counts),
             assignments=assignment_reads,
@@ -1671,8 +1673,74 @@ class MobileService:
             reference_lists=reference_lists,
             returned_submissions=returned_submissions,
             submission_statuses=submission_statuses,
+            linked_records=linked_records,
             notifications=notifications,
         )
+
+    async def _linked_records(
+        self, organization_id: UUID, version_reads: list[MobileFormVersionRead]
+    ) -> list[MobileLinkedRecordRead]:
+        """Builds the offline index of records collected by other forms, for any question whose
+        selection references another form (record source = form). Each referenced form's submissions
+        are exposed as searchable records so field officers can pick them offline."""
+        target_form_ids: set[str] = set()
+        for version in version_reads:
+            for section in version.sections:
+                for question in section.get("questions", []):
+                    selection = question.get("selection")
+                    if (
+                        isinstance(selection, dict)
+                        and selection.get("source") == "record"
+                        and selection.get("recordSource") == "form"
+                        and selection.get("recordFormId")
+                    ):
+                        target_form_ids.add(str(selection["recordFormId"]))
+        if not target_form_ids:
+            return []
+
+        form_uuids: list[UUID] = []
+        for raw in target_form_ids:
+            try:
+                form_uuids.append(UUID(raw))
+            except ValueError:
+                continue
+        if not form_uuids:
+            return []
+
+        result = await self.session.execute(
+            select(Submission)
+            .where(
+                Submission.organization_id == organization_id,
+                Submission.form_id.in_(form_uuids),
+                Submission.deleted_at.is_(None),
+            )
+            .order_by(Submission.sync_received_at.desc())
+            .limit(2000)
+        )
+        records: list[MobileLinkedRecordRead] = []
+        for submission in result.scalars():
+            responses = (submission.payload_json or {}).get("_mobile_responses")
+            data: dict[str, Any] = {}
+            label = ""
+            if isinstance(responses, list):
+                for response in responses:
+                    if not isinstance(response, dict):
+                        continue
+                    variable = str(response.get("variableName") or response.get("questionId") or "")
+                    value = response.get("value")
+                    if variable:
+                        data[variable] = value
+                    if not label and isinstance(value, str) and value.strip():
+                        label = value.strip()
+            records.append(
+                MobileLinkedRecordRead(
+                    id=submission.client_submission_id,
+                    form_id=str(submission.form_id),
+                    label=label or submission.client_submission_id,
+                    data=data,
+                )
+            )
+        return records
 
     async def returned_submissions(self, principal: CurrentPrincipal) -> list[MobileSubmissionRead]:
         organization_id = UUID(principal.organization_id)

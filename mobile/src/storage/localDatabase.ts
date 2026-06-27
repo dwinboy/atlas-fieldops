@@ -10,6 +10,7 @@ import type {
   MobileEntityCategory,
   MobileForm,
   MobileFormVersion,
+  MobileLinkedRecord,
   MobileLocation,
   MobileNotification,
   MobileOfflineRules,
@@ -43,6 +44,7 @@ type LocalCollectionMap = {
   permissionSets: MobilePermissionSet;
   projects: MobileProject;
   referenceLists: MobileReferenceList;
+  linkedRecords: MobileLinkedRecord;
   supervisorProfiles: MobileSupervisorProfile;
   visitRequests: MobileVisitRequest;
   draftSubmissions: MobileSubmission;
@@ -114,6 +116,7 @@ export class LocalDatabase {
   readonly permissionSets = new LocalRepository<LocalCollectionMap["permissionSets"]>(() => this.persistSnapshot());
   readonly projects = new LocalRepository<LocalCollectionMap["projects"]>(() => this.persistSnapshot());
   readonly referenceLists = new LocalRepository<LocalCollectionMap["referenceLists"]>(() => this.persistSnapshot());
+  readonly linkedRecords = new LocalRepository<LocalCollectionMap["linkedRecords"]>(() => this.persistSnapshot());
   readonly supervisorProfiles = new LocalRepository<LocalCollectionMap["supervisorProfiles"]>(() => this.persistSnapshot());
   readonly visitRequests = new LocalRepository<LocalCollectionMap["visitRequests"]>(() => this.persistSnapshot());
   readonly draftSubmissions = new LocalRepository<LocalCollectionMap["draftSubmissions"]>(() => this.persistSnapshot());
@@ -172,6 +175,7 @@ export class LocalDatabase {
       permissionSets: this.permissionSets.list(),
       projects: this.projects.list(),
       referenceLists: this.referenceLists.list(),
+      linkedRecords: this.linkedRecords.list(),
       supervisorProfiles: this.supervisorProfiles.list(),
       visitRequests: this.visitRequests.list(),
       draftSubmissions: this.draftSubmissions.list(),
@@ -199,6 +203,7 @@ export class LocalDatabase {
       this.permissionSets.replaceAll(snapshot.permissionSets ?? []);
       this.projects.replaceAll(snapshot.projects ?? []);
       this.referenceLists.replaceAll(snapshot.referenceLists ?? []);
+      this.linkedRecords.replaceAll(snapshot.linkedRecords ?? []);
       this.supervisorProfiles.replaceAll(snapshot.supervisorProfiles ?? []);
       this.visitRequests.replaceAll(snapshot.visitRequests ?? []);
       this.draftSubmissions.replaceAll(snapshot.draftSubmissions ?? []);
@@ -230,6 +235,7 @@ export class LocalDatabase {
         "locations",
         "mobileRules",
         "referenceLists",
+        "linkedRecords",
         "officerProfiles",
         "permissionSets",
         "supervisorProfiles",
