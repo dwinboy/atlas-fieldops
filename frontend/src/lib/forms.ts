@@ -560,6 +560,23 @@ const NO_VALIDATION_CAPABILITIES: FieldValidationCapabilities = {
   dontKnowRefused: false,
 };
 
+/** True when a question's answer is chosen from a list — so the Reference/"selectable answers"
+ * configurator (static/dataset/linked-records/from-a-question) is relevant. Numeric, text, date,
+ * media, location, etc. capture a typed/captured value and never use it. */
+export function fieldSupportsSelection(type: FieldType): boolean {
+  return (
+    choiceFieldTypes.includes(type) ||
+    type === "lookup" ||
+    type === "user_select" ||
+    type === "org_select"
+  );
+}
+
+/** True when a question captures media — so the Evidence tab (file size, capture rules) is relevant. */
+export function fieldSupportsEvidence(type: FieldType): boolean {
+  return mediaFieldTypes.includes(type);
+}
+
 export function fieldValidationCapabilities(type: FieldType): FieldValidationCapabilities {
   // Read-only / system questions (article, auto ID, hidden) collect no validated answer.
   if (displayOnlyFieldTypes.includes(type)) {

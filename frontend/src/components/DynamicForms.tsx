@@ -97,6 +97,8 @@ import {
   duplicateSection,
   fieldCatalog,
   fieldTypeHelp,
+  fieldSupportsEvidence,
+  fieldSupportsSelection,
   fieldValidationCapabilities,
   getCollectionCompatibility,
   logicValueInputForField,
@@ -5098,6 +5100,18 @@ export function DynamicForms({
     queryFn: () => listFormDatasets(token ?? "", selectedForm?.id ?? ""),
     enabled: Boolean(token && !isPreview && selectedForm?.id),
   });
+  const selectedFieldType = selectedForm?.fields.find((item) => item.id === selectedFieldId)?.type;
+  // If a settings tab no longer applies to the question's response type (e.g. Reference on a
+  // currency answer), drop back to Basics so builders never sit on an irrelevant tab.
+  useEffect(() => {
+    if (!selectedFieldType) return;
+    if (focusSettingsTab === "reference" && !fieldSupportsSelection(selectedFieldType)) {
+      setFocusSettingsTab("common");
+    }
+    if (focusSettingsTab === "evidence" && !fieldSupportsEvidence(selectedFieldType)) {
+      setFocusSettingsTab("common");
+    }
+  }, [selectedFieldType, focusSettingsTab]);
   const selectedFormControls = useMemo(
     () =>
       selectedForm
@@ -12262,7 +12276,17 @@ export function DynamicForms({
                                 typeof Type,
                                 string,
                               ][]
-                            ).map(([tab, Icon, label]) => (
+                            )
+                              // Only show tabs that apply to this response type, so builders aren't
+                              // shown irrelevant settings (e.g. Reference for a currency answer).
+                              .filter(([tab]) =>
+                                tab === "reference"
+                                  ? fieldSupportsSelection(selectedField.type)
+                                  : tab === "evidence"
+                                    ? fieldSupportsEvidence(selectedField.type)
+                                    : true,
+                              )
+                              .map(([tab, Icon, label]) => (
                               <button
                                 className={cn(
                                   "flex h-9 items-center justify-center gap-1.5 rounded px-2 text-xs font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground",
@@ -14106,7 +14130,7 @@ export function DynamicForms({
                             </section>
                           ) : null}
 
-                          {focusSettingsTab === "reference" ? (
+                          {focusSettingsTab === "reference" && fieldSupportsSelection(selectedField.type) ? (
                             <section className="mt-4 rounded-lg border bg-panel p-4">
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
@@ -14242,7 +14266,7 @@ export function DynamicForms({
                             </section>
                           ) : null}
 
-                          {focusSettingsTab === "evidence" ? (
+                          {focusSettingsTab === "evidence" && fieldSupportsEvidence(selectedField.type) ? (
                             <section className="mt-4 rounded-lg border bg-panel p-4">
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">

@@ -3,11 +3,32 @@ import { describe, expect, it } from "vitest";
 import {
   createField,
   fieldCatalog,
+  fieldSupportsEvidence,
+  fieldSupportsSelection,
   fieldTypeHelp,
   fieldValidationCapabilities,
   logicValueInputForField,
   type FormField,
 } from "@/lib/forms";
+
+describe("tab applicability by response type", () => {
+  it("only option-bearing types use the reference/selection configurator", () => {
+    for (const type of ["select", "radio", "checkbox", "multiselect", "dropdown", "lookup", "user_select", "org_select"] as const) {
+      expect(fieldSupportsSelection(type)).toBe(true);
+    }
+    for (const type of ["currency", "number", "decimal", "text", "date", "gps", "photo"] as const) {
+      expect(fieldSupportsSelection(type)).toBe(false);
+    }
+  });
+
+  it("only media types use the evidence tab", () => {
+    expect(fieldSupportsEvidence("photo")).toBe(true);
+    expect(fieldSupportsEvidence("file")).toBe(true);
+    expect(fieldSupportsEvidence("pdf")).toBe(true);
+    expect(fieldSupportsEvidence("currency")).toBe(false);
+    expect(fieldSupportsEvidence("text")).toBe(false);
+  });
+});
 
 describe("fieldValidationCapabilities", () => {
   it("shows numeric validations for a whole-number question, not text length or decimals", () => {
