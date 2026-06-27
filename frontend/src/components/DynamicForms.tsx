@@ -99,6 +99,8 @@ import {
   previewFormSurveys,
 } from "@/components/forms/formPreviewData";
 import { templateToForm } from "@/components/forms/formTemplates";
+import { describeEntityCollectionWorkflow } from "@/components/forms/describeEntityCollectionWorkflow";
+import { persistedFormToLocal } from "@/components/forms/persistedFormToLocal";
 import { inferQuestionSuggestions } from "@/components/forms/inferQuestionSuggestions";
 import { getSectionTone } from "@/components/forms/sectionTone";
 import {
@@ -225,105 +227,6 @@ import {
 import { cn, slugify } from "@/lib/utils";
 import { useWorkspaceStore } from "@/stores/workspace";
 
-function asSettingsRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function describeEntityCollectionWorkflow(
-  controls: FormControlsSettings,
-): {
-  badge: string;
-  description: string;
-  entityLabel: string;
-  tone: BadgeProps["tone"];
-} {
-  const entityControls = controls.entity_controls;
-  const entityLabel = entityControls?.entity_type?.trim() || "Entity";
-  const entityLabelLower = entityLabel.toLowerCase();
-  const respondentIdentity = asSettingsRecord(controls.instrument?.respondent_identity);
-  const rawRespondentIdentityMode =
-    typeof respondentIdentity.mode === "string" && respondentIdentity.mode.trim()
-      ? respondentIdentity.mode.trim()
-      : null;
-  const createsNewEntity = Boolean(entityControls?.creates_new_entity);
-  const updatesExistingEntity = Boolean(entityControls?.updates_existing_entity);
-  const requiresExistingEntity = Boolean(entityControls?.requires_existing_entity);
-  const linkedToEntity = Boolean(entityControls?.linked_to_entity);
-  const allowsAnonymous = Boolean(entityControls?.allows_anonymous);
-  const respondentIdentityMode =
-    rawRespondentIdentityMode === "existing_beneficiary"
-    || rawRespondentIdentityMode === "new_registration"
-    || rawRespondentIdentityMode === "existing_or_new"
-    || rawRespondentIdentityMode === "anonymous_allowed"
-      ? rawRespondentIdentityMode
-      : createsNewEntity && updatesExistingEntity
-        ? "existing_or_new"
-        : createsNewEntity
-          ? "new_registration"
-          : updatesExistingEntity || requiresExistingEntity
-            ? "existing_beneficiary"
-            : allowsAnonymous || !linkedToEntity
-              ? "anonymous_allowed"
-              : null;
-
-  if (!linkedToEntity) {
-    return {
-      badge: "Standalone form",
-      description: "This form can collect standalone records without linking them to a tracked entity profile first.",
-      entityLabel,
-      tone: "neutral",
-    };
-  }
-  if (respondentIdentityMode === "existing_beneficiary") {
-    return {
-      badge: `Follow-up on existing ${entityLabel}`,
-      description: `Field officers must search for and select an existing ${entityLabelLower} before collection starts.`,
-      entityLabel,
-      tone: "warning",
-    };
-  }
-  if (respondentIdentityMode === "existing_or_new") {
-    return {
-      badge: `Existing or new ${entityLabel}`,
-      description: `Field officers can link an existing ${entityLabelLower} or continue without one to register a new ${entityLabelLower}.`,
-      entityLabel,
-      tone: "collect",
-    };
-  }
-  if (respondentIdentityMode === "new_registration") {
-    return {
-      badge: `Creates new ${entityLabel}`,
-      description: `This form is designed for registration or intake, so collection can create new ${entityLabelLower} records directly.`,
-      entityLabel,
-      tone: "success",
-    };
-  }
-  if (respondentIdentityMode === "anonymous_allowed") {
-    return {
-      badge: "Anonymous or unlinked allowed",
-      description: `This form can be submitted without a tracked ${entityLabelLower} when the workflow allows anonymous or unlinked collection.`,
-      entityLabel,
-      tone: "accent",
-    };
-  }
-  if (updatesExistingEntity || requiresExistingEntity) {
-    return {
-      badge: `Updates existing ${entityLabel}`,
-      description: `Approved submissions update existing ${entityLabelLower} records, so this form works best as a follow-up or profile maintenance tool.`,
-      entityLabel,
-      tone: "accent",
-    };
-  }
-  return {
-    badge: "Entity-linked form",
-    description: `This form links to ${entityLabelLower} records, but the collection rule still needs a manager review.`,
-    entityLabel,
-    tone: "success",
-  };
-}
-
 const frequentFieldTypes: { type: FieldType; label: string }[] = [
   { type: "text", label: "Short text" },
   { type: "number", label: "Number" },
@@ -376,66 +279,6 @@ type DistributionChannel =
   | "web_link"
   | "public_link"
   | "xlsform";
-function persistedFormToLocal(form: DataFormRead): DynamicForm {
-  const pageId = `${form.id}-page-1`;
-  const sectionId = `${form.id}-summary`;
-  return {
-    id: form.id,
-    name: form.name,
-    status:
-      form.status === "published"
-        ? "published"
-        : form.status === "archived"
-          ? "archived"
-          : "draft",
-    version: form.current_version,
-    activeVersion: form.status === "published" ? form.current_version : 0,
-    updatedAt: new Date().toISOString(),
-    pages: [
-      {
-        id: pageId,
-        title: "Saved version",
-        description: "Published backend structure summarized for review.",
-      },
-    ],
-    sections: [
-      {
-        id: sectionId,
-        title: "Saved form",
-        description: form.description ?? "Stored in the backend.",
-        pageId,
-      },
-    ],
-    fields: [
-      {
-        id: `${form.id}-respondent`,
-        label: "Respondent name",
-        type: "text",
-        required: true,
-        pageId,
-        sectionId,
-      },
-      {
-        id: `${form.id}-location`,
-        label: "Collection GPS",
-        type: "gps",
-        required: true,
-        pageId,
-        sectionId,
-        validation: { accuracyMax: 25 },
-      },
-      {
-        id: `${form.id}-notes`,
-        label: "Field notes",
-        type: "textarea",
-        required: false,
-        pageId,
-        sectionId,
-      },
-    ],
-  };
-}
-
 type FormControlsTab =
   | "overview"
   | "entity"
