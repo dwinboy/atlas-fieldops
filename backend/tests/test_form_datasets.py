@@ -169,3 +169,16 @@ def test_mobile_selection_is_none_for_static() -> None:
 
     assert _mobile_selection({"selection": {"source": "static"}}, {}) is None
     assert _mobile_selection({}, {}) is None
+
+
+def test_article_and_auto_id_compile_as_readonly_behaviors() -> None:
+    from app.services.mobile import _build_question_field
+
+    article = _build_question_field({"id": "a1", "type": "article", "label": "Read me", "required": True}, field_id="a1", section_id="s", order=1)
+    assert article["readOnly"] is True
+    assert "display-note" in article["metadataTags"]
+    assert article["required"] is False  # a note never blocks submission
+
+    auto = _build_question_field({"id": "a2", "type": "auto_id", "label": "Ref"}, field_id="a2", section_id="s", order=2)
+    assert auto["readOnly"] is True
+    assert "auto-id" in auto["metadataTags"]

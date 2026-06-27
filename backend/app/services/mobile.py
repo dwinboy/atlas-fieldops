@@ -743,16 +743,26 @@ def _build_question_field(
         if selection.get("cascadingParentQuestionId"):
             cascading_parent = selection["cascadingParentQuestionId"]
     privacy_controls = _field_privacy_controls(field)
+    raw_type = str(field.get("type") or "text").lower()
+    # Display-only / system types render specially on mobile: an `article` is read-only guidance
+    # (no input), and an `auto_id` is a read-only, device-generated reference. We carry the behavior
+    # in metadataTags so the app can branch without inventing new question types.
+    behavior_tags: list[str] = []
+    if raw_type == "article":
+        behavior_tags.append("display-note")
+    if raw_type == "auto_id":
+        behavior_tags.append("auto-id")
+    read_only = bool(field.get("readOnly", False)) or raw_type in {"article", "auto_id"}
     return {
         "id": field_id,
         "sectionId": section_id,
         "variableName": variable_name,
         "label": str(field.get("label") or field_id),
         "helpText": field.get("hint"),
-        "type": _mobile_question_type(str(field.get("type") or "text")),
-        "inputMode": _mobile_input_mode(str(field.get("type") or "text")),
-        "required": bool(field.get("required", False)),
-        "readOnly": bool(field.get("readOnly", False)),
+        "type": _mobile_question_type(raw_type),
+        "inputMode": _mobile_input_mode(raw_type),
+        "required": bool(field.get("required", False)) and raw_type != "article",
+        "readOnly": read_only,
         "defaultValue": _mobile_default_value(field, variable_to_id, reference_by_question),
         "options": _field_options(list(field.get("options") or [])),
         "validationRules": _validation_rules(field),
@@ -765,7 +775,7 @@ def _build_question_field(
             or privacy_controls["sensitivity"] in {"sensitive", "restricted", "pii"}
         ),
         "repeatSettings": _repeat_settings(field),
-        "metadataTags": _field_metadata_tags(field),
+        "metadataTags": _field_metadata_tags(field) + behavior_tags,
         "indicatorMapping": _field_indicator_mapping(field),
         "beneficiaryMapping": _field_beneficiary_mapping(field),
         "referenceControls": {

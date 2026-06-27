@@ -94,6 +94,18 @@ export function QuestionRenderer({
     onAnswer(question.id, question.variableName, v);
   }
 
+  // Display-only "article" note (no input) and auto-generated read-only IDs are carried as tags.
+  const isNote = question.metadataTags?.includes("display-note") ?? false;
+  const isAutoId = question.metadataTags?.includes("auto-id") ?? false;
+  useEffect(() => {
+    if (!isAutoId) return;
+    const empty = value === null || value === undefined || String(value).trim() === "";
+    if (empty) {
+      onAnswer(question.id, question.variableName, `${question.variableName}-${Date.now().toString(36)}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAutoId]);
+
   return (
     <View style={{
       backgroundColor: "white",
@@ -119,10 +131,12 @@ export function QuestionRenderer({
         <QuestionControlHints question={question} />
       </View>
 
-      {/* Input by type */}
-      {question.readOnly && question.type !== "CalculatedField" && String(question.type) !== "Calculated"
-        ? renderReadOnlyValue(question, value)
-        : renderInput(question, value, answer, responses, referenceLists ?? [], activeLanguage, onAnswer)}
+      {/* Input by type. A display-note shows only its label/help (set above) with no input. */}
+      {isNote
+        ? null
+        : question.readOnly && question.type !== "CalculatedField" && String(question.type) !== "Calculated"
+          ? renderReadOnlyValue(question, value)
+          : renderInput(question, value, answer, responses, referenceLists ?? [], activeLanguage, onAnswer)}
 
       {changedPrefilledValue ? (
         <View style={{ gap: 6 }}>
