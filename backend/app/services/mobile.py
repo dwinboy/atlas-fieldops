@@ -190,6 +190,12 @@ def _mobile_question_type(value: str) -> str:
         "scan_document": "FileUpload",
         "fingerprint": "Text",
         "article": "Text",
+        "percentage": "Number",
+        "counter": "Number",
+        "yes_no": "SingleSelect",
+        "date_range": "Text",
+        "measurement": "Text",
+        "constant_sum": "Text",
     }.get(value.lower(), "Text")
 
 
@@ -820,6 +826,15 @@ def _build_question_field(
         behavior_tags.append("auto-id")
     if _as_dict(field.get("validation")).get("warnOnly"):
         behavior_tags.append("validation-warn-only")
+    # Tag the new specialised numeric/structured types so the app renders the right control.
+    behavior_tags.extend(
+        {
+            "counter": ["counter"],
+            "date_range": ["date-range"],
+            "measurement": ["measurement"],
+            "constant_sum": ["constant-sum"],
+        }.get(raw_type, [])
+    )
     read_only = bool(field.get("readOnly", False)) or raw_type in {"article", "auto_id"}
     return {
         "id": field_id,

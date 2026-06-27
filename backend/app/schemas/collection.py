@@ -328,6 +328,12 @@ class FormSchema(BaseModel):
             "article",
             "user_select",
             "org_select",
+            "percentage",
+            "yes_no",
+            "counter",
+            "date_range",
+            "measurement",
+            "constant_sum",
         }
         def validate_fields(fields: list[FormField]) -> None:
             for field in fields:

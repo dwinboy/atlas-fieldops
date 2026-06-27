@@ -240,3 +240,54 @@ def test_build_question_field_for_polygon() -> None:
     assert "minVertices:3" in rule_values
     assert "requireClosed:true" in rule_values
     assert "overlapCheck:true:form" in rule_values
+
+
+def test_mobile_question_type_maps_new_response_types() -> None:
+    assert _mobile_question_type("percentage") == "Number"
+    assert _mobile_question_type("counter") == "Number"
+    assert _mobile_question_type("yes_no") == "SingleSelect"
+    assert _mobile_question_type("date_range") == "Text"
+    assert _mobile_question_type("measurement") == "Text"
+    assert _mobile_question_type("constant_sum") == "Text"
+
+
+def test_build_question_field_tags_specialised_response_types() -> None:
+    cases = {
+        "counter": "counter",
+        "date_range": "date-range",
+        "measurement": "measurement",
+        "constant_sum": "constant-sum",
+    }
+    for raw_type, tag in cases.items():
+        question = _build_question_field(
+            {"id": raw_type, "label": raw_type, "type": raw_type},
+            field_id=raw_type,
+            section_id="main",
+            order=1,
+        )
+        assert tag in question["metadataTags"], raw_type
+
+
+def test_build_question_field_measurement_carries_unit_options() -> None:
+    question = _build_question_field(
+        {"id": "weight", "label": "Weight", "type": "measurement", "options": ["kg", "g", "lb"]},
+        field_id="weight",
+        section_id="main",
+        order=1,
+    )
+
+    assert "measurement" in question["metadataTags"]
+    assert [option["value"] for option in question["options"]] == ["kg", "g", "lb"]
+
+
+def test_build_question_field_percentage_keeps_bounds() -> None:
+    question = _build_question_field(
+        {"id": "pct", "label": "Coverage", "type": "percentage", "validation": {"min": 0, "max": 100}},
+        field_id="pct",
+        section_id="main",
+        order=1,
+    )
+
+    bounds = {rule["ruleType"]: rule["value"] for rule in question["validationRules"] if rule["ruleType"] in {"Min", "Max"}}
+    assert bounds.get("Min") == 0
+    assert bounds.get("Max") == 100

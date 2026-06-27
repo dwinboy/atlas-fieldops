@@ -50,7 +50,13 @@ export type FieldType =
   | "article"
   | "user_select"
   | "org_select"
-  | "subform";
+  | "subform"
+  | "percentage"
+  | "yes_no"
+  | "counter"
+  | "date_range"
+  | "measurement"
+  | "constant_sum";
 
 /** A single row filter applied to a dataset- or record-backed selection. `fromVariable` makes the
  * filter dynamic — it compares against another question's answer (the basis for cascading lookups).
@@ -398,12 +404,16 @@ export const fieldCatalog: {
       { type: "text", label: "Short text", description: "Names, IDs, short answers" },
       { type: "textarea", label: "Long text", description: "Narrative notes and observations" },
       { type: "number", label: "Number", description: "Integer values and counts" },
+      { type: "counter", label: "Counter / tally", description: "Tap − / + to count quickly" },
+      { type: "percentage", label: "Percentage", description: "0–100 with a % sign" },
+      { type: "measurement", label: "Measurement", description: "A number plus a unit (kg, ha…)" },
       { type: "email", label: "Email", description: "Validated email capture" },
       { type: "phone", label: "Phone", description: "Validated phone capture" },
       { type: "url", label: "URL", description: "Website or document link" },
       { type: "date", label: "Date", description: "Calendar date capture" },
       { type: "time", label: "Time", description: "Time of day capture" },
       { type: "datetime", label: "Datetime", description: "Date and time together" },
+      { type: "date_range", label: "Date range", description: "Start and end date" },
       { type: "month", label: "Month picker", description: "Pick a month and year" },
       { type: "day_of_week", label: "Day of week", description: "Pick a weekday (Mon–Sun)" },
       { type: "auto_id", label: "Auto generated ID", description: "System-generated unique reference" }
@@ -412,8 +422,10 @@ export const fieldCatalog: {
   {
     group: "Choice questions",
     fields: [
+      { type: "yes_no", label: "Yes / No", description: "Quick boolean choice" },
       { type: "radio", label: "Radio group", description: "Visible single choice" },
       { type: "checkbox", label: "Checkboxes", description: "Visible multi choice" },
+      { type: "constant_sum", label: "Constant sum", description: "Split a total across options" },
       { type: "dropdown", label: "Dropdown", description: "Compact single choice" },
       { type: "multiselect", label: "Multi-select", description: "Multiple choice list" },
       { type: "ranking", label: "Ranking", description: "Rank options by priority" },
@@ -534,9 +546,15 @@ export const fieldTypeHelp: Record<FieldType, string> = {
   user_select: "Pick a user from your organization — e.g. assign a responsible officer or supervisor.",
   org_select: "Pick an organization — e.g. a partner, implementing agency, or referral body.",
   subform: "Embed another form as a repeatable sub-survey — e.g. collect each household member with the Member form, inside this one.",
+  percentage: "A 0–100 percentage. Shows a % and won't accept values above 100.",
+  yes_no: "A quick Yes / No question (add “Don’t know” or “Refused” as options if needed).",
+  counter: "A tap counter with − and + buttons for fast field counts (people, items, livestock).",
+  date_range: "A period with a start and end date in one question (e.g. a project or absence period).",
+  measurement: "A number plus a chosen unit (kg/lb, ha/acre, m/ft) so officers record the unit they used.",
+  constant_sum: "Distribute a fixed total (e.g. 100 points) across options — for priorities or budget shares.",
 };
 
-const choiceFieldTypes: FieldType[] = ["select", "dropdown", "multiselect", "radio", "checkbox", "ranking", "likert"];
+const choiceFieldTypes: FieldType[] = ["select", "dropdown", "multiselect", "radio", "checkbox", "ranking", "likert", "yes_no", "constant_sum"];
 const locationFieldTypes: FieldType[] = ["gps", "geolocation", "map", "geofence", "polygon", "path"];
 const mediaFieldTypes: FieldType[] = ["photo", "image", "signature", "audio", "video", "file", "pdf", "scan_document"];
 /** Geometry types drawn as multiple vertices on a map (no single-point GPS metadata). */
@@ -545,13 +563,13 @@ const shapeFieldTypes: FieldType[] = ["polygon", "path"];
 const displayOnlyFieldTypes: FieldType[] = ["article", "auto_id", "hidden"];
 
 /** Question types that capture a numeric answer. */
-const numericFieldTypes: FieldType[] = ["number", "decimal", "currency", "rating", "nps"];
+const numericFieldTypes: FieldType[] = ["number", "decimal", "currency", "rating", "nps", "percentage", "counter", "measurement"];
 /** Numeric types that can carry a fractional part (so decimal-places / unit make sense). */
-const decimalFieldTypes: FieldType[] = ["decimal", "currency"];
+const decimalFieldTypes: FieldType[] = ["decimal", "currency", "measurement"];
 /** Question types whose answer is free text (so length / pattern make sense). */
 const textFieldTypes: FieldType[] = ["text", "textarea", "email", "url", "phone", "password"];
 /** Question types whose answer is a date/time (so date range / future-past make sense). */
-const dateFieldTypes: FieldType[] = ["date", "time", "datetime", "month"];
+const dateFieldTypes: FieldType[] = ["date", "time", "datetime", "month", "date_range"];
 /** Choice types where picking more than one answer is possible (so min/max selections apply). */
 const multiSelectFieldTypes: FieldType[] = ["multiselect", "checkbox"];
 
@@ -729,11 +747,24 @@ export function createField(type: FieldType, sectionId: string, pageId?: string)
     sectionId,
     hint: catalogField?.description,
     options: choiceFieldTypes.includes(type)
-      ? ["Yes", "No"]
+      ? type === "constant_sum"
+        ? ["Option 1", "Option 2", "Option 3"]
+        : ["Yes", "No"]
       : type === "day_of_week"
         ? ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        : undefined,
-    validation: locationFieldTypes.includes(type) && !shapeFieldTypes.includes(type) ? { accuracyMax: 25 } : undefined,
+        : type === "measurement"
+          ? ["kg", "g", "lb"]
+          : undefined,
+    validation:
+      locationFieldTypes.includes(type) && !shapeFieldTypes.includes(type)
+        ? { accuracyMax: 25 }
+        : type === "percentage"
+          ? { min: 0, max: 100, unit: "%" }
+          : type === "counter"
+            ? { min: 0, integerOnly: true }
+            : type === "constant_sum"
+              ? { max: 100 }
+              : undefined,
     appearance: { width: "full" },
     matrix: ["matrix_single", "matrix_multi", "grid"].includes(type)
       ? { rows: ["Row 1", "Row 2", "Row 3"], columns: ["Option 1", "Option 2", "Option 3"] }
@@ -1156,7 +1187,7 @@ function slugifyName(value: string): string {
 }
 
 function toXlsType(field: FormField, listName = fieldVariableName(field)): string {
-  if (field.options?.length && ["select", "dropdown", "radio", "likert"].includes(field.type)) {
+  if (field.options?.length && ["select", "dropdown", "radio", "likert", "yes_no"].includes(field.type)) {
     return `select_one ${listName}`;
   }
   if (field.options?.length && field.type === "ranking") {
@@ -1217,7 +1248,13 @@ function toXlsType(field: FormField, listName = fieldVariableName(field)): strin
     article: "note",
     user_select: "select_one_external",
     org_select: "select_one_external",
-    subform: "begin_repeat"
+    subform: "begin_repeat",
+    percentage: "decimal",
+    yes_no: "select_one yesno",
+    counter: "integer",
+    date_range: "text",
+    measurement: "decimal",
+    constant_sum: "text"
   };
   return typeMap[field.type];
 }

@@ -730,6 +730,163 @@ function DefaultableDate({
   );
 }
 
+/** Reads a numeric Custom validation rule (e.g. min:0 → 0). */
+function numericRule(question: MobileQuestion, prefix: string): number | null {
+  const raw = customRuleSuffix(question, prefix);
+  if (raw === null) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Counter / tally: big − and + buttons around a value, honoring min/max. */
+function CounterField({
+  question,
+  value,
+  answer,
+}: {
+  question: MobileQuestion;
+  value: unknown;
+  answer: (v: unknown) => void;
+}) {
+  const current = typeof value === "number" ? value : Number(value) || 0;
+  const min = numericRule(question, "min:") ?? 0;
+  const max = numericRule(question, "max:");
+  const step = (val: number) => answer(val);
+  return (
+    <View style={{ alignItems: "center", flexDirection: "row", gap: 16 }}>
+      <Pressable
+        disabled={current <= min}
+        onPress={() => step(Math.max(min, current - 1))}
+        style={{ ...counterButton, opacity: current <= min ? 0.4 : 1 }}
+      >
+        <Text style={counterButtonText}>−</Text>
+      </Pressable>
+      <Text style={{ color: "#12332b", fontSize: 28, fontWeight: "800", minWidth: 56, textAlign: "center" }}>
+        {current}
+      </Text>
+      <Pressable
+        disabled={max !== null && current >= max}
+        onPress={() => step(max !== null ? Math.min(max, current + 1) : current + 1)}
+        style={{ ...counterButton, opacity: max !== null && current >= max ? 0.4 : 1 }}
+      >
+        <Text style={counterButtonText}>+</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+/** Date range: a start and an end date stored as { from, to }. */
+function DateRangeField({ value, answer }: { value: unknown; answer: (v: unknown) => void }) {
+  const range = isRecord(value) ? value : {};
+  const from = String(range.from ?? "");
+  const to = String(range.to ?? "");
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={{ color: "#49635a", fontSize: 12, fontWeight: "700" }}>From</Text>
+      <DateTimeField mode="date" onChange={(next) => answer({ ...range, from: next })} value={from} />
+      <Text style={{ color: "#49635a", fontSize: 12, fontWeight: "700" }}>To</Text>
+      <DateTimeField mode="date" onChange={(next) => answer({ ...range, to: next })} value={to} />
+      {from && to && from > to ? (
+        <Text style={{ color: "#b42318", fontSize: 12 }}>The end date is before the start date.</Text>
+      ) : null}
+    </View>
+  );
+}
+
+/** Measurement: a number plus a unit chosen from the configured units, stored as { value, unit }. */
+function MeasurementField({
+  question,
+  value,
+  answer,
+}: {
+  question: MobileQuestion;
+  value: unknown;
+  answer: (v: unknown) => void;
+}) {
+  const current = isRecord(value) ? value : {};
+  const units = question.options.length ? question.options.map((option) => option.value) : ["unit"];
+  const unit = String(current.unit ?? units[0]);
+  return (
+    <View style={{ gap: 8 }}>
+      <TextInput
+        keyboardType="numeric"
+        onChangeText={(text) => answer({ ...current, value: text, unit })}
+        placeholder="Amount"
+        placeholderTextColor="#b0c5bc"
+        style={inputStyle}
+        value={String(current.value ?? "")}
+      />
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        {units.map((option) => {
+          const selected = unit === option;
+          return (
+            <Pressable
+              key={option}
+              onPress={() => answer({ ...current, value: current.value ?? "", unit: option })}
+              style={{
+                backgroundColor: selected ? "#12695a" : "#f6faf8",
+                borderColor: selected ? "#12695a" : "#dbe7e2",
+                borderRadius: 999,
+                borderWidth: 1,
+                paddingHorizontal: 14,
+                paddingVertical: 8,
+              }}
+            >
+              <Text style={{ color: selected ? "white" : "#12332b", fontWeight: "700" }}>{option}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+/** Constant sum: distribute a fixed total across options; shows the live remaining/total. */
+function ConstantSumField({
+  question,
+  value,
+  answer,
+}: {
+  question: MobileQuestion;
+  value: unknown;
+  answer: (v: unknown) => void;
+}) {
+  const allocations = isRecord(value) ? value : {};
+  const target = numericRule(question, "max:") ?? 100;
+  const total = question.options.reduce((sum, option) => sum + (Number(allocations[option.value]) || 0), 0);
+  const remaining = target - total;
+  return (
+    <View style={{ gap: 8 }}>
+      <View
+        style={{
+          backgroundColor: remaining === 0 ? "#e7f6ef" : "#fff4e5",
+          borderRadius: 10,
+          padding: 10,
+        }}
+      >
+        <Text style={{ color: remaining === 0 ? "#12695a" : "#9a5b00", fontWeight: "800" }}>
+          {total} of {target} allocated · {remaining >= 0 ? `${remaining} left` : `${-remaining} over`}
+        </Text>
+      </View>
+      {question.options.map((option) => (
+        <View key={option.id} style={{ alignItems: "center", flexDirection: "row", gap: 10 }}>
+          <Text style={{ color: "#12332b", flex: 1, fontWeight: "600" }}>{option.label}</Text>
+          <TextInput
+            keyboardType="numeric"
+            onChangeText={(text) =>
+              answer({ ...allocations, [option.value]: text === "" ? undefined : Number(text) || 0 })
+            }
+            placeholder="0"
+            placeholderTextColor="#b0c5bc"
+            style={{ ...inputStyle, width: 90, textAlign: "right" }}
+            value={String(allocations[option.value] ?? "")}
+          />
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function renderInput(
   question: MobileQuestion,
   value: unknown,
@@ -758,6 +915,21 @@ function renderInput(
         value={value}
       />
     );
+  }
+
+  // ── Specialised controls carried as behavior tags (counter, date range, measurement, sum) ──
+  const tags = question.metadataTags ?? [];
+  if (tags.includes("counter")) {
+    return <CounterField answer={answer} question={question} value={value} />;
+  }
+  if (tags.includes("date-range")) {
+    return <DateRangeField answer={answer} value={value} />;
+  }
+  if (tags.includes("measurement")) {
+    return <MeasurementField answer={answer} question={question} value={value} />;
+  }
+  if (tags.includes("constant-sum")) {
+    return <ConstantSumField answer={answer} question={question} value={value} />;
   }
 
   // ── GPS ──────────────────────────────────────────────────────────────────
@@ -2022,6 +2194,21 @@ const inputStyle = {
   color: "#12332b",
   fontSize: 15,
   padding: 14,
+} as const;
+
+const counterButton = {
+  alignItems: "center",
+  backgroundColor: "#e7f0ed",
+  borderRadius: 999,
+  height: 52,
+  justifyContent: "center",
+  width: 52,
+} as const;
+
+const counterButtonText = {
+  color: "#12695a",
+  fontSize: 26,
+  fontWeight: "800",
 } as const;
 
 const emptySubCard = {

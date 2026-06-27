@@ -212,6 +212,12 @@ const fieldTypeIcons: Record<FieldType, typeof Type> = {
   user_select: Users,
   org_select: Building2,
   subform: Layers3,
+  percentage: Hash,
+  yes_no: Check,
+  counter: Hash,
+  date_range: Calendar,
+  measurement: SlidersHorizontal,
+  constant_sum: SlidersHorizontal,
 };
 
 function asSettingsRecord(value: unknown): Record<string, unknown> {
@@ -1114,11 +1120,9 @@ export function typeChangePatchForField(field: FormField, nextType: FieldType): 
     Boolean(field.options?.length);
   return {
     type: nextType,
-    options: choiceTypesForSettings.has(nextType)
-      ? keepOptions
-        ? field.options
-        : defaults.options
-      : undefined,
+    // Preserve author-entered choices when moving between choice types; otherwise adopt the new
+    // type's seeded options (e.g. Yes/No, allocation buckets, measurement units) or clear them.
+    options: keepOptions ? field.options : defaults.options,
     validation: defaults.validation,
     matrix: defaults.matrix,
     repeat: defaults.repeat,
@@ -13311,7 +13315,9 @@ export function DynamicForms({
                               ].includes(selectedField.type) ||
                               selectedField.options ? (
                                 <label className="mt-4 block text-sm font-semibold">
-                                  Options
+                                  {selectedField.type === "measurement"
+                                    ? "Units of measure"
+                                    : "Options"}
                                   <ChoiceOptionsEditor
                                     key={selectedField.id}
                                     onChange={(options) =>
@@ -13328,10 +13334,9 @@ export function DynamicForms({
                                     options={selectedField.options ?? []}
                                   />
                                   <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                                    Press Enter to add the next response. Paste
-                                    multiple lines to create many options at
-                                    once. These values are used by web and mobile
-                                    collection.
+                                    {selectedField.type === "measurement"
+                                      ? "List the units a field officer can pick (e.g. kg, g, lb). The first one is selected by default."
+                                      : "Press Enter to add the next response. Paste multiple lines to create many options at once. These values are used by web and mobile collection."}
                                   </span>
                                 </label>
                               ) : (

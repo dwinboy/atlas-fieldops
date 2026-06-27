@@ -134,4 +134,30 @@ describe("question response type changes", () => {
     expect(textPatch).toMatchObject({ type: "text" });
     expect(textPatch.options).toBeUndefined();
   });
+
+  it("seeds sensible defaults for the broadened response types", () => {
+    const baseField = {
+      id: "question-3",
+      label: "Measure",
+      required: false,
+      sectionId: "main",
+      type: "text" as const,
+      variableName: "measure",
+    };
+
+    expect(typeChangePatchForField(baseField, "percentage")).toMatchObject({
+      type: "percentage",
+      validation: { min: 0, max: 100, unit: "%" },
+    });
+    expect(typeChangePatchForField(baseField, "counter")).toMatchObject({
+      type: "counter",
+      validation: { min: 0, integerOnly: true },
+    });
+    expect(typeChangePatchForField(baseField, "yes_no").options).toEqual(["Yes", "No"]);
+    expect(typeChangePatchForField(baseField, "measurement").options).toEqual(["kg", "g", "lb"]);
+
+    const constantSum = typeChangePatchForField(baseField, "constant_sum");
+    expect(constantSum).toMatchObject({ type: "constant_sum", validation: { max: 100 } });
+    expect(constantSum.options).toEqual(["Option 1", "Option 2", "Option 3"]);
+  });
 });
