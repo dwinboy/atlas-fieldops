@@ -97,7 +97,10 @@ import {
   duplicateSection,
   fieldCatalog,
   fieldTypeHelp,
+  fieldCollectsAnswer,
+  fieldSupportsEntityMapping,
   fieldSupportsEvidence,
+  fieldSupportsIndicator,
   fieldSupportsSelection,
   fieldValidationCapabilities,
   getCollectionCompatibility,
@@ -2813,6 +2816,26 @@ function ColumnField({
   );
 }
 
+/** Whether a focus-editor settings tab is relevant to a question's response type. Keeps builders
+ * from seeing settings that can't apply (e.g. Reference on currency, Evidence on text). */
+function focusTabApplies(tab: FocusSettingsTab, type: FieldType): boolean {
+  switch (tab) {
+    case "reference":
+      return fieldSupportsSelection(type);
+    case "evidence":
+      return fieldSupportsEvidence(type);
+    case "indicator":
+      return fieldSupportsIndicator(type);
+    case "beneficiary":
+      return fieldSupportsEntityMapping(type);
+    case "privacy":
+    case "governance":
+      return fieldCollectsAnswer(type);
+    default:
+      return true;
+  }
+}
+
 function SelectionConfigurator({
   field,
   siblings,
@@ -5105,10 +5128,7 @@ export function DynamicForms({
   // currency answer), drop back to Basics so builders never sit on an irrelevant tab.
   useEffect(() => {
     if (!selectedFieldType) return;
-    if (focusSettingsTab === "reference" && !fieldSupportsSelection(selectedFieldType)) {
-      setFocusSettingsTab("common");
-    }
-    if (focusSettingsTab === "evidence" && !fieldSupportsEvidence(selectedFieldType)) {
+    if (!focusTabApplies(focusSettingsTab, selectedFieldType)) {
       setFocusSettingsTab("common");
     }
   }, [selectedFieldType, focusSettingsTab]);
@@ -12279,13 +12299,7 @@ export function DynamicForms({
                             )
                               // Only show tabs that apply to this response type, so builders aren't
                               // shown irrelevant settings (e.g. Reference for a currency answer).
-                              .filter(([tab]) =>
-                                tab === "reference"
-                                  ? fieldSupportsSelection(selectedField.type)
-                                  : tab === "evidence"
-                                    ? fieldSupportsEvidence(selectedField.type)
-                                    : true,
-                              )
+                              .filter(([tab]) => focusTabApplies(tab, selectedField.type))
                               .map(([tab, Icon, label]) => (
                               <button
                                 className={cn(
@@ -13878,7 +13892,7 @@ export function DynamicForms({
                             </section>
                           ) : null}
 
-                          {focusSettingsTab === "indicator" ? (
+                          {focusSettingsTab === "indicator" && focusTabApplies("indicator", selectedField.type) ? (
                             <section className="mt-4 rounded-lg border bg-panel p-4">
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
@@ -13998,7 +14012,7 @@ export function DynamicForms({
                             </section>
                           ) : null}
 
-                          {focusSettingsTab === "beneficiary" ? (
+                          {focusSettingsTab === "beneficiary" && focusTabApplies("beneficiary", selectedField.type) ? (
                             <section className="mt-4 rounded-lg border bg-panel p-4">
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
@@ -14339,7 +14353,7 @@ export function DynamicForms({
                             </section>
                           ) : null}
 
-                          {focusSettingsTab === "privacy" ? (
+                          {focusSettingsTab === "privacy" && focusTabApplies("privacy", selectedField.type) ? (
                             <section className="mt-4 rounded-lg border bg-panel p-4">
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
@@ -14492,7 +14506,7 @@ export function DynamicForms({
                             </section>
                           ) : null}
 
-                          {focusSettingsTab === "governance" ? (
+                          {focusSettingsTab === "governance" && focusTabApplies("governance", selectedField.type) ? (
                             <section className="mt-4 rounded-lg border bg-panel p-4">
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">

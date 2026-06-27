@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   createField,
   fieldCatalog,
+  fieldCollectsAnswer,
+  fieldSupportsEntityMapping,
   fieldSupportsEvidence,
+  fieldSupportsIndicator,
   fieldSupportsSelection,
   fieldTypeHelp,
   fieldValidationCapabilities,
@@ -27,6 +30,30 @@ describe("tab applicability by response type", () => {
     expect(fieldSupportsEvidence("pdf")).toBe(true);
     expect(fieldSupportsEvidence("currency")).toBe(false);
     expect(fieldSupportsEvidence("text")).toBe(false);
+  });
+
+  it("indicator tab is only for measurable (numeric/choice/calculated) answers", () => {
+    expect(fieldSupportsIndicator("number")).toBe(true);
+    expect(fieldSupportsIndicator("currency")).toBe(true);
+    expect(fieldSupportsIndicator("select")).toBe(true);
+    expect(fieldSupportsIndicator("calculated")).toBe(true);
+    expect(fieldSupportsIndicator("photo")).toBe(false);
+    expect(fieldSupportsIndicator("text")).toBe(false);
+  });
+
+  it("entity-mapping excludes display/system/structural types", () => {
+    expect(fieldSupportsEntityMapping("text")).toBe(true);
+    expect(fieldSupportsEntityMapping("currency")).toBe(true);
+    expect(fieldSupportsEntityMapping("article")).toBe(false);
+    expect(fieldSupportsEntityMapping("auto_id")).toBe(false);
+    expect(fieldSupportsEntityMapping("repeat_group")).toBe(false);
+    expect(fieldSupportsEntityMapping("matrix_single")).toBe(false);
+  });
+
+  it("privacy/governance apply to anything that collects an answer (not display notes)", () => {
+    expect(fieldCollectsAnswer("currency")).toBe(true);
+    expect(fieldCollectsAnswer("photo")).toBe(true);
+    expect(fieldCollectsAnswer("article")).toBe(false);
   });
 });
 

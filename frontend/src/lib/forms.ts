@@ -577,6 +577,25 @@ export function fieldSupportsEvidence(type: FieldType): boolean {
   return mediaFieldTypes.includes(type);
 }
 
+/** True when a question collects/stores an answer at all — so Privacy and Governance apply.
+ * The only thing that collects nothing is a display-only `article` note. */
+export function fieldCollectsAnswer(type: FieldType): boolean {
+  return type !== "article";
+}
+
+/** True when a question's answer is measurable and can map to an indicator (quantitative or choice). */
+export function fieldSupportsIndicator(type: FieldType): boolean {
+  return numericFieldTypes.includes(type) || choiceFieldTypes.includes(type) || type === "calculated";
+}
+
+/** True when a question can populate a tracked record's profile attribute (Entity tab). Excludes
+ * display-only, system, derived, and structural/grid types that don't map to a single attribute. */
+export function fieldSupportsEntityMapping(type: FieldType): boolean {
+  return !["article", "auto_id", "hidden", "calculated", "repeat_group", "matrix_single", "matrix_multi", "grid"].includes(
+    type,
+  );
+}
+
 export function fieldValidationCapabilities(type: FieldType): FieldValidationCapabilities {
   // Read-only / system questions (article, auto ID, hidden) collect no validated answer.
   if (displayOnlyFieldTypes.includes(type)) {
