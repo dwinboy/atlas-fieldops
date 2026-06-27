@@ -85,6 +85,12 @@ import {
   fieldMetadataValue,
   hasFieldTag,
 } from "@/components/forms/fieldMetadata";
+import type {
+  FormAssignmentPlan,
+  FormImportRun,
+  FormQualityFlag,
+  FormReadinessState,
+} from "@/components/forms/formBuilderTypes";
 import { templateToForm } from "@/components/forms/formTemplates";
 import { FieldPropertiesPanel, type RightPanelTab } from "@/components/forms/FieldPropertiesPanel";
 import { FieldTranslationsEditor } from "@/components/forms/FieldTranslationsEditor";
@@ -833,47 +839,6 @@ type FormControlsTab =
   | "governance"
   | "audit"
   | "versions";
-
-type FormReadinessState = {
-  mobilePreviewChecked: boolean;
-  pilotTestCompleted: boolean;
-  enumeratorBriefingReady: boolean;
-  importTemplateReviewed: boolean;
-  lastReviewedAt?: string;
-};
-
-type FormAssignmentPlan = {
-  audience: string;
-  team: string;
-  supervisor: string;
-  locationScope: string;
-  targetSubmissions: number;
-  dailyTarget: number;
-  briefingComplete: boolean;
-  pilotEnumerator: string;
-  lastUpdatedAt?: string;
-};
-
-type FormImportRun = {
-  id: string;
-  fileName: string;
-  rows: number;
-  mappedColumns: number;
-  validRows: number;
-  issueCount: number;
-  status: "validated" | "needs_mapping" | "imported";
-  createdAt: string;
-};
-
-type FormQualityFlag = {
-  id: string;
-  label: string;
-  severity: "Low" | "Medium" | "High" | "Critical";
-  affectedRecords: number;
-  owner: string;
-  status: "open" | "monitoring" | "resolved";
-  recommendation: string;
-};
 
 type ReviewAction =
   | "approve"
