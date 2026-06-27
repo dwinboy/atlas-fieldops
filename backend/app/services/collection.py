@@ -1923,6 +1923,8 @@ class FormService:
             "value_column": value_col,
             "display_column": display_col,
             "parent_column": parent_col,
+            # First few rows so the builder can confirm the upload matches their intent.
+            "sample": rows[:5],
         }
 
     async def list_form_datasets(self, *, organization_id: UUID, form_id: UUID) -> list[dict[str, Any]]:

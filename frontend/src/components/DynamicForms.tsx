@@ -3020,8 +3020,26 @@ function SelectionConfigurator({
   const autofill = selection.autofill ?? [];
   const updateAutofill = (index: number, patch: Partial<SelectionAutofill>) =>
     update({ autofill: autofill.map((map, i) => (i === index ? { ...map, ...patch } : map)) });
+  const [preview, setPreview] = useState<FormDatasetSummary | null>(null);
   const selectedDataset = availableDatasets.find((dataset) => dataset.slug === selection.datasetId);
-  const datasetColumns = selectedDataset?.columns ?? [];
+  const datasetColumns = (preview && preview.slug === selection.datasetId ? preview.columns : selectedDataset?.columns) ?? [];
+  const sampleRows = preview && preview.slug === selection.datasetId ? preview.sample ?? [] : [];
+  // Columns the config relies on; warn if the chosen dataset doesn't actually contain them.
+  const referencedColumns = Array.from(
+    new Set(
+      [
+        selection.displayColumn,
+        selection.valueColumn,
+        ...(selection.searchColumns ?? []),
+        ...(selection.filters ?? []).map((filter) => filter.column),
+        ...(selection.autofill ?? []).map((map) => map.fromColumn),
+        selection.cascadeFromVariable ? undefined : undefined,
+      ].filter((column): column is string => Boolean(column)),
+    ),
+  );
+  const missingColumns = datasetColumns.length
+    ? referencedColumns.filter((column) => !datasetColumns.includes(column))
+    : [];
   const [showUpload, setShowUpload] = useState(false);
 
   function downloadTemplate() {
@@ -3051,15 +3069,22 @@ function SelectionConfigurator({
     setUploadState({ busy: true, message: `Uploading ${file.name}…` });
     try {
       const summary = await onUploadDataset(file);
+      setPreview(summary);
+      // Keep the builder's pre-chosen columns if the file actually has them; otherwise default.
+      const keep = (column: string | undefined, fallback: string | undefined) =>
+        column && summary.columns.includes(column) ? column : fallback;
       onChange({
         ...selection,
         source: "dataset",
         datasetId: summary.slug,
-        displayColumn: summary.display_column ?? summary.columns[0],
-        valueColumn: summary.value_column ?? summary.columns[0],
-        searchColumns: summary.columns,
+        displayColumn: keep(selection.displayColumn, summary.display_column ?? summary.columns[0]),
+        valueColumn: keep(selection.valueColumn, summary.value_column ?? summary.columns[0]),
+        searchColumns: (selection.searchColumns ?? []).filter((c) => summary.columns.includes(c)).length
+          ? selection.searchColumns
+          : summary.columns,
       });
-      setUploadState({ busy: false, message: `Loaded ${summary.row_count ?? "?"} rows · columns: ${summary.columns.join(", ")}` });
+      setUploadState({ busy: false, message: `Loaded ${summary.row_count ?? "?"} row(s).` });
+      setShowUpload(false);
     } catch (error) {
       setUploadState({ busy: false, message: error instanceof Error ? error.message : "Upload failed." });
     }
@@ -3095,9 +3120,14 @@ function SelectionConfigurator({
   const warnings = selectionWarnings(selection, siblings);
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-2 sm:grid-cols-3">
-        {modes.map((mode) => {
+    <div className="space-y-5">
+      <div>
+        <p className="text-sm font-semibold">1 · Where do the answers come from?</p>
+        <p className="mb-2 mt-0.5 text-xs text-muted-foreground">
+          Pick the source of this question’s choices.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {modes.map((mode) => {
           const active = selection.source === mode.key;
           return (
             <button
@@ -3114,6 +3144,7 @@ function SelectionConfigurator({
             </button>
           );
         })}
+        </div>
       </div>
 
       {selection.source === "static" ? (
@@ -3124,10 +3155,15 @@ function SelectionConfigurator({
       ) : null}
 
       {selection.source === "dataset" ? (
-        <div className="space-y-3">
-          <div className="grid gap-3 lg:grid-cols-2">
-            <label className="text-sm font-semibold">
-              Choose a dataset
+        <div className="space-y-5">
+          {/* Step 2 — get the data first, so the column choices below are real, not guessed. */}
+          <div>
+            <p className="text-sm font-semibold">2 · Add your data</p>
+            <p className="mb-2 mt-0.5 text-xs text-muted-foreground">
+              Reuse an existing dataset, or upload your own spreadsheet.
+            </p>
+            <label className="block text-sm font-semibold">
+              Dataset
               <Select
                 className="mt-2"
                 onChange={(event) => {
@@ -3139,7 +3175,7 @@ function SelectionConfigurator({
                   update({
                     datasetId: event.target.value || undefined,
                     displayColumn: picked?.columns[0] ?? selection.displayColumn,
-                    valueColumn: picked?.columns[0] ?? selection.valueColumn,
+                    valueColumn: picked?.columns[1] ?? picked?.columns[0] ?? selection.valueColumn,
                     searchColumns: picked?.columns.length ? picked.columns : selection.searchColumns,
                   });
                 }}
@@ -3153,78 +3189,28 @@ function SelectionConfigurator({
                 ))}
                 {onUploadDataset ? <option value="__upload__">＋ Upload a new dataset…</option> : null}
               </Select>
-              <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                {availableDatasets.length
-                  ? "Pick an existing dataset, or upload a new one below."
-                  : "No datasets yet — upload one below to create the first."}
-              </span>
             </label>
-            <label className="text-sm font-semibold">
-              Cascade from question
-              <Select
-                className="mt-2"
-                onChange={(event) => update({ cascadeFromVariable: event.target.value || undefined })}
-                value={selection.cascadeFromVariable ?? ""}
-              >
-                <option value="">No parent</option>
-                {siblingOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-            </label>
-            <ColumnField
-              columns={datasetColumns}
-              label="Display column (what officers see)"
-              onChange={(value) => update({ displayColumn: value || undefined })}
-              placeholder="label"
-              value={selection.displayColumn ?? ""}
-            />
-            <ColumnField
-              columns={datasetColumns}
-              label="Value column (what gets stored)"
-              onChange={(value) => update({ valueColumn: value || undefined })}
-              placeholder="code"
-              value={selection.valueColumn ?? ""}
-            />
-            <label className="text-sm font-semibold lg:col-span-2">
-              Search columns (comma-separated)
-              <Input
-                className="mt-2"
-                onChange={(event) =>
-                  update({
-                    searchColumns: event.target.value
-                      ? event.target.value.split(",").map((column) => column.trim()).filter(Boolean)
-                      : undefined,
-                  })
-                }
-                placeholder={datasetColumns.length ? datasetColumns.join(", ") : "label, code, region"}
-                value={(selection.searchColumns ?? []).join(", ")}
-              />
-            </label>
-          </div>
 
-          <div className="rounded-md border border-dashed bg-background p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-semibold">Upload your data</p>
-              <div className="flex items-center gap-2">
+            <div className="mt-3 rounded-md border border-dashed bg-background p-3">
+              <p className="text-sm font-semibold">Upload a new dataset (CSV, Excel, or JSON)</p>
+              <ol className="mt-1 list-inside list-decimal space-y-0.5 text-xs text-muted-foreground">
+                <li><span className="font-semibold">Download the template</span> — its columns match what you set below.</li>
+                <li>Fill it with your rows.</li>
+                <li>Upload it — it becomes a searchable, offline dataset for this form.</li>
+              </ol>
+              <div className="mt-2 flex items-center gap-2">
                 <Button onClick={downloadTemplate} size="sm" type="button" variant="ghost">
                   <FileDown aria-hidden="true" /> Download template
                 </Button>
-                {!showUpload ? (
-                  <Button onClick={() => setShowUpload(true)} size="sm" type="button" variant="secondary">
-                    <UploadCloud aria-hidden="true" /> Upload dataset
+                {onUploadDataset ? (
+                  <Button onClick={() => setShowUpload((open) => !open)} size="sm" type="button" variant="secondary">
+                    <UploadCloud aria-hidden="true" /> {showUpload ? "Cancel" : "Choose file"}
                   </Button>
-                ) : null}
+                ) : (
+                  <span className="text-xs text-warning">Save the form first to upload datasets.</span>
+                )}
               </div>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              1) Download the template (its columns match the display/value/search/filter fields you set). 2) Fill it
-              with your rows. 3) Upload it as CSV, Excel, or JSON — it becomes a searchable, offline dataset for this form.
-            </p>
-            {showUpload ? (
-              onUploadDataset ? (
+              {showUpload && onUploadDataset ? (
                 <input
                   accept=".csv,.xlsx,.xls,.json"
                   className="mt-2 block w-full text-xs"
@@ -3235,14 +3221,86 @@ function SelectionConfigurator({
                   }}
                   type="file"
                 />
-              ) : (
-                <p className="mt-2 text-xs text-warning">Save the form first, then you can upload datasets here.</p>
-              )
-            ) : null}
-            {uploadState.message ? (
-              <p className="mt-2 text-xs text-muted-foreground">{uploadState.message}</p>
+              ) : null}
+              {uploadState.message ? (
+                <p className="mt-2 text-xs font-semibold text-primary">{uploadState.message}</p>
+              ) : null}
+            </div>
+
+            {/* Preview so the builder confirms the upload matches their intent. */}
+            {sampleRows.length ? (
+              <div className="mt-3 overflow-x-auto rounded-md border bg-background">
+                <p className="border-b px-3 py-1.5 text-xs font-semibold text-muted-foreground">
+                  Preview · first {sampleRows.length} row(s)
+                </p>
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-panel text-muted-foreground">
+                    <tr>
+                      {datasetColumns.map((column) => (
+                        <th className="px-3 py-1.5 font-semibold" key={column}>{column}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sampleRows.map((row, index) => (
+                      <tr className="border-t" key={index}>
+                        {datasetColumns.map((column) => (
+                          <td className="px-3 py-1.5" key={column}>{String(row[column] ?? "")}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : null}
           </div>
+
+          {/* Step 3 — only meaningful once columns are known. */}
+          {datasetColumns.length || selection.datasetId ? (
+            <div>
+              <p className="text-sm font-semibold">3 · Map the columns</p>
+              <p className="mb-2 mt-0.5 text-xs text-muted-foreground">
+                Tell the app which column to show the officer, which to store, and which to search.
+              </p>
+              <div className="grid gap-3 lg:grid-cols-2">
+                <ColumnField
+                  columns={datasetColumns}
+                  label="Show officers (display)"
+                  onChange={(value) => update({ displayColumn: value || undefined })}
+                  placeholder="e.g. district name"
+                  value={selection.displayColumn ?? ""}
+                />
+                <ColumnField
+                  columns={datasetColumns}
+                  label="Store this (value)"
+                  onChange={(value) => update({ valueColumn: value || undefined })}
+                  placeholder="e.g. district code"
+                  value={selection.valueColumn ?? ""}
+                />
+                <label className="text-sm font-semibold lg:col-span-2">
+                  Also searchable by (optional)
+                  <Input
+                    className="mt-2"
+                    onChange={(event) =>
+                      update({
+                        searchColumns: event.target.value
+                          ? event.target.value.split(",").map((column) => column.trim()).filter(Boolean)
+                          : undefined,
+                      })
+                    }
+                    placeholder={datasetColumns.length ? datasetColumns.join(", ") : "comma-separated columns"}
+                    value={(selection.searchColumns ?? []).join(", ")}
+                  />
+                </label>
+              </div>
+              {missingColumns.length ? (
+                <p className="mt-2 rounded-md border border-warning/40 bg-warning/10 p-2 text-xs text-warning">
+                  This dataset has no column named {missingColumns.map((c) => `“${c}”`).join(", ")}. Pick an existing
+                  column above, or re-upload a file that includes it.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -3398,7 +3456,29 @@ function SelectionConfigurator({
       ) : null}
 
       {selection.source !== "static" && selection.source !== "question" ? (
-        <div className="rounded-md border bg-background p-3">
+        <div className="space-y-3">
+          <div>
+            <p className="text-sm font-semibold">4 · Narrow &amp; relate (optional)</p>
+            <p className="mb-2 mt-0.5 text-xs text-muted-foreground">
+              Limit which options show, and link this question to an earlier answer.
+            </p>
+            <label className="block text-sm font-semibold">
+              Show only children of (cascade)
+              <Select
+                className="mt-2"
+                onChange={(event) => update({ cascadeFromVariable: event.target.value || undefined })}
+                value={selection.cascadeFromVariable ?? ""}
+              >
+                <option value="">No parent — show all</option>
+                {siblingOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+            </label>
+          </div>
+          <div className="rounded-md border bg-background p-3">
           <div className="flex items-center justify-between gap-2">
             <span className="text-sm font-semibold">Filters</span>
             <div className="flex items-center gap-2">
@@ -3507,13 +3587,19 @@ function SelectionConfigurator({
               );
             })}
           </div>
+          </div>
         </div>
       ) : null}
 
       {selection.source !== "static" ? (
         <div className="rounded-md border bg-background p-3">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-sm font-semibold">Auto-fill other questions</span>
+            <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
+              5 · Auto-fill other questions (optional)
+              <HelpHint label="About auto-fill" title="Auto-fill">
+                When a record is chosen, copy its columns into other questions — e.g. pick a household and fill its district.
+              </HelpHint>
+            </span>
             <Button
               onClick={() => update({ autofill: [...autofill, { fromColumn: "", toVariable: siblingOptions[0]?.value ?? "" }] })}
               size="sm"

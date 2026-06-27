@@ -3296,6 +3296,7 @@ export type FormDatasetSummary = {
   parent_column?: string | null;
   scope?: string;
   kind?: string;
+  sample?: Record<string, unknown>[];
 };
 
 /** Uploads a CSV/Excel/JSON dataset for a form's selectable questions and returns its slug + columns
