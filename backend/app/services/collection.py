@@ -1894,18 +1894,37 @@ class FormService:
         }
 
     async def list_form_datasets(self, *, organization_id: UUID, form_id: UUID) -> list[dict[str, Any]]:
+        """Datasets a builder can bind to: this form's uploaded datasets first, then the org's
+        global reference lists — all selectable so no one types a slug by hand."""
         result = await self.session.execute(
-            select(PlatformReferenceList).where(
-                PlatformReferenceList.organization_id == organization_id,
-                PlatformReferenceList.scope == "form",
-                PlatformReferenceList.form_id == form_id,
+            select(PlatformReferenceList)
+            .where(
                 PlatformReferenceList.deleted_at.is_(None),
+                PlatformReferenceList.status == "active",
+                (PlatformReferenceList.organization_id == organization_id)
+                | PlatformReferenceList.organization_id.is_(None),
             )
+            .order_by(PlatformReferenceList.name)
         )
-        return [
-            {"id": item.slug, "slug": item.slug, "name": item.name, "columns": item.columns_json or []}
-            for item in result.scalars()
-        ]
+        datasets: list[dict[str, Any]] = []
+        for item in result.scalars():
+            is_form = item.scope == "form" and item.form_id == form_id
+            # Skip datasets that belong to a different form.
+            if item.scope == "form" and not is_form:
+                continue
+            datasets.append(
+                {
+                    "id": item.slug,
+                    "slug": item.slug,
+                    "name": item.name,
+                    "columns": item.columns_json or [],
+                    "scope": item.scope,
+                    "kind": "Form dataset" if is_form else "Shared reference list",
+                }
+            )
+        # This form's own datasets first, then shared reference lists.
+        datasets.sort(key=lambda dataset: (dataset["kind"] != "Form dataset", dataset["name"].lower()))
+        return datasets
 
     async def _unique_reference_slug(self, organization_id: UUID, base: str) -> str:
         candidate = base

@@ -129,6 +129,7 @@ import {
   FORM_TYPES,
   getFormCollectionCompatibility,
   listSubmissions,
+  listFormDatasets,
   listForms,
   listMasterDataEntries,
   listPrograms,
@@ -2761,16 +2762,57 @@ const SELECTION_OPS: { value: SelectionFilter["op"]; label: string }[] = [
   { value: "not_empty", label: "is set" },
 ];
 
+/** Renders a column picker when the dataset's columns are known, falling back to a free-text box
+ * (e.g. a not-yet-uploaded list) so builders never have to guess column names when we know them. */
+function ColumnField({
+  label,
+  columns,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  columns: string[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <label className="text-sm font-semibold">
+      {label}
+      {columns.length ? (
+        <Select className="mt-2" onChange={(event) => onChange(event.target.value)} value={value}>
+          <option value="">Choose a column…</option>
+          {columns.map((column) => (
+            <option key={column} value={column}>
+              {column}
+            </option>
+          ))}
+        </Select>
+      ) : (
+        <Input
+          className="mt-2"
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          value={value}
+        />
+      )}
+    </label>
+  );
+}
+
 function SelectionConfigurator({
   field,
   siblings,
   forms = [],
+  availableDatasets = [],
   onChange,
   onUploadDataset,
 }: {
   field: FormField;
   siblings: FormField[];
   forms?: { id: string; name: string }[];
+  availableDatasets?: FormDatasetSummary[];
   onChange: (selection: FormField["selection"]) => void;
   onUploadDataset?: (file: File) => Promise<FormDatasetSummary>;
 }) {
@@ -2781,6 +2823,31 @@ function SelectionConfigurator({
   const autofill = selection.autofill ?? [];
   const updateAutofill = (index: number, patch: Partial<SelectionAutofill>) =>
     update({ autofill: autofill.map((map, i) => (i === index ? { ...map, ...patch } : map)) });
+  const selectedDataset = availableDatasets.find((dataset) => dataset.slug === selection.datasetId);
+  const datasetColumns = selectedDataset?.columns ?? [];
+  const [showUpload, setShowUpload] = useState(false);
+
+  function downloadTemplate() {
+    const headers = Array.from(
+      new Set(
+        [
+          selection.displayColumn || "label",
+          selection.valueColumn || "code",
+          ...(selection.searchColumns ?? []),
+          ...(selection.filters ?? []).map((filter) => filter.column),
+          ...(selection.autofill ?? []).map((map) => map.fromColumn),
+        ].filter(Boolean),
+      ),
+    );
+    const csv = `${headers.join(",")}\n`;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${field.variableName || "dataset"}-template.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
 
   async function handleUpload(file: File) {
     if (!onUploadDataset) return;
@@ -2849,88 +2916,125 @@ function SelectionConfigurator({
       ) : null}
 
       {selection.source === "dataset" ? (
-        <div className="grid gap-3 lg:grid-cols-2">
-          <label className="text-sm font-semibold">
-            Dataset (reference list)
-            <Input
-              className="mt-2"
-              onChange={(event) => update({ datasetId: event.target.value || undefined })}
-              placeholder="districts, facilities, crops…"
-              value={selection.datasetId ?? ""}
-            />
-            <span className="mt-1 block text-xs font-normal text-muted-foreground">
-              The reference list slug, or upload one below to create a form dataset.
-            </span>
-          </label>
-          <label className="text-sm font-semibold">
-            Cascade from question
-            <Select
-              className="mt-2"
-              onChange={(event) => update({ cascadeFromVariable: event.target.value || undefined })}
-              value={selection.cascadeFromVariable ?? ""}
-            >
-              <option value="">No parent</option>
-              {siblingOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <label className="text-sm font-semibold">
-            Display column
-            <Input
-              className="mt-2"
-              onChange={(event) => update({ displayColumn: event.target.value || undefined })}
+        <div className="space-y-3">
+          <div className="grid gap-3 lg:grid-cols-2">
+            <label className="text-sm font-semibold">
+              Choose a dataset
+              <Select
+                className="mt-2"
+                onChange={(event) => {
+                  if (event.target.value === "__upload__") {
+                    setShowUpload(true);
+                    return;
+                  }
+                  const picked = availableDatasets.find((dataset) => dataset.slug === event.target.value);
+                  update({
+                    datasetId: event.target.value || undefined,
+                    displayColumn: picked?.columns[0] ?? selection.displayColumn,
+                    valueColumn: picked?.columns[0] ?? selection.valueColumn,
+                    searchColumns: picked?.columns.length ? picked.columns : selection.searchColumns,
+                  });
+                }}
+                value={selection.datasetId ?? ""}
+              >
+                <option value="">Select a dataset…</option>
+                {availableDatasets.map((dataset) => (
+                  <option key={dataset.slug} value={dataset.slug}>
+                    {dataset.name} {dataset.kind ? `· ${dataset.kind}` : ""}
+                  </option>
+                ))}
+                {onUploadDataset ? <option value="__upload__">＋ Upload a new dataset…</option> : null}
+              </Select>
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                {availableDatasets.length
+                  ? "Pick an existing dataset, or upload a new one below."
+                  : "No datasets yet — upload one below to create the first."}
+              </span>
+            </label>
+            <label className="text-sm font-semibold">
+              Cascade from question
+              <Select
+                className="mt-2"
+                onChange={(event) => update({ cascadeFromVariable: event.target.value || undefined })}
+                value={selection.cascadeFromVariable ?? ""}
+              >
+                <option value="">No parent</option>
+                {siblingOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            <ColumnField
+              columns={datasetColumns}
+              label="Display column (what officers see)"
+              onChange={(value) => update({ displayColumn: value || undefined })}
               placeholder="label"
               value={selection.displayColumn ?? ""}
             />
-          </label>
-          <label className="text-sm font-semibold">
-            Value column (stored)
-            <Input
-              className="mt-2"
-              onChange={(event) => update({ valueColumn: event.target.value || undefined })}
+            <ColumnField
+              columns={datasetColumns}
+              label="Value column (what gets stored)"
+              onChange={(value) => update({ valueColumn: value || undefined })}
               placeholder="code"
               value={selection.valueColumn ?? ""}
             />
-          </label>
-          <label className="text-sm font-semibold lg:col-span-2">
-            Search columns (comma-separated)
-            <Input
-              className="mt-2"
-              onChange={(event) =>
-                update({
-                  searchColumns: event.target.value
-                    ? event.target.value.split(",").map((column) => column.trim()).filter(Boolean)
-                    : undefined,
-                })
-              }
-              placeholder="label, code, region"
-              value={(selection.searchColumns ?? []).join(", ")}
-            />
-          </label>
-          {onUploadDataset ? (
-            <div className="rounded-md border border-dashed bg-background p-3 lg:col-span-2">
-              <p className="text-sm font-semibold">Upload a dataset (CSV, Excel, or JSON)</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Creates a form dataset and fills the columns above automatically. Officers search it offline.
-              </p>
-              <input
-                accept=".csv,.xlsx,.xls,.json"
-                className="mt-2 block w-full text-xs"
-                disabled={uploadState.busy}
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) void handleUpload(file);
-                }}
-                type="file"
+            <label className="text-sm font-semibold lg:col-span-2">
+              Search columns (comma-separated)
+              <Input
+                className="mt-2"
+                onChange={(event) =>
+                  update({
+                    searchColumns: event.target.value
+                      ? event.target.value.split(",").map((column) => column.trim()).filter(Boolean)
+                      : undefined,
+                  })
+                }
+                placeholder={datasetColumns.length ? datasetColumns.join(", ") : "label, code, region"}
+                value={(selection.searchColumns ?? []).join(", ")}
               />
-              {uploadState.message ? (
-                <p className="mt-2 text-xs text-muted-foreground">{uploadState.message}</p>
-              ) : null}
+            </label>
+          </div>
+
+          <div className="rounded-md border border-dashed bg-background p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-semibold">Upload your data</p>
+              <div className="flex items-center gap-2">
+                <Button onClick={downloadTemplate} size="sm" type="button" variant="ghost">
+                  <FileDown aria-hidden="true" /> Download template
+                </Button>
+                {!showUpload ? (
+                  <Button onClick={() => setShowUpload(true)} size="sm" type="button" variant="secondary">
+                    <UploadCloud aria-hidden="true" /> Upload dataset
+                  </Button>
+                ) : null}
+              </div>
             </div>
-          ) : null}
+            <p className="mt-1 text-xs text-muted-foreground">
+              1) Download the template (its columns match the display/value/search/filter fields you set). 2) Fill it
+              with your rows. 3) Upload it as CSV, Excel, or JSON — it becomes a searchable, offline dataset for this form.
+            </p>
+            {showUpload ? (
+              onUploadDataset ? (
+                <input
+                  accept=".csv,.xlsx,.xls,.json"
+                  className="mt-2 block w-full text-xs"
+                  disabled={uploadState.busy}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void handleUpload(file);
+                  }}
+                  type="file"
+                />
+              ) : (
+                <p className="mt-2 text-xs text-warning">Save the form first, then you can upload datasets here.</p>
+              )
+            ) : null}
+            {uploadState.message ? (
+              <p className="mt-2 text-xs text-muted-foreground">{uploadState.message}</p>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -2950,27 +3054,22 @@ function SelectionConfigurator({
           {selection.recordSource === "form" ? (
             <label className="text-sm font-semibold">
               Source form
-              {forms.length ? (
-                <Select
-                  className="mt-2"
-                  onChange={(event) => update({ recordFormId: event.target.value || undefined })}
-                  value={selection.recordFormId ?? ""}
-                >
-                  <option value="">Choose a form…</option>
-                  {forms.map((form) => (
-                    <option key={form.id} value={form.id}>
-                      {form.name}
-                    </option>
-                  ))}
-                </Select>
-              ) : (
-                <Input
-                  className="mt-2"
-                  onChange={(event) => update({ recordFormId: event.target.value || undefined })}
-                  placeholder="form id to reference"
-                  value={selection.recordFormId ?? ""}
-                />
-              )}
+              <Select
+                className="mt-2"
+                disabled={forms.length === 0}
+                onChange={(event) => update({ recordFormId: event.target.value || undefined })}
+                value={selection.recordFormId ?? ""}
+              >
+                <option value="">{forms.length ? "Choose a form…" : "No other forms yet"}</option>
+                {forms.map((form) => (
+                  <option key={form.id} value={form.id}>
+                    {form.name}
+                  </option>
+                ))}
+              </Select>
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                Officers will search and pick records collected by this form.
+              </span>
             </label>
           ) : (
             <label className="text-sm font-semibold">
@@ -4876,6 +4975,11 @@ export function DynamicForms({
       ),
     [backendFormsQuery.data, selectedForm?.id],
   );
+  const datasetsQuery = useQuery({
+    queryKey: ["form-datasets", token, selectedForm?.id],
+    queryFn: () => listFormDatasets(token ?? "", selectedForm?.id ?? ""),
+    enabled: Boolean(token && !isPreview && selectedForm?.id),
+  });
   const selectedFormControls = useMemo(
     () =>
       selectedForm
@@ -13899,6 +14003,7 @@ export function DynamicForms({
                               </div>
                               <div className="mt-4">
                                 <SelectionConfigurator
+                                  availableDatasets={datasetsQuery.data ?? []}
                                   field={selectedField}
                                   forms={(backendFormsQuery.data ?? [])
                                     .filter((form) => form.id !== selectedForm.id)
@@ -13910,7 +14015,11 @@ export function DynamicForms({
                                   }
                                   onUploadDataset={
                                     token && !isPreview
-                                      ? (file) => uploadFormDataset(token, selectedForm.id, file)
+                                      ? async (file) => {
+                                          const summary = await uploadFormDataset(token, selectedForm.id, file);
+                                          void datasetsQuery.refetch();
+                                          return summary;
+                                        }
                                       : undefined
                                   }
                                   siblings={selectedForm.fields.filter((item) => item.id !== selectedField.id)}
