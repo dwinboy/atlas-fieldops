@@ -16,7 +16,7 @@ import { SignatureCapture, type SignatureResult } from "@/components/SignatureCa
 import { DateTimeField } from "@/components/ui";
 import type { FormValidationIssue } from "@/forms/formValidationService";
 import { evaluateQuestionLogicStates } from "@/forms/logicEngine";
-import { isCascadeBlocked, resolveQuestionOptions, type SimpleOption } from "@/forms/optionResolver";
+import { evaluateFilter, isCascadeBlocked, resolveQuestionOptions, type SimpleOption } from "@/forms/optionResolver";
 import { localDatabase } from "@/storage/localDatabase";
 import type { GPSResult } from "@/hooks/useGPS";
 import type { PhotoResult } from "@/hooks/usePhotoCapture";
@@ -122,7 +122,7 @@ export function QuestionRenderer({
       {/* Input by type */}
       {question.readOnly && question.type !== "CalculatedField" && String(question.type) !== "Calculated"
         ? renderReadOnlyValue(question, value)
-        : renderInput(question, value, answer, responses, referenceLists ?? [], activeLanguage)}
+        : renderInput(question, value, answer, responses, referenceLists ?? [], activeLanguage, onAnswer)}
 
       {changedPrefilledValue ? (
         <View style={{ gap: 6 }}>
@@ -364,40 +364,56 @@ function responseScalar(value: unknown): string {
   return String(value);
 }
 
+/** Combines per-filter results honoring all (AND) / any (OR); skipped (null) filters are ignored. */
+function combineFilterResults(results: (boolean | null)[], match: "all" | "any" | undefined): boolean {
+  const decided = results.filter((result): result is boolean => result !== null);
+  if (decided.length === 0) return true;
+  return match === "any" ? decided.some(Boolean) : decided.every(Boolean);
+}
+
+/** Flattens an entity into a column map so filters and auto-fill can reference its fields by name. */
+function entityColumns(entity: MobileEntity): Record<string, unknown> {
+  return {
+    name: entity.name,
+    entityUid: entity.entityUid,
+    entityType: entity.entityType,
+    nationalId: entity.nationalId,
+    householdId: entity.householdId,
+    phone: entity.phone,
+    gender: entity.gender,
+    dateOfBirth: entity.dateOfBirth,
+    country: entity.location?.country,
+    region: entity.location?.region,
+    district: entity.location?.district,
+    community: entity.location?.community,
+    village: entity.location?.village,
+  };
+}
+
 /** Applies a record (entity) selection's relationship/column filters offline. Supports the common
- * parent-child case (column `parent`) via the entity's parentEntityIds, plus generic column equality
+ * parent-child case (column `parent`) via the entity's parentEntityIds, plus generic column rules
  * against entity fields — enough for relational lookups like "farms in the chosen household". */
 function matchesEntityFilters(
   entity: MobileEntity,
   selection: NonNullable<MobileQuestion["selection"]> | null,
   responses: Map<string, unknown>,
 ): boolean {
-  for (const filter of selection?.filters ?? []) {
-    const target = (
-      filter.fromQuestionId ? responseScalar(responses.get(filter.fromQuestionId)) : filter.value ?? ""
-    )
-      .trim()
-      .toLowerCase();
-    if (!target) continue;
+  const columns = entityColumns(entity);
+  const results = (selection?.filters ?? []).map((filter) => {
     if (["parent", "parententityid", "parententityids"].includes(filter.column.toLowerCase())) {
-      const parents = entity.parentEntityIds.map((id) => String(id).toLowerCase());
-      if (!parents.includes(target)) return false;
-      continue;
+      const target = (
+        filter.fromQuestionId ? responseScalar(responses.get(filter.fromQuestionId)) : filter.value ?? ""
+      )
+        .trim()
+        .toLowerCase();
+      if (!target) return null;
+      const has = entity.parentEntityIds.map((id) => String(id).toLowerCase()).includes(target);
+      return filter.op === "neq" ? !has : has;
     }
-    const actual = String((entity as unknown as Record<string, unknown>)[filter.column] ?? "")
-      .trim()
-      .toLowerCase();
-    const ok =
-      filter.op === "neq"
-        ? actual !== target
-        : filter.op === "contains"
-          ? actual.includes(target)
-          : filter.op === "in"
-            ? target.split(",").map((item) => item.trim()).includes(actual)
-            : actual === target;
-    if (!ok) return false;
-  }
-  return true;
+    const raw = columns[filter.column];
+    return evaluateFilter(raw === null || raw === undefined ? "" : String(raw), filter, responses);
+  });
+  return combineFilterResults(results, selection?.filterMatch);
 }
 
 /** Applies a linked-record (form) selection's column/relationship filters offline against the
@@ -407,26 +423,11 @@ function matchesLinkedRecordFilters(
   selection: NonNullable<MobileQuestion["selection"]> | null,
   responses: Map<string, unknown>,
 ): boolean {
-  for (const filter of selection?.filters ?? []) {
-    const target = (
-      filter.fromQuestionId ? responseScalar(responses.get(filter.fromQuestionId)) : filter.value ?? ""
-    )
-      .trim()
-      .toLowerCase();
-    if (!target) continue;
+  const results = (selection?.filters ?? []).map((filter) => {
     const raw = record.data?.[filter.column];
-    const actual = (raw === null || raw === undefined ? "" : String(raw)).trim().toLowerCase();
-    const ok =
-      filter.op === "neq"
-        ? actual !== target
-        : filter.op === "contains"
-          ? actual.includes(target)
-          : filter.op === "in"
-            ? target.split(",").map((item) => item.trim()).includes(actual)
-            : actual === target;
-    if (!ok) return false;
-  }
-  return true;
+    return evaluateFilter(raw === null || raw === undefined ? "" : String(raw), filter, responses);
+  });
+  return combineFilterResults(results, selection?.filterMatch);
 }
 
 /** Search-and-pick over an on-device dataset: registered records (entities), entity categories,
@@ -437,12 +438,14 @@ function LookupQuestion({
   answer,
   referenceLists,
   allResponses,
+  onAnswer,
 }: {
   question: MobileQuestion;
   value: unknown;
   answer: (v: unknown) => void;
   referenceLists: MobileReferenceList[];
   allResponses: Map<string, unknown>;
+  onAnswer?: (questionId: string, variableName: string, value: unknown) => void;
 }) {
   const selection = question.selection ?? null;
   // The `selection` config is authoritative when present; otherwise fall back to the legacy
@@ -486,6 +489,7 @@ function LookupQuestion({
             .filter((entry) => entry !== null && entry !== undefined)
             .map((entry) => String(entry))
             .join(" "),
+          data: record.data ?? {},
         }));
     }
     // Registered records (entities). Honor an entity-type filter and any dynamic relationship
@@ -504,9 +508,29 @@ function LookupQuestion({
         search: [entity.name, entity.entityUid, entity.nationalId, entity.householdId]
           .filter(Boolean)
           .join(" "),
+        data: { ...entityColumns(entity), id: entity.id },
       }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source, referenceLists, question.id, blocked, allResponses]);
+
+  // On selection, copy mapped columns from the chosen row into other questions (auto-fill).
+  function handlePick(picked: unknown) {
+    answer(picked);
+    const mappings = selection?.autofill ?? [];
+    if (!onAnswer || mappings.length === 0) return;
+    const chosen = options.find((option) => option.value === picked);
+    const data = chosen?.data;
+    if (!data) return;
+    for (const mapping of mappings) {
+      if (!mapping.toQuestionId) continue;
+      const alreadyAnswered = (() => {
+        const current = allResponses.get(mapping.toQuestionId);
+        return current !== undefined && current !== null && String(current).trim() !== "";
+      })();
+      if (!mapping.overwrite && alreadyAnswered) continue;
+      onAnswer(mapping.toQuestionId, mapping.toVariable, data[mapping.fromColumn] ?? "");
+    }
+  }
 
   if (blocked) {
     return (
@@ -531,7 +555,7 @@ function LookupQuestion({
       </View>
     );
   }
-  return <SearchableOptionList multi={false} onChange={answer} options={options} value={value} />;
+  return <SearchableOptionList multi={false} onChange={handlePick} options={options} value={value} />;
 }
 
 /** Date/date-time field that pre-fills today on first open when the question is set to default
@@ -573,6 +597,7 @@ function renderInput(
   allResponses: Map<string, unknown>,
   referenceLists: MobileReferenceList[],
   activeLanguage?: string,
+  onAnswer?: (questionId: string, variableName: string, value: unknown) => void,
 ) {
   const { type } = question;
 
@@ -870,6 +895,7 @@ function renderInput(
       <LookupQuestion
         allResponses={allResponses}
         answer={answer}
+        onAnswer={onAnswer}
         question={question}
         referenceLists={referenceLists}
         value={value}

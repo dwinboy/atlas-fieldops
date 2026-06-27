@@ -495,11 +495,34 @@ export type MobileReferenceValue = LocalRecord & {
 /** Resolved, on-device selection config compiled from the form builder. Drives dataset- and
  * record-backed pickers: which list/records to search, which columns to show/store/search, plus
  * cascade and filter rules that reference other answers by question id. */
+export type MobileSelectionFilterOp =
+  | "eq"
+  | "neq"
+  | "in"
+  | "contains"
+  | "starts_with"
+  | "gt"
+  | "lt"
+  | "gte"
+  | "lte"
+  | "between"
+  | "empty"
+  | "not_empty";
+
 export type MobileSelectionFilter = {
   column: string;
-  op: "eq" | "neq" | "in" | "contains";
+  op: MobileSelectionFilterOp;
   value?: string | null;
+  value2?: string | null;
   fromQuestionId?: string | null;
+};
+
+/** A compiled auto-fill mapping: copy a column from the chosen record into another question. */
+export type MobileSelectionAutofill = {
+  fromColumn: string;
+  toQuestionId?: string | null;
+  toVariable: string;
+  overwrite?: boolean;
 };
 
 export type MobileSelectionConfig = {
@@ -513,7 +536,9 @@ export type MobileSelectionConfig = {
   entityType?: string | null;
   allowAddNew?: boolean;
   cascadingParentQuestionId?: string | null;
+  filterMatch?: "all" | "any";
   filters?: MobileSelectionFilter[];
+  autofill?: MobileSelectionAutofill[];
 };
 
 export type MobileReferenceList = LocalRecord & {

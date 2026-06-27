@@ -117,6 +117,7 @@ import {
   type FormField,
   type FormSection,
   type LogicRule,
+  type SelectionAutofill,
   type SelectionFilter,
   type MobileDeployment,
   type FormReadinessItem,
@@ -2674,14 +2675,102 @@ function ResponseTypeField({
  * display/value/search columns + filters + cascade), or Linked records (live entities or another
  * form's submissions, with relationship filters). Writes the unified `field.selection`.
  */
+/** Plain-language description of a selection config, so a builder understands exactly what the
+ * officer will see without reading the JSON. */
+function describeSelection(
+  selection: NonNullable<FormField["selection"]>,
+  labelFor: (variable: string) => string,
+  forms: { id: string; name: string }[],
+): string {
+  if (selection.source === "static") return "Officers pick from the fixed options list.";
+  const parts: string[] = [];
+  if (selection.source === "dataset") {
+    parts.push(`Shows rows from dataset “${selection.datasetId || "(none)"}”`);
+    if (selection.displayColumn) parts.push(`displaying ${selection.displayColumn}`);
+  } else {
+    const formName = forms.find((form) => form.id === selection.recordFormId)?.name;
+    parts.push(
+      selection.recordSource === "form"
+        ? `Shows records from form “${formName || selection.recordFormId || "(pick a form)"}”`
+        : `Shows registered records${selection.entityType ? ` of type “${selection.entityType}”` : ""}`,
+    );
+  }
+  if (selection.cascadeFromVariable) parts.push(`children of “${labelFor(selection.cascadeFromVariable)}”`);
+  const filters = selection.filters ?? [];
+  if (filters.length) {
+    const joined = filters
+      .map((filter) =>
+        `${filter.column} ${filter.op.replace("_", " ")}${
+          filter.op === "empty" || filter.op === "not_empty"
+            ? ""
+            : ` ${filter.fromVariable ? `answer of “${labelFor(filter.fromVariable)}”` : filter.value ?? ""}`
+        }`.trim(),
+      )
+      .join(selection.filterMatch === "any" ? " OR " : " AND ");
+    parts.push(`where ${joined}`);
+  }
+  const autofill = selection.autofill ?? [];
+  if (autofill.length) {
+    parts.push(`and fills ${autofill.map((map) => `${labelFor(map.toVariable)}`).join(", ")} automatically`);
+  }
+  return `${parts.join(", ")}.`;
+}
+
+function selectionWarnings(
+  selection: NonNullable<FormField["selection"]>,
+  siblings: FormField[],
+): string[] {
+  if (selection.source === "static") return [];
+  const warnings: string[] = [];
+  const variableExists = (variable: string) =>
+    siblings.some((sibling) => (sibling.variableName ?? sibling.id) === variable);
+  if (selection.source === "dataset" && !selection.datasetId) {
+    warnings.push("Choose or upload a dataset.");
+  }
+  if (selection.source === "record" && selection.recordSource === "form" && !selection.recordFormId) {
+    warnings.push("Pick the source form to reference.");
+  }
+  if (selection.cascadeFromVariable && !variableExists(selection.cascadeFromVariable)) {
+    warnings.push("The cascade question no longer exists.");
+  }
+  for (const filter of selection.filters ?? []) {
+    if (filter.fromVariable && !variableExists(filter.fromVariable)) {
+      warnings.push(`Filter “${filter.column}” points to a question that no longer exists.`);
+    }
+  }
+  for (const map of selection.autofill ?? []) {
+    if (map.toVariable && !variableExists(map.toVariable)) {
+      warnings.push(`Auto-fill target “${map.toVariable}” no longer exists.`);
+    }
+  }
+  return warnings;
+}
+
+const SELECTION_OPS: { value: SelectionFilter["op"]; label: string }[] = [
+  { value: "eq", label: "equals" },
+  { value: "neq", label: "not equals" },
+  { value: "in", label: "in list" },
+  { value: "contains", label: "contains" },
+  { value: "starts_with", label: "starts with" },
+  { value: "gt", label: "greater than" },
+  { value: "lt", label: "less than" },
+  { value: "gte", label: "at least (≥)" },
+  { value: "lte", label: "at most (≤)" },
+  { value: "between", label: "between" },
+  { value: "empty", label: "is empty" },
+  { value: "not_empty", label: "is set" },
+];
+
 function SelectionConfigurator({
   field,
   siblings,
+  forms = [],
   onChange,
   onUploadDataset,
 }: {
   field: FormField;
   siblings: FormField[];
+  forms?: { id: string; name: string }[];
   onChange: (selection: FormField["selection"]) => void;
   onUploadDataset?: (file: File) => Promise<FormDatasetSummary>;
 }) {
@@ -2689,6 +2778,9 @@ function SelectionConfigurator({
   const [uploadState, setUploadState] = useState<{ busy: boolean; message: string }>({ busy: false, message: "" });
   const update = (patch: Partial<NonNullable<FormField["selection"]>>) =>
     onChange({ ...selection, ...patch });
+  const autofill = selection.autofill ?? [];
+  const updateAutofill = (index: number, patch: Partial<SelectionAutofill>) =>
+    update({ autofill: autofill.map((map, i) => (i === index ? { ...map, ...patch } : map)) });
 
   async function handleUpload(file: File) {
     if (!onUploadDataset) return;
@@ -2721,6 +2813,11 @@ function SelectionConfigurator({
     { key: "dataset", label: "From dataset", hint: "A reference list or uploaded CSV/Excel" },
     { key: "record", label: "Linked records", hint: "Records from entities or another form" },
   ];
+
+  const labelFor = (variable: string) =>
+    siblings.find((sibling) => (sibling.variableName ?? sibling.id) === variable)?.label ?? variable;
+  const summary = describeSelection(selection, labelFor, forms);
+  const warnings = selectionWarnings(selection, siblings);
 
   return (
     <div className="space-y-4">
@@ -2852,13 +2949,28 @@ function SelectionConfigurator({
           </label>
           {selection.recordSource === "form" ? (
             <label className="text-sm font-semibold">
-              Source form ID
-              <Input
-                className="mt-2"
-                onChange={(event) => update({ recordFormId: event.target.value || undefined })}
-                placeholder="form id to reference"
-                value={selection.recordFormId ?? ""}
-              />
+              Source form
+              {forms.length ? (
+                <Select
+                  className="mt-2"
+                  onChange={(event) => update({ recordFormId: event.target.value || undefined })}
+                  value={selection.recordFormId ?? ""}
+                >
+                  <option value="">Choose a form…</option>
+                  {forms.map((form) => (
+                    <option key={form.id} value={form.id}>
+                      {form.name}
+                    </option>
+                  ))}
+                </Select>
+              ) : (
+                <Input
+                  className="mt-2"
+                  onChange={(event) => update({ recordFormId: event.target.value || undefined })}
+                  placeholder="form id to reference"
+                  value={selection.recordFormId ?? ""}
+                />
+              )}
             </label>
           ) : (
             <label className="text-sm font-semibold">
@@ -2887,14 +2999,26 @@ function SelectionConfigurator({
         <div className="rounded-md border bg-background p-3">
           <div className="flex items-center justify-between gap-2">
             <span className="text-sm font-semibold">Filters</span>
-            <Button
-              onClick={() => update({ filters: [...filters, { column: "", op: "eq", value: "" }] })}
-              size="sm"
-              type="button"
-              variant="secondary"
-            >
-              <Plus aria-hidden="true" /> Add filter
-            </Button>
+            <div className="flex items-center gap-2">
+              {filters.length > 1 ? (
+                <Select
+                  className="h-8 py-0 text-xs"
+                  onChange={(event) => update({ filterMatch: event.target.value as "all" | "any" })}
+                  value={selection.filterMatch ?? "all"}
+                >
+                  <option value="all">Match all (AND)</option>
+                  <option value="any">Match any (OR)</option>
+                </Select>
+              ) : null}
+              <Button
+                onClick={() => update({ filters: [...filters, { column: "", op: "eq", value: "" }] })}
+                size="sm"
+                type="button"
+                variant="secondary"
+              >
+                <Plus aria-hidden="true" /> Add filter
+              </Button>
+            </div>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
             Narrow the options. Use “from answer” to make a filter depend on another question
@@ -2904,56 +3028,138 @@ function SelectionConfigurator({
             {filters.length === 0 ? (
               <p className="text-xs text-muted-foreground">No filters — all records are shown.</p>
             ) : null}
-            {filters.map((filter, index) => (
-              <div className="grid items-center gap-2 lg:grid-cols-[1fr_auto_1fr_auto]" key={index}>
-                <Input
-                  onChange={(event) => updateFilter(index, { column: event.target.value })}
-                  placeholder="column (e.g. parent, region)"
-                  value={filter.column}
-                />
-                <Select
-                  onChange={(event) => updateFilter(index, { op: event.target.value as SelectionFilter["op"] })}
-                  value={filter.op}
-                >
-                  <option value="eq">equals</option>
-                  <option value="neq">not equals</option>
-                  <option value="in">in list</option>
-                  <option value="contains">contains</option>
-                </Select>
-                {filter.fromVariable ? (
+            {filters.map((filter, index) => {
+              const noValue = filter.op === "empty" || filter.op === "not_empty";
+              return (
+                <div className="grid items-center gap-2 lg:grid-cols-[1fr_auto_1fr_auto]" key={index}>
+                  <Input
+                    onChange={(event) => updateFilter(index, { column: event.target.value })}
+                    placeholder="column (e.g. parent, region)"
+                    value={filter.column}
+                  />
                   <Select
-                    onChange={(event) => updateFilter(index, { fromVariable: event.target.value })}
-                    value={filter.fromVariable}
+                    onChange={(event) => updateFilter(index, { op: event.target.value as SelectionFilter["op"] })}
+                    value={filter.op}
                   >
-                    {siblingOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
+                    {SELECTION_OPS.map((op) => (
+                      <option key={op.value} value={op.value}>
+                        {op.label}
                       </option>
                     ))}
                   </Select>
-                ) : (
-                  <Input
-                    onChange={(event) => updateFilter(index, { value: event.target.value })}
-                    placeholder="value"
-                    value={filter.value ?? ""}
-                  />
-                )}
+                  {noValue ? (
+                    <span className="text-xs text-muted-foreground">(no value needed)</span>
+                  ) : filter.fromVariable ? (
+                    <Select
+                      onChange={(event) => updateFilter(index, { fromVariable: event.target.value })}
+                      value={filter.fromVariable}
+                    >
+                      {siblingOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <Input
+                        onChange={(event) => updateFilter(index, { value: event.target.value })}
+                        placeholder="value"
+                        value={filter.value ?? ""}
+                      />
+                      {filter.op === "between" ? (
+                        <Input
+                          onChange={(event) => updateFilter(index, { value2: event.target.value })}
+                          placeholder="and"
+                          value={filter.value2 ?? ""}
+                        />
+                      ) : null}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1">
+                    {noValue ? null : (
+                      <Button
+                        onClick={() =>
+                          updateFilter(index, filter.fromVariable
+                            ? { fromVariable: undefined, value: "" }
+                            : { fromVariable: siblingOptions[0]?.value ?? "", value: undefined })
+                        }
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        {filter.fromVariable ? "static" : "from answer"}
+                      </Button>
+                    )}
+                    <Button
+                      aria-label="Remove filter"
+                      onClick={() => update({ filters: filters.filter((_, i) => i !== index) })}
+                      size="icon"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <Trash2 aria-hidden="true" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {selection.source !== "static" ? (
+        <div className="rounded-md border bg-background p-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-semibold">Auto-fill other questions</span>
+            <Button
+              onClick={() => update({ autofill: [...autofill, { fromColumn: "", toVariable: siblingOptions[0]?.value ?? "" }] })}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              <Plus aria-hidden="true" /> Add mapping
+            </Button>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            When a record is chosen, copy its columns into other questions — e.g. pick a household and
+            fill its district automatically.
+          </p>
+          <div className="mt-3 space-y-2">
+            {autofill.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No auto-fill — only this question is set.</p>
+            ) : null}
+            {autofill.map((map, index) => (
+              <div className="grid items-center gap-2 lg:grid-cols-[1fr_auto_1fr_auto]" key={index}>
+                <Input
+                  onChange={(event) => updateAutofill(index, { fromColumn: event.target.value })}
+                  placeholder="from column (e.g. district)"
+                  value={map.fromColumn}
+                />
+                <span className="text-center text-xs text-muted-foreground">→</span>
+                <Select
+                  onChange={(event) => updateAutofill(index, { toVariable: event.target.value })}
+                  value={map.toVariable}
+                >
+                  {siblingOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
                 <div className="flex items-center gap-1">
                   <Button
-                    onClick={() =>
-                      updateFilter(index, filter.fromVariable
-                        ? { fromVariable: undefined, value: "" }
-                        : { fromVariable: siblingOptions[0]?.value ?? "", value: undefined })
-                    }
+                    onClick={() => updateAutofill(index, { overwrite: !map.overwrite })}
                     size="sm"
+                    title={map.overwrite ? "Overwrites existing answers" : "Only fills empty answers"}
                     type="button"
                     variant="ghost"
                   >
-                    {filter.fromVariable ? "static" : "from answer"}
+                    {map.overwrite ? "overwrite" : "if empty"}
                   </Button>
                   <Button
-                    aria-label="Remove filter"
-                    onClick={() => update({ filters: filters.filter((_, i) => i !== index) })}
+                    aria-label="Remove mapping"
+                    onClick={() => update({ autofill: autofill.filter((_, i) => i !== index) })}
                     size="icon"
                     type="button"
                     variant="ghost"
@@ -2964,6 +3170,20 @@ function SelectionConfigurator({
               </div>
             ))}
           </div>
+        </div>
+      ) : null}
+
+      {selection.source !== "static" ? (
+        <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
+          <p className="text-xs font-semibold text-primary">In plain language</p>
+          <p className="mt-1 text-sm">{summary}</p>
+          {warnings.length ? (
+            <ul className="mt-2 list-inside list-disc text-xs text-warning">
+              {warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -13680,6 +13900,9 @@ export function DynamicForms({
                               <div className="mt-4">
                                 <SelectionConfigurator
                                   field={selectedField}
+                                  forms={(backendFormsQuery.data ?? [])
+                                    .filter((form) => form.id !== selectedForm.id)
+                                    .map((form) => ({ id: form.id, name: form.name }))}
                                   onChange={(selection) =>
                                     updateSelectedForm(
                                       updateField(selectedForm, selectedField.id, { selection }),

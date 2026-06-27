@@ -12,6 +12,8 @@ export type SimpleOption = {
   value: string;
   /** Extra text (non-display columns) the searchable list also matches against. */
   search?: string;
+  /** The full source row, used to auto-fill other questions when this option is chosen. */
+  data?: Record<string, unknown>;
 };
 
 /**
@@ -48,14 +50,18 @@ export function resolveQuestionOptions(
     values = values.filter((value) => value.parentCode === parentCode);
   }
 
-  // Column filters (static value or driven by another answer).
-  for (const filter of selection?.filters ?? []) {
-    const target = filterTarget(filter, responses);
-    if (target === null) {
-      // A dynamic filter whose source question isn't answered yet blocks the list.
-      return [];
-    }
-    values = values.filter((value) => matchesFilter(columnValue(value, filter.column), filter.op, target));
+  // Column filters combine with all (AND) or any (OR). A dynamic filter whose source question is
+  // unanswered is skipped (not blocking) so "any"/optional filters behave intuitively.
+  const filters = selection?.filters ?? [];
+  if (filters.length > 0) {
+    const matchAny = selection?.filterMatch === "any";
+    values = values.filter((value) => {
+      const results = filters
+        .map((filter) => evaluateFilter(columnValue(value, filter.column), filter, responses))
+        .filter((result): result is boolean => result !== null);
+      if (results.length === 0) return true;
+      return matchAny ? results.some(Boolean) : results.every(Boolean);
+    });
   }
 
   return values
@@ -66,6 +72,7 @@ export function resolveQuestionOptions(
       label: columnValue(value, selection?.displayColumn) || value.label,
       value: columnValue(value, selection?.valueColumn) || value.code,
       search: searchText(value, selection),
+      data: rowData(value),
     }));
 }
 
@@ -76,43 +83,64 @@ export function resolveQuestionOptions(
 export function isCascadeBlocked(question: MobileQuestion, responses: Map<string, unknown>): boolean {
   const selection = question.selection ?? null;
   const cascadeParentId = selection?.cascadingParentQuestionId ?? question.cascadingParentQuestionId;
-  if (cascadeParentId && parentCodeValue(responses.get(cascadeParentId)) === null) {
-    return true;
-  }
-  for (const filter of selection?.filters ?? []) {
-    if (filter.fromQuestionId && parentCodeValue(responses.get(filter.fromQuestionId)) === null) {
-      return true;
-    }
-  }
-  return false;
+  return Boolean(cascadeParentId && parentCodeValue(responses.get(cascadeParentId)) === null);
 }
 
-function filterTarget(filter: MobileSelectionFilter, responses: Map<string, unknown>): string | null {
-  if (filter.fromQuestionId) {
-    return parentCodeValue(responses.get(filter.fromQuestionId));
-  }
-  const raw = (filter.value ?? "").trim();
-  return raw.length > 0 ? raw : null;
-}
+/**
+ * Evaluates a single filter against a column value. Returns null when the filter is dynamic and its
+ * source question is unanswered (so the caller can skip it rather than exclude everything). Shared by
+ * the dataset resolver and the entity/linked-record matchers so all sources behave identically.
+ */
+export function evaluateFilter(
+  actual: string,
+  filter: MobileSelectionFilter,
+  responses: Map<string, unknown>,
+): boolean | null {
+  const a = actual.trim();
+  if (filter.op === "empty") return a.length === 0;
+  if (filter.op === "not_empty") return a.length > 0;
 
-function matchesFilter(actual: string, op: MobileSelectionFilter["op"], target: string): boolean {
-  const a = actual.trim().toLowerCase();
-  const b = target.trim().toLowerCase();
-  switch (op) {
+  const target = filter.fromQuestionId
+    ? parentCodeValue(responses.get(filter.fromQuestionId))
+    : (filter.value ?? "").trim() || null;
+  if (target === null) return null;
+
+  const al = a.toLowerCase();
+  const bl = target.toLowerCase();
+  const an = Number(a);
+  const bn = Number(target);
+  const numeric = Number.isFinite(an) && Number.isFinite(bn);
+  switch (filter.op) {
     case "neq":
-      return a !== b;
+      return al !== bl;
     case "in":
-      return b
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean)
-        .includes(a);
+      return bl.split(",").map((item) => item.trim()).filter(Boolean).includes(al);
     case "contains":
-      return a.includes(b);
+      return al.includes(bl);
+    case "starts_with":
+      return al.startsWith(bl);
+    case "gt":
+      return numeric ? an > bn : al > bl;
+    case "lt":
+      return numeric ? an < bn : al < bl;
+    case "gte":
+      return numeric ? an >= bn : al >= bl;
+    case "lte":
+      return numeric ? an <= bn : al <= bl;
+    case "between": {
+      const upper = (filter.value2 ?? "").trim();
+      const un = Number(upper);
+      if (numeric && Number.isFinite(un)) return an >= bn && an <= un;
+      return al >= bl && al <= upper.toLowerCase();
+    }
     case "eq":
     default:
-      return a === b;
+      return al === bl;
   }
+}
+
+function rowData(value: MobileReferenceValue): Record<string, unknown> {
+  return { ...(value.data ?? {}), code: value.code, label: value.label, parentCode: value.parentCode };
 }
 
 /** Reads a column from a reference value: the multi-column `data` row first, then the built-in

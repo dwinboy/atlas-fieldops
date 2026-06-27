@@ -52,12 +52,37 @@ export type FieldType =
   | "org_select";
 
 /** A single row filter applied to a dataset- or record-backed selection. `fromVariable` makes the
- * filter dynamic — it compares against another question's answer (the basis for cascading lookups). */
+ * filter dynamic — it compares against another question's answer (the basis for cascading lookups).
+ * `value2` is the upper bound for the `between` operator. */
+export type SelectionFilterOp =
+  | "eq"
+  | "neq"
+  | "in"
+  | "contains"
+  | "starts_with"
+  | "gt"
+  | "lt"
+  | "gte"
+  | "lte"
+  | "between"
+  | "empty"
+  | "not_empty";
+
 export type SelectionFilter = {
   column: string;
-  op: "eq" | "neq" | "in" | "contains";
+  op: SelectionFilterOp;
   value?: string;
+  value2?: string;
   fromVariable?: string;
+};
+
+/** Copies a column from the chosen record/row into another question when an answer is picked —
+ * turning a reference into seamless data merging (pick a household → fill its district, GPS, …). */
+export type SelectionAutofill = {
+  fromColumn: string;
+  toVariable: string;
+  /** When false, only fills if the target is still empty (never clobbers officer edits). */
+  overwrite?: boolean;
 };
 
 export type LogicRule = {
@@ -170,7 +195,11 @@ export type FormField = {
     entityType?: string;
     cascadeFromVariable?: string;
     allowAddNew?: boolean;
+    /** How multiple filters combine: `all` (AND, default) or `any` (OR). */
+    filterMatch?: "all" | "any";
     filters?: SelectionFilter[];
+    /** Columns to copy from the chosen record into other questions on selection. */
+    autofill?: SelectionAutofill[];
   };
   beneficiary?: {
     profileField?: string;
@@ -965,12 +994,19 @@ export function normalizeSelection(field: FormField): FormField["selection"] | u
   const selection = field.selection;
   if (!selection || selection.source === "static") return undefined;
   const filters = (selection.filters ?? []).filter(
-    (filter) => filter.column && (filter.fromVariable || filter.value !== undefined),
+    (filter) =>
+      filter.column &&
+      (filter.op === "empty" ||
+        filter.op === "not_empty" ||
+        filter.fromVariable ||
+        filter.value !== undefined),
   );
+  const autofill = (selection.autofill ?? []).filter((map) => map.fromColumn && map.toVariable);
   return {
     ...selection,
     searchColumns: (selection.searchColumns ?? []).filter(Boolean),
     filters: filters.length ? filters : undefined,
+    autofill: autofill.length ? autofill : undefined,
   };
 }
 

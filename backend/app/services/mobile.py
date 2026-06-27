@@ -217,7 +217,21 @@ def _mobile_selection(field: dict[str, Any], variable_to_id: dict[str, str]) -> 
                 "column": str(raw.get("column")),
                 "op": str(raw.get("op") or "eq"),
                 "value": raw.get("value"),
+                "value2": raw.get("value2"),
                 "fromQuestionId": resolve(raw.get("fromVariable")),
+            }
+        )
+
+    autofill: list[dict[str, Any]] = []
+    for raw in selection.get("autofill") or []:
+        if not isinstance(raw, dict) or not raw.get("fromColumn") or not raw.get("toVariable"):
+            continue
+        autofill.append(
+            {
+                "fromColumn": str(raw.get("fromColumn")),
+                "toQuestionId": resolve(raw.get("toVariable")),
+                "toVariable": str(raw.get("toVariable")),
+                "overwrite": bool(raw.get("overwrite", False)),
             }
         )
 
@@ -233,7 +247,9 @@ def _mobile_selection(field: dict[str, Any], variable_to_id: dict[str, str]) -> 
         "entityType": selection.get("entityType"),
         "allowAddNew": bool(selection.get("allowAddNew", False)),
         "cascadingParentQuestionId": resolve(selection.get("cascadeFromVariable")),
+        "filterMatch": "any" if str(selection.get("filterMatch") or "all") == "any" else "all",
         "filters": filters,
+        "autofill": autofill,
     }
 
 

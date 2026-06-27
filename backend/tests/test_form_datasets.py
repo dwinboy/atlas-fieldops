@@ -130,3 +130,42 @@ async def test_linked_records_index_exposes_other_form_submissions() -> None:
         assert records[0].form_id == str(farm_form_id)
         assert records[0].label == "Green Acres"
         assert records[0].data["region"] == "Ashanti"
+
+
+def test_mobile_selection_compiles_conditions_and_autofill() -> None:
+    from app.services.mobile import _mobile_selection
+
+    variable_to_id = {"household": "q-household", "district": "q-district"}
+    field = {
+        "selection": {
+            "source": "record",
+            "recordSource": "form",
+            "recordFormId": "form-123",
+            "filterMatch": "any",
+            "filters": [
+                {"column": "region", "op": "eq", "fromVariable": "household"},
+                {"column": "area", "op": "between", "value": "1", "value2": "5"},
+                {"column": "name", "op": "not_empty"},
+            ],
+            "autofill": [{"fromColumn": "district", "toVariable": "district", "overwrite": True}],
+        }
+    }
+    compiled = _mobile_selection(field, variable_to_id)
+    assert compiled is not None
+    assert compiled["source"] == "record"
+    assert compiled["recordFormId"] == "form-123"
+    assert compiled["filterMatch"] == "any"
+    # Dynamic filter resolves its source question id; between keeps value2; op-only filter kept.
+    assert compiled["filters"][0]["fromQuestionId"] == "q-household"
+    assert compiled["filters"][1]["op"] == "between" and compiled["filters"][1]["value2"] == "5"
+    assert compiled["filters"][2]["op"] == "not_empty"
+    # Auto-fill resolves the target question id from the variable name.
+    assert compiled["autofill"][0]["toQuestionId"] == "q-district"
+    assert compiled["autofill"][0]["overwrite"] is True
+
+
+def test_mobile_selection_is_none_for_static() -> None:
+    from app.services.mobile import _mobile_selection
+
+    assert _mobile_selection({"selection": {"source": "static"}}, {}) is None
+    assert _mobile_selection({}, {}) is None
