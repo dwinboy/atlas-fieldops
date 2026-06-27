@@ -12683,58 +12683,11 @@ export function DynamicForms({
 
                           {focusSettingsTab === "response" ? (
                             <div className="mt-4 grid gap-4 rounded-lg border bg-panel p-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-                              <label className="block text-sm font-semibold">
-                                Response Type
-                                <div className="mt-2 grid gap-2 rounded-md border bg-panel p-1 sm:grid-cols-[minmax(0,1fr)_220px]">
-                                  <Select
-                                    className="border-0 bg-transparent shadow-none"
-                                    onChange={(event) =>
-                                      updateSelectedForm(
-                                        updateField(
-                                          selectedForm,
-                                          selectedField.id,
-                                          {
-                                            type: event.target
-                                              .value as FieldType,
-                                          },
-                                        ),
-                                      )
-                                    }
-                                    value={selectedField.type}
-                                  >
-                                    {!fieldCatalog
-                                      .flatMap((group) => group.fields)
-                                      .some(
-                                        (catalogField) =>
-                                          catalogField.type ===
-                                          selectedField.type,
-                                      ) ? (
-                                      <option value={selectedField.type}>
-                                        {selectedField.type}
-                                      </option>
-                                    ) : null}
-                                    {fieldCatalog
-                                      .flatMap((group) => group.fields)
-                                      .map((catalogField) => (
-                                        <option
-                                          key={catalogField.type}
-                                          value={catalogField.type}
-                                        >
-                                          {catalogField.label}
-                                        </option>
-                                      ))}
-                                  </Select>
-                                  <Button
-                                    onClick={() =>
-                                      openBuilderAssistant("question")
-                                    }
-                                    type="button"
-                                    variant="secondary"
-                                  >
-                                    Change Response Type
-                                  </Button>
-                                </div>
-                              </label>
+              <div className="rounded-md border border-dashed bg-background p-3 text-xs text-muted-foreground">
+                                The response type is{" "}
+                                <span className="font-semibold">{selectedField.type.replace("_", " ")}</span>.
+                                Change it on the <span className="font-semibold">Basics</span> tab.
+                              </div>
 
                               <label className="block text-sm font-semibold">
                                 Question Mandatory Status
@@ -13003,20 +12956,6 @@ export function DynamicForms({
 
                           {focusSettingsTab === "common" ? (
                             <>
-                            <div className="mt-4">
-                              <ResponseTypeField
-                                currentType={selectedField.type}
-                                onSelect={(type) =>
-                                  updateSelectedForm(
-                                    updateField(
-                                      selectedForm,
-                                      selectedField.id,
-                                      typeChangePatchForField(selectedField, type),
-                                    ),
-                                  )
-                                }
-                              />
-                            </div>
                             <div className="mt-4 grid gap-4 rounded-lg border bg-panel p-4 lg:grid-cols-[minmax(0,1fr)_1fr]">
                               <label className="block text-sm font-semibold">
                                 Help Text
@@ -13070,7 +13009,7 @@ export function DynamicForms({
                               <div className="flex items-center justify-between gap-2">
                                 <h3 className="text-sm font-semibold">
                                   Response configuration
-                                </h3>
+                                </h3><HelpHint label="About this tab" title="Response configuration">How the answer is captured for this response type — its options or data source, and any per-type behaviour.</HelpHint>
                                 <Badge tone="neutral">
                                   {selectedField.type.replace("_", " ")}
                                 </Badge>
@@ -13189,7 +13128,7 @@ export function DynamicForms({
                                 />
                                 <h3 className="text-sm font-semibold">
                                   Validation
-                                </h3>
+                                </h3><HelpHint label="About this tab" title="Validation">Rules that protect data quality before submission. Only the rules that fit this response type are shown.</HelpHint>
                               </div>
                               <p className="mt-4 rounded-md border bg-background p-2 text-xs text-muted-foreground">
                                 Showing validations for a{" "}
@@ -13783,7 +13722,7 @@ export function DynamicForms({
                                   />
                                   <h3 className="text-sm font-semibold">
                                     Data and reference
-                                  </h3>
+                                  </h3><HelpHint label="About this tab" title="Data and reference">Connect this question to shared datasets and exact-match presets so answers stay consistent across submissions.</HelpHint>
                                 </div>
                                 <Button
                                   onClick={() =>
@@ -14024,7 +13963,7 @@ export function DynamicForms({
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
                                   <Sigma aria-hidden="true" className="text-primary" size={16} />
-                                  <h3 className="text-sm font-semibold">Indicator and reporting link</h3>
+                                  <h3 className="text-sm font-semibold">Indicator and reporting link</h3><HelpHint label="About this tab" title="Indicator and reporting link">Map this answer to a monitoring indicator so it rolls up into results dashboards and donor reports.</HelpHint>
                                 </div>
                                 <Badge tone="accent">M&E reporting</Badge>
                               </div>
@@ -14144,7 +14083,7 @@ export function DynamicForms({
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
                                   <Fingerprint aria-hidden="true" className="text-primary" size={16} />
-                                  <h3 className="text-sm font-semibold">Entity and profile mapping</h3>
+                                  <h3 className="text-sm font-semibold">Entity and profile mapping</h3><HelpHint label="About this tab" title="Entity and profile mapping">Use this answer to create or update a tracked record (beneficiary, household, facility) and keep one source of truth.</HelpHint>
                                 </div>
                                 <Badge tone="admin">Entity data</Badge>
                               </div>
@@ -14412,7 +14351,7 @@ export function DynamicForms({
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
                                   <Camera aria-hidden="true" className="text-primary" size={16} />
-                                  <h3 className="text-sm font-semibold">Field evidence and integrity</h3>
+                                  <h3 className="text-sm font-semibold">Field evidence and integrity</h3><HelpHint label="About this tab" title="Field evidence and integrity">Require photos, GPS, or back-check evidence so submissions are verifiable and trustworthy.</HelpHint>
                                 </div>
                                 <Badge tone="warning">Quality signal</Badge>
                               </div>
@@ -14485,7 +14424,7 @@ export function DynamicForms({
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
                                   <ShieldCheck aria-hidden="true" className="text-primary" size={16} />
-                                  <h3 className="text-sm font-semibold">Privacy, consent, and sensitive data</h3>
+                                  <h3 className="text-sm font-semibold">Privacy, consent, and sensitive data</h3><HelpHint label="About this tab" title="Privacy, consent, and sensitive data">Classify how sensitive this answer is, require consent, and control who can see it.</HelpHint>
                                 </div>
                                 <Badge tone="danger">Protection</Badge>
                               </div>
@@ -14565,7 +14504,7 @@ export function DynamicForms({
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
                                   <Smartphone aria-hidden="true" className="text-primary" size={16} />
-                                  <h3 className="text-sm font-semibold">Mobile field experience</h3>
+                                  <h3 className="text-sm font-semibold">Mobile field experience</h3><HelpHint label="About this tab" title="Mobile field experience">Tune how this question behaves in the mobile app — offline, keyboard, and on-screen guidance.</HelpHint>
                                 </div>
                                 <Badge tone="success">Offline-ready</Badge>
                               </div>
@@ -14638,7 +14577,7 @@ export function DynamicForms({
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
                                   <History aria-hidden="true" className="text-primary" size={16} />
-                                  <h3 className="text-sm font-semibold">Review, editing, and audit governance</h3>
+                                  <h3 className="text-sm font-semibold">Review, editing, and audit governance</h3><HelpHint label="About this tab" title="Review, editing, and audit governance">Control who can edit this answer, whether changes need a reason, and how it is versioned and audited.</HelpHint>
                                 </div>
                                 <Badge tone="admin">Audit-safe</Badge>
                               </div>
@@ -14731,7 +14670,7 @@ export function DynamicForms({
                                 />
                                 <h3 className="text-sm font-semibold">
                                   Advanced question settings
-                                </h3>
+                                </h3><HelpHint label="About this tab" title="Advanced question settings">Power-user options: appearance, width, custom expressions, and developer-level settings.</HelpHint>
                               </div>
                               <div className="grid gap-3 lg:grid-cols-3">
                                 <label className="text-sm font-semibold">
