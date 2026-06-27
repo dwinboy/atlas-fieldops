@@ -471,10 +471,13 @@ function LookupQuestion({
   const source = selection
     ? selection.source === "dataset"
       ? "reference"
-      : selection.recordSource === "form"
-        ? "form"
-        : "entities"
+      : selection.source === "question"
+        ? "question"
+        : selection.recordSource === "form"
+          ? "form"
+          : "entities"
     : legacySource;
+  const multi = Boolean(selection?.allowMultiple);
 
   const blocked = isCascadeBlocked(question, allResponses);
 
@@ -488,12 +491,18 @@ function LookupQuestion({
     if (source === "reference") {
       return resolveQuestionOptions(question, allResponses, referenceLists);
     }
+    if (source === "question") {
+      // Options come from another in-form question's answers (e.g. the rows of a repeat group).
+      return optionsFromAnswer(allResponses.get(selection?.fromQuestionId ?? ""), selection);
+    }
     if (source === "form") {
-      // Records collected by another form, synced offline. Filter to the referenced form and
-      // apply any column/relationship filters against the record's stored answers.
+      // Records collected by another form, synced offline. Filter to the referenced form, honor
+      // "show only verified" and "minimum age", and apply any column/relationship filters.
       return localDatabase.linkedRecords
         .list()
         .filter((record) => (selection?.recordFormId ? record.formId === selection.recordFormId : true))
+        .filter((record) => (selection?.showOnlyVerified ? record.verified : true))
+        .filter((record) => recordOldEnough(record, selection?.minimumAgeDays))
         .filter((record) => matchesLinkedRecordFilters(record, selection, allResponses))
         .map((record) => ({
           id: record.id,
@@ -530,6 +539,8 @@ function LookupQuestion({
   // On selection, copy mapped columns from the chosen row into other questions (auto-fill).
   function handlePick(picked: unknown) {
     answer(picked);
+    // Multi-select picks are arrays; auto-fill applies to a single chosen record only.
+    if (Array.isArray(picked)) return;
     const mappings = selection?.autofill ?? [];
     if (!onAnswer || mappings.length === 0) return;
     const chosen = options.find((option) => option.value === picked);
@@ -564,12 +575,56 @@ function LookupQuestion({
         <Text style={{ color: "#8aa79b", fontSize: 12 }}>
           {source === "form"
             ? "No linked records are available yet for this question."
-            : `Sync to download ${source === "categories" ? "categories" : source === "reference" ? "reference data" : "records"} for this question.`}
+            : source === "question"
+              ? "Answer the source question first to see options here."
+              : `Sync to download ${source === "categories" ? "categories" : source === "reference" ? "reference data" : "records"} for this question.`}
         </Text>
       </View>
     );
   }
-  return <SearchableOptionList multi={false} onChange={handlePick} options={options} value={value} />;
+  return <SearchableOptionList multi={multi} onChange={handlePick} options={options} value={value} />;
+}
+
+/** Whether a linked record is at least `minimumAgeDays` old (based on its source submission time). */
+function recordOldEnough(record: MobileLinkedRecord, minimumAgeDays?: number): boolean {
+  if (!minimumAgeDays || minimumAgeDays <= 0) return true;
+  const created = Date.parse(record.createdAt);
+  if (!Number.isFinite(created)) return true;
+  return (Date.now() - created) / 86_400_000 >= minimumAgeDays;
+}
+
+/** Builds options from another question's answer: repeat-group rows, a multi-select array, or a
+ * single value. Lets later questions offer choices based on what was already collected in the form. */
+function optionsFromAnswer(
+  answerValue: unknown,
+  selection: NonNullable<MobileQuestion["selection"]> | null,
+): SimpleOption[] {
+  if (answerValue === null || answerValue === undefined) return [];
+  const displayColumn = selection?.displayColumn ?? undefined;
+  const toOption = (raw: unknown, index: number): SimpleOption | null => {
+    if (raw === null || raw === undefined) return null;
+    if (typeof raw === "object" && !Array.isArray(raw)) {
+      const row = raw as Record<string, unknown>;
+      const display =
+        (displayColumn && row[displayColumn] != null ? String(row[displayColumn]) : "") ||
+        String(row.label ?? row.name ?? row.value ?? Object.values(row).find((v) => typeof v === "string" && v) ?? `Item ${index + 1}`);
+      const value = String(row.value ?? row.id ?? display);
+      return { id: `${value}-${index}`, label: display, value, data: row };
+    }
+    const text = String(raw).trim();
+    return text ? { id: `${text}-${index}`, label: text, value: text } : null;
+  };
+  const list = Array.isArray(answerValue) ? answerValue : [answerValue];
+  const seen = new Set<string>();
+  const options: SimpleOption[] = [];
+  list.forEach((item, index) => {
+    const option = toOption(item, index);
+    if (option && !seen.has(option.value)) {
+      seen.add(option.value);
+      options.push(option);
+    }
+  });
+  return options;
 }
 
 /** Date/date-time field that pre-fills today on first open when the question is set to default
@@ -614,6 +669,25 @@ function renderInput(
   onAnswer?: (questionId: string, variableName: string, value: unknown) => void,
 ) {
   const { type } = question;
+
+  // Any choice question whose options come from records or another question renders as the
+  // searchable, filterable picker (with auto-fill) — so flexible sources work on Select/Radio/etc.
+  const selectionSource = question.selection?.source;
+  if (
+    (selectionSource === "record" || selectionSource === "question") &&
+    ["SingleSelect", "MultiSelect", "Dropdown", "Lookup"].includes(String(type))
+  ) {
+    return (
+      <LookupQuestion
+        allResponses={allResponses}
+        answer={answer}
+        onAnswer={onAnswer}
+        question={question}
+        referenceLists={referenceLists}
+        value={value}
+      />
+    );
+  }
 
   // ── GPS ──────────────────────────────────────────────────────────────────
   if (type === "GPS") {

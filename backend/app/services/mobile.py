@@ -236,6 +236,17 @@ def _mobile_selection(field: dict[str, Any], variable_to_id: dict[str, str]) -> 
         )
 
     search_columns = [str(column) for column in (selection.get("searchColumns") or []) if column]
+    load_columns = [str(column) for column in (selection.get("loadColumns") or []) if column]
+    # "Questions to ask" auto-loads each chosen field into the matching question in this form
+    # (when one exists with the same variable name) — exactly the merdata behavior.
+    mapped = {entry["toVariable"] for entry in autofill}
+    for column in load_columns:
+        if column in mapped:
+            continue
+        target_id = variable_to_id.get(column)
+        if target_id:
+            autofill.append({"fromColumn": column, "toQuestionId": target_id, "toVariable": column, "overwrite": False})
+    minimum_age = selection.get("minimumAgeDays")
     return {
         "source": source,
         "datasetId": selection.get("datasetId"),
@@ -250,6 +261,13 @@ def _mobile_selection(field: dict[str, Any], variable_to_id: dict[str, str]) -> 
         "filterMatch": "any" if str(selection.get("filterMatch") or "all") == "any" else "all",
         "filters": filters,
         "autofill": autofill,
+        "loadColumns": load_columns,
+        "allowMultiple": bool(selection.get("allowMultiple", False)),
+        "allowReuse": bool(selection.get("allowReuse", False)),
+        "confirmResponses": bool(selection.get("confirmResponses", False)),
+        "showOnlyVerified": bool(selection.get("showOnlyVerified", False)),
+        "minimumAgeDays": int(minimum_age) if isinstance(minimum_age, (int, float, str)) and str(minimum_age).strip().isdigit() else None,
+        "fromQuestionId": resolve(selection.get("fromQuestionVariable")),
     }
 
 
@@ -1764,6 +1782,8 @@ class MobileService:
                     form_id=str(submission.form_id),
                     label=label or submission.client_submission_id,
                     data=data,
+                    verified=submission.status in {"approved", "verified", "accepted"},
+                    created_at=submission.sync_received_at,
                 )
             )
         return records

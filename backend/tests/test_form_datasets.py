@@ -182,3 +182,45 @@ def test_article_and_auto_id_compile_as_readonly_behaviors() -> None:
     auto = _build_question_field({"id": "a2", "type": "auto_id", "label": "Ref"}, field_id="a2", section_id="s", order=2)
     assert auto["readOnly"] is True
     assert "auto-id" in auto["metadataTags"]
+
+
+def test_load_reference_settings_compile() -> None:
+    from app.services.mobile import _mobile_selection
+
+    variable_to_id = {"farmer_name": "q-name", "village": "q-village", "src": "q-src"}
+    field = {
+        "selection": {
+            "source": "record",
+            "recordSource": "form",
+            "recordFormId": "form-9",
+            "loadColumns": ["farmer_name", "village"],
+            "allowMultiple": True,
+            "allowReuse": True,
+            "allowAddNew": True,
+            "confirmResponses": True,
+            "showOnlyVerified": True,
+            "minimumAgeDays": "7",
+            "autofill": [{"fromColumn": "farmer_name", "toVariable": "farmer_name"}],
+        }
+    }
+    compiled = _mobile_selection(field, variable_to_id)
+    assert compiled["allowMultiple"] is True
+    assert compiled["showOnlyVerified"] is True
+    assert compiled["minimumAgeDays"] == 7
+    assert compiled["loadColumns"] == ["farmer_name", "village"]
+    # loadColumns become auto-fill into matching questions (village added; farmer_name already mapped).
+    targets = {entry["toVariable"]: entry["toQuestionId"] for entry in compiled["autofill"]}
+    assert targets["village"] == "q-village"
+    assert targets["farmer_name"] == "q-name"
+
+
+def test_question_source_resolves_from_question() -> None:
+    from app.services.mobile import _mobile_selection
+
+    compiled = _mobile_selection(
+        {"selection": {"source": "question", "fromQuestionVariable": "farms", "allowMultiple": True}},
+        {"farms": "q-farms"},
+    )
+    assert compiled["source"] == "question"
+    assert compiled["fromQuestionId"] == "q-farms"
+    assert compiled["allowMultiple"] is True

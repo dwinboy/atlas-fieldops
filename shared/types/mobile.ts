@@ -539,6 +539,15 @@ export type MobileSelectionConfig = {
   filterMatch?: "all" | "any";
   filters?: MobileSelectionFilter[];
   autofill?: MobileSelectionAutofill[];
+  /** "Load reference response" controls. */
+  loadColumns?: string[];
+  allowMultiple?: boolean;
+  allowReuse?: boolean;
+  confirmResponses?: boolean;
+  showOnlyVerified?: boolean;
+  minimumAgeDays?: number;
+  /** For `source: "question"` — the in-form question whose answers become options. */
+  fromQuestionId?: string | null;
 };
 
 export type MobileReferenceList = LocalRecord & {
@@ -947,6 +956,10 @@ export type MobileLinkedRecord = LocalRecord & {
   formId: string;
   label: string;
   data: Record<string, unknown>;
+  /** Whether the source submission is verified/approved (for "show only verified"). */
+  verified: boolean;
+  /** When the source submission was received (for "minimum age in days"). */
+  createdAt: ISODateTime;
 };
 
 export type MobileSyncPackage = {

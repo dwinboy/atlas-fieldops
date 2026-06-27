@@ -90,7 +90,12 @@ export class BootstrapSyncService {
       this.database.draftSubmissions.upsert(this.hydrateReturnedSubmission(returnedSubmission));
     }
     this.database.linkedRecords.replaceAll(
-      (syncPackage.linkedRecords ?? []).map((record) => this.database.importServerRecord(record)),
+      (syncPackage.linkedRecords ?? []).map((record) => ({
+        // Keep the server's createdAt (submission time) so the "minimum age" filter is accurate.
+        ...this.database.importServerRecord(record),
+        createdAt: record.createdAt,
+        verified: record.verified,
+      })),
     );
     for (const submissionStatus of syncPackage.submissionStatuses) {
       const draft = this.database.draftSubmissions.get(submissionStatus.clientSubmissionId);

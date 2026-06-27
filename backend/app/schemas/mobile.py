@@ -368,6 +368,8 @@ class MobileLinkedRecordRead(MobileSchema):
     form_id: str
     label: str
     data: dict[str, Any] = Field(default_factory=dict)
+    verified: bool = False
+    created_at: datetime | None = None
 
 
 class MobileSyncPackageRead(MobileSchema):

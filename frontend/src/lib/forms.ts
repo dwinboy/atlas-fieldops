@@ -185,7 +185,7 @@ export type FormField = {
    * Static stays the default so existing choice questions are unaffected.
    */
   selection?: {
-    source: "static" | "dataset" | "record";
+    source: "static" | "dataset" | "record" | "question";
     datasetId?: string;
     displayColumn?: string;
     valueColumn?: string;
@@ -200,6 +200,15 @@ export type FormField = {
     filters?: SelectionFilter[];
     /** Columns to copy from the chosen record into other questions on selection. */
     autofill?: SelectionAutofill[];
+    /** "Load reference response" controls (referencing another survey's records). */
+    loadColumns?: string[];
+    allowMultiple?: boolean;
+    allowReuse?: boolean;
+    confirmResponses?: boolean;
+    showOnlyVerified?: boolean;
+    minimumAgeDays?: number;
+    /** For `source: "question"` — options come from this in-form question's answers. */
+    fromQuestionVariable?: string;
   };
   beneficiary?: {
     profileField?: string;
@@ -1002,11 +1011,13 @@ export function normalizeSelection(field: FormField): FormField["selection"] | u
         filter.value !== undefined),
   );
   const autofill = (selection.autofill ?? []).filter((map) => map.fromColumn && map.toVariable);
+  const loadColumns = (selection.loadColumns ?? []).filter(Boolean);
   return {
     ...selection,
     searchColumns: (selection.searchColumns ?? []).filter(Boolean),
     filters: filters.length ? filters : undefined,
     autofill: autofill.length ? autofill : undefined,
+    loadColumns: loadColumns.length ? loadColumns : undefined,
   };
 }
 

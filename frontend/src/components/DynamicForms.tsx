@@ -2685,6 +2685,13 @@ function describeSelection(
 ): string {
   if (selection.source === "static") return "Officers pick from the fixed options list.";
   const parts: string[] = [];
+  if (selection.source === "question") {
+    parts.push(
+      `Options come from the answers to “${selection.fromQuestionVariable ? labelFor(selection.fromQuestionVariable) : "(pick a question)"}”`,
+    );
+    if (selection.allowMultiple) parts.push("multiple can be selected");
+    return `${parts.join(", ")}.`;
+  }
   if (selection.source === "dataset") {
     parts.push(`Shows rows from dataset “${selection.datasetId || "(none)"}”`);
     if (selection.displayColumn) parts.push(`displaying ${selection.displayColumn}`);
@@ -2730,6 +2737,9 @@ function selectionWarnings(
   }
   if (selection.source === "record" && selection.recordSource === "form" && !selection.recordFormId) {
     warnings.push("Pick the source form to reference.");
+  }
+  if (selection.source === "question" && !selection.fromQuestionVariable) {
+    warnings.push("Pick the question whose answers become options.");
   }
   if (selection.cascadeFromVariable && !variableExists(selection.cascadeFromVariable)) {
     warnings.push("The cascade question no longer exists.");
@@ -2806,6 +2816,7 @@ function SelectionConfigurator({
   siblings,
   forms = [],
   availableDatasets = [],
+  resolveFormFields,
   onChange,
   onUploadDataset,
 }: {
@@ -2813,6 +2824,7 @@ function SelectionConfigurator({
   siblings: FormField[];
   forms?: { id: string; name: string }[];
   availableDatasets?: FormDatasetSummary[];
+  resolveFormFields?: (formId: string) => { variable: string; label: string }[];
   onChange: (selection: FormField["selection"]) => void;
   onUploadDataset?: (file: File) => Promise<FormDatasetSummary>;
 }) {
@@ -2878,8 +2890,19 @@ function SelectionConfigurator({
   const modes: { key: NonNullable<FormField["selection"]>["source"]; label: string; hint: string }[] = [
     { key: "static", label: "Static options", hint: "A fixed list you type on the Response tab" },
     { key: "dataset", label: "From dataset", hint: "A reference list or uploaded CSV/Excel" },
-    { key: "record", label: "Linked records", hint: "Records from entities or another form" },
+    { key: "record", label: "Linked records", hint: "Load responses from another survey or entities" },
+    { key: "question", label: "From a question", hint: "Options from an answer already in this form" },
   ];
+  const sourceFormFields =
+    selection.source === "record" && selection.recordSource === "form" && selection.recordFormId && resolveFormFields
+      ? resolveFormFields(selection.recordFormId)
+      : [];
+  const toggleLoadColumn = (variable: string) => {
+    const current = new Set(selection.loadColumns ?? []);
+    if (current.has(variable)) current.delete(variable);
+    else current.add(variable);
+    update({ loadColumns: Array.from(current) });
+  };
 
   const labelFor = (variable: string) =>
     siblings.find((sibling) => (sibling.variableName ?? sibling.id) === variable)?.label ?? variable;
@@ -3082,19 +3105,114 @@ function SelectionConfigurator({
               />
             </label>
           )}
-          <label className="flex items-center gap-2 text-sm font-semibold lg:col-span-2">
-            <input
-              checked={selection.allowAddNew ?? false}
-              className="h-4 w-4"
-              onChange={(event) => update({ allowAddNew: event.target.checked || undefined })}
-              type="checkbox"
+          {selection.recordSource === "form" ? (
+            <div className="lg:col-span-2">
+              <p className="text-sm font-semibold">Questions to ask (fields to load)</p>
+              <p className="mb-2 mt-0.5 text-xs text-muted-foreground">
+                Pick which of the source survey’s answers to show and load into this form. A field with
+                the same variable name here is filled automatically.
+              </p>
+              {sourceFormFields.length ? (
+                <div className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto rounded-md border bg-panel p-2">
+                  {sourceFormFields.map((sourceField) => {
+                    const active = (selection.loadColumns ?? []).includes(sourceField.variable);
+                    return (
+                      <button
+                        className={cn(
+                          "rounded-full border px-2.5 py-1 text-xs transition",
+                          active ? "border-primary bg-primary/10 text-primary" : "bg-background",
+                        )}
+                        key={sourceField.variable}
+                        onClick={() => toggleLoadColumn(sourceField.variable)}
+                        type="button"
+                      >
+                        {sourceField.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Pick a source form to choose its fields.</p>
+              )}
+            </div>
+          ) : null}
+          <div className="grid gap-2 lg:col-span-2 lg:grid-cols-2">
+            {(
+              [
+                ["allowMultiple", "Allow multiple responses at once"],
+                ["allowReuse", "Allow a record to be reused"],
+                ["allowAddNew", "Allow new records to be added"],
+                ["confirmResponses", "Confirm responses before saving"],
+                ["showOnlyVerified", "Show only verified responses"],
+              ] as const
+            ).map(([key, label]) => (
+              <label className="flex items-center gap-2 text-sm font-medium" key={key}>
+                <input
+                  checked={Boolean(selection[key])}
+                  className="h-4 w-4"
+                  onChange={(event) => update({ [key]: event.target.checked || undefined })}
+                  type="checkbox"
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+          <label className="text-sm font-semibold lg:col-span-2">
+            Minimum age of response (days)
+            <Input
+              className="mt-2"
+              min={0}
+              onChange={(event) =>
+                update({ minimumAgeDays: event.target.value === "" ? undefined : Number(event.target.value) })
+              }
+              placeholder="Number of days old the response should be"
+              type="number"
+              value={selection.minimumAgeDays ?? ""}
             />
-            Let the officer create a new record if it isn’t found
           </label>
         </div>
       ) : null}
 
-      {selection.source !== "static" ? (
+      {selection.source === "question" ? (
+        <div className="grid gap-3 lg:grid-cols-2">
+          <label className="text-sm font-semibold">
+            Take options from question
+            <Select
+              className="mt-2"
+              onChange={(event) => update({ fromQuestionVariable: event.target.value || undefined })}
+              value={selection.fromQuestionVariable ?? ""}
+            >
+              <option value="">Choose a question…</option>
+              {siblingOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+            <span className="mt-1 block text-xs font-normal text-muted-foreground">
+              Officers choose from the answers given to that question (e.g. the farms added in a repeat group).
+            </span>
+          </label>
+          <ColumnField
+            columns={[]}
+            label="Display column (for grouped answers)"
+            onChange={(value) => update({ displayColumn: value || undefined })}
+            placeholder="e.g. farm_name (optional)"
+            value={selection.displayColumn ?? ""}
+          />
+          <label className="flex items-center gap-2 text-sm font-medium lg:col-span-2">
+            <input
+              checked={Boolean(selection.allowMultiple)}
+              className="h-4 w-4"
+              onChange={(event) => update({ allowMultiple: event.target.checked || undefined })}
+              type="checkbox"
+            />
+            Allow multiple to be selected at once
+          </label>
+        </div>
+      ) : null}
+
+      {selection.source !== "static" && selection.source !== "question" ? (
         <div className="rounded-md border bg-background p-3">
           <div className="flex items-center justify-between gap-2">
             <span className="text-sm font-semibold">Filters</span>
@@ -14022,6 +14140,14 @@ export function DynamicForms({
                                         }
                                       : undefined
                                   }
+                                  resolveFormFields={(formId) => {
+                                    const sourceForm = (backendFormsQuery.data ?? []).find((item) => item.id === formId);
+                                    if (!sourceForm) return [];
+                                    return persistedFormToLocal(sourceForm).fields.map((sourceField) => ({
+                                      variable: sourceField.variableName ?? sourceField.id,
+                                      label: sourceField.label,
+                                    }));
+                                  }}
                                   siblings={selectedForm.fields.filter((item) => item.id !== selectedField.id)}
                                 />
                               </div>
