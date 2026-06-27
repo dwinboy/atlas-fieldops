@@ -101,6 +101,11 @@ import {
 import { templateToForm } from "@/components/forms/formTemplates";
 import { describeEntityCollectionWorkflow } from "@/components/forms/describeEntityCollectionWorkflow";
 import { focusTabApplies, type FocusSettingsTab } from "@/components/forms/focusSettingsTabs";
+import {
+  defaultAssignmentPlan,
+  defaultReadinessState,
+  frequentFieldTypes,
+} from "@/components/forms/formBuilderConstants";
 import { persistedFormToLocal } from "@/components/forms/persistedFormToLocal";
 import { inferQuestionSuggestions } from "@/components/forms/inferQuestionSuggestions";
 import { getSectionTone } from "@/components/forms/sectionTone";
@@ -228,16 +233,6 @@ import {
 import { cn, slugify } from "@/lib/utils";
 import { useWorkspaceStore } from "@/stores/workspace";
 
-const frequentFieldTypes: { type: FieldType; label: string }[] = [
-  { type: "text", label: "Short text" },
-  { type: "number", label: "Number" },
-  { type: "date", label: "Date" },
-  { type: "radio", label: "Radio" },
-  { type: "dropdown", label: "Dropdown" },
-  { type: "checkbox", label: "Checkboxes" },
-  { type: "gps", label: "GPS" },
-  { type: "photo", label: "Photo" },
-];
 
 type DynamicFormsProps = {
   compactBuilder?: boolean;
@@ -295,23 +290,7 @@ const formControlsTabs = [
   ["versions", GitBranch, "Versions"],
 ] satisfies [FormControlsTab, typeof Type, string][];
 
-const defaultReadinessState: FormReadinessState = {
-  mobilePreviewChecked: false,
-  pilotTestCompleted: false,
-  enumeratorBriefingReady: false,
-  importTemplateReviewed: false,
-};
 
-const defaultAssignmentPlan: FormAssignmentPlan = {
-  audience: "All assigned field officers",
-  team: "Baseline enumerators",
-  supervisor: "Survey supervisor",
-  locationScope: "Survey geography",
-  targetSubmissions: 250,
-  dailyTarget: 25,
-  briefingComplete: false,
-  pilotEnumerator: "Lead enumerator",
-};
 
 export function DynamicForms({
   compactBuilder = false,
