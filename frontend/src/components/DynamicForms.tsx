@@ -12552,33 +12552,39 @@ export function DynamicForms({
                             </Button>
                           </div>
 
-                          <Textarea
-                            className="mt-3 min-h-20 border-x-0 border-t-0 bg-transparent px-0 text-base shadow-none focus:ring-0"
-                            onChange={(event) => {
-                              const siblingVariableNames = selectedForm.fields
-                                .filter(
-                                  (field) => field.id !== selectedField.id,
-                                )
-                                .map((field) => field.variableName)
-                                .filter((name): name is string =>
-                                  Boolean(name),
-                                );
-                              updateSelectedForm(
-                                updateField(
-                                  selectedForm,
-                                  selectedField.id,
-                                  labelPatchWithAutoVariable(
-                                    selectedField,
-                                    event.target.value,
-                                    siblingVariableNames,
+                          <div className="mt-3 rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-4 shadow-sm">
+                            <span className="text-[11px] font-bold uppercase tracking-wide text-primary">
+                              Question text
+                            </span>
+                            <Textarea
+                              className="mt-1 min-h-16 border-0 bg-transparent px-0 text-lg font-semibold text-foreground shadow-none placeholder:font-normal placeholder:text-muted-foreground/60 focus:ring-0"
+                              onChange={(event) => {
+                                const siblingVariableNames = selectedForm.fields
+                                  .filter(
+                                    (field) => field.id !== selectedField.id,
+                                  )
+                                  .map((field) => field.variableName)
+                                  .filter((name): name is string =>
+                                    Boolean(name),
+                                  );
+                                updateSelectedForm(
+                                  updateField(
+                                    selectedForm,
+                                    selectedField.id,
+                                    labelPatchWithAutoVariable(
+                                      selectedField,
+                                      event.target.value,
+                                      siblingVariableNames,
+                                    ),
                                   ),
-                                ),
-                              );
-                            }}
-                            value={selectedField.label}
-                          />
+                                );
+                              }}
+                              placeholder="Type the question field officers will see…"
+                              value={selectedField.label}
+                            />
+                          </div>
 
-                          <div className="mt-4 grid gap-1 rounded-md border bg-panel p-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
+                          <div className="mt-4 flex gap-1 overflow-x-auto rounded-xl border bg-muted/60 p-1.5 shadow-sm sm:grid sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
                             {(
                               [
                                 ["common", Settings2, "Basics"],
@@ -12605,9 +12611,9 @@ export function DynamicForms({
                               .map(([tab, Icon, label]) => (
                               <button
                                 className={cn(
-                                  "flex h-9 items-center justify-center gap-1.5 rounded px-2 text-xs font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground",
+                                  "flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-xs font-semibold text-muted-foreground transition hover:bg-background hover:text-foreground",
                                   focusSettingsTab === tab &&
-                                    "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
+                                    "bg-primary text-primary-foreground shadow-sm hover:bg-primary hover:text-primary-foreground",
                                 )}
                                 key={tab}
                                 onClick={() => setFocusSettingsTab(tab)}
