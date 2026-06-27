@@ -100,6 +100,7 @@ import {
 } from "@/components/forms/formPreviewData";
 import { templateToForm } from "@/components/forms/formTemplates";
 import { describeEntityCollectionWorkflow } from "@/components/forms/describeEntityCollectionWorkflow";
+import { focusTabApplies, type FocusSettingsTab } from "@/components/forms/focusSettingsTabs";
 import { persistedFormToLocal } from "@/components/forms/persistedFormToLocal";
 import { inferQuestionSuggestions } from "@/components/forms/inferQuestionSuggestions";
 import { getSectionTone } from "@/components/forms/sectionTone";
@@ -260,20 +261,6 @@ type BuilderAssistantMode =
   | "readiness"
   | "logic";
 type BuilderFocusPanel = "build" | "structure" | "preview";
-type FocusSettingsTab =
-  | "common"
-  | "response"
-  | "logic"
-  | "validation"
-  | "data"
-  | "indicator"
-  | "beneficiary"
-  | "reference"
-  | "evidence"
-  | "privacy"
-  | "mobile"
-  | "governance"
-  | "appearance";
 type DistributionChannel =
   | "survey_app"
   | "web_link"
@@ -325,24 +312,6 @@ const defaultAssignmentPlan: FormAssignmentPlan = {
   briefingComplete: false,
   pilotEnumerator: "Lead enumerator",
 };
-
-function focusTabApplies(tab: FocusSettingsTab, type: FieldType): boolean {
-  switch (tab) {
-    case "reference":
-      return fieldSupportsSelection(type);
-    case "evidence":
-      return fieldSupportsEvidence(type);
-    case "indicator":
-      return fieldSupportsIndicator(type);
-    case "beneficiary":
-      return fieldSupportsEntityMapping(type);
-    case "privacy":
-    case "governance":
-      return fieldCollectsAnswer(type);
-    default:
-      return true;
-  }
-}
 
 export function DynamicForms({
   compactBuilder = false,
