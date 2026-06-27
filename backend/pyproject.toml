@@ -60,7 +60,7 @@ strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["aiokafka", "jose", "shapely.*"]
+module = ["aiokafka", "jose", "shapely.*", "shapefile", "openpyxl", "openpyxl.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

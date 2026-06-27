@@ -15,7 +15,6 @@ from app.core.permissions import (
     Permission,
     ScopeType,
     default_scope_for_roles,
-    has_permission,
     menu_views_for_roles,
     permissions_for_roles,
     normalize_permission,

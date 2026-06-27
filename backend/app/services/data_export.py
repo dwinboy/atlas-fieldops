@@ -394,7 +394,7 @@ def _wkt(geometry: dict[str, Any] | None) -> str:
     if not geometry:
         return ""
     try:
-        return shape(geometry).wkt
+        return str(shape(geometry).wkt)
     except Exception:  # noqa: BLE001
         return ""
 
