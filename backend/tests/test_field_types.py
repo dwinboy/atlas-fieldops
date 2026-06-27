@@ -1,11 +1,38 @@
 """Lock the backend field-type registry to the behaviour it replaced, proving zero drift."""
 
+import re
+from pathlib import Path
+
+import pytest
+
 from app.field_types import (
     SUPPORTED_FIELD_TYPES,
     field_behavior_tags,
     mobile_input_mode,
     mobile_runtime_type,
 )
+
+
+def _frontend_field_types() -> set[str]:
+    """Read the authoring `FieldType` union from the frontend so the cross-layer contract test can
+    detect drift between the two registries. Returns an empty set if the frontend isn't present
+    (e.g. backend-only checkout) so the guard never fails the build spuriously."""
+    root = Path(__file__).resolve()
+    forms_ts = next(
+        (
+            candidate
+            for parent in root.parents
+            if (candidate := parent / "frontend" / "src" / "lib" / "forms.ts").exists()
+        ),
+        None,
+    )
+    if forms_ts is None:
+        return set()
+    text = forms_ts.read_text(encoding="utf-8")
+    match = re.search(r"export type FieldType =(.*?);", text, flags=re.DOTALL)
+    if match is None:
+        return set()
+    return set(re.findall(r'"([a-z_]+)"', match.group(1)))
 
 # The exact offline-safe allowlist that lived inline in FormSchema.ensure_offline_safe_fields before
 # it was derived from the registry. If the registry diverges from this, the test fails on purpose.
@@ -58,6 +85,16 @@ def test_input_mode_mapping_unchanged() -> None:
     assert mobile_input_mode("url") == "url"
     assert mobile_input_mode("text") is None
     assert mobile_input_mode("number") is None
+
+
+def test_backend_allowlist_covers_every_frontend_field_type() -> None:
+    """Cross-layer contract: every authoring response type the builder can produce must be accepted
+    by the backend's offline-safe allowlist, or submissions for it would be rejected on ingest."""
+    frontend_types = _frontend_field_types()
+    if not frontend_types:
+        pytest.skip("frontend forms.ts not available in this checkout")
+    missing = frontend_types - set(SUPPORTED_FIELD_TYPES)
+    assert not missing, f"Frontend field types missing from backend allowlist: {sorted(missing)}"
 
 
 def test_behavior_tags_are_type_driven() -> None:
