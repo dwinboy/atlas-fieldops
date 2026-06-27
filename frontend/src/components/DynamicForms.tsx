@@ -3040,7 +3040,9 @@ function SelectionConfigurator({
   const missingColumns = datasetColumns.length
     ? referencedColumns.filter((column) => !datasetColumns.includes(column))
     : [];
-  const [showUpload, setShowUpload] = useState(false);
+  const [dataMode, setDataMode] = useState<"reuse" | "upload">(
+    availableDatasets.length ? "reuse" : "upload",
+  );
 
   function downloadTemplate() {
     const headers = Array.from(
@@ -3084,7 +3086,6 @@ function SelectionConfigurator({
           : summary.columns,
       });
       setUploadState({ busy: false, message: `Loaded ${summary.row_count ?? "?"} row(s).` });
-      setShowUpload(false);
     } catch (error) {
       setUploadState({ busy: false, message: error instanceof Error ? error.message : "Upload failed." });
     }
@@ -3160,74 +3161,94 @@ function SelectionConfigurator({
           <div>
             <p className="text-sm font-semibold">2 · Add your data</p>
             <p className="mb-2 mt-0.5 text-xs text-muted-foreground">
-              Reuse an existing dataset, or upload your own spreadsheet.
+              Reuse a dataset that already exists, or upload your own spreadsheet.
             </p>
-            <label className="block text-sm font-semibold">
-              Dataset
-              <Select
-                className="mt-2"
-                onChange={(event) => {
-                  if (event.target.value === "__upload__") {
-                    setShowUpload(true);
-                    return;
-                  }
-                  const picked = availableDatasets.find((dataset) => dataset.slug === event.target.value);
-                  update({
-                    datasetId: event.target.value || undefined,
-                    displayColumn: picked?.columns[0] ?? selection.displayColumn,
-                    valueColumn: picked?.columns[1] ?? picked?.columns[0] ?? selection.valueColumn,
-                    searchColumns: picked?.columns.length ? picked.columns : selection.searchColumns,
-                  });
-                }}
-                value={selection.datasetId ?? ""}
-              >
-                <option value="">Select a dataset…</option>
-                {availableDatasets.map((dataset) => (
-                  <option key={dataset.slug} value={dataset.slug}>
-                    {dataset.name} {dataset.kind ? `· ${dataset.kind}` : ""}
-                  </option>
-                ))}
-                {onUploadDataset ? <option value="__upload__">＋ Upload a new dataset…</option> : null}
-              </Select>
-            </label>
 
-            <div className="mt-3 rounded-md border border-dashed bg-background p-3">
-              <p className="text-sm font-semibold">Upload a new dataset (CSV, Excel, or JSON)</p>
-              <ol className="mt-1 list-inside list-decimal space-y-0.5 text-xs text-muted-foreground">
-                <li><span className="font-semibold">Download the template</span> — its columns match what you set below.</li>
-                <li>Fill it with your rows.</li>
-                <li>Upload it — it becomes a searchable, offline dataset for this form.</li>
-              </ol>
-              <div className="mt-2 flex items-center gap-2">
-                <Button onClick={downloadTemplate} size="sm" type="button" variant="ghost">
-                  <FileDown aria-hidden="true" /> Download template
-                </Button>
-                {onUploadDataset ? (
-                  <Button onClick={() => setShowUpload((open) => !open)} size="sm" type="button" variant="secondary">
-                    <UploadCloud aria-hidden="true" /> {showUpload ? "Cancel" : "Choose file"}
-                  </Button>
-                ) : (
-                  <span className="text-xs text-warning">Save the form first to upload datasets.</span>
-                )}
-              </div>
-              {showUpload && onUploadDataset ? (
-                <input
-                  accept=".csv,.xlsx,.xls,.json"
-                  className="mt-2 block w-full text-xs"
-                  disabled={uploadState.busy}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) void handleUpload(file);
-                  }}
-                  type="file"
-                />
-              ) : null}
-              {uploadState.message ? (
-                <p className="mt-2 text-xs font-semibold text-primary">{uploadState.message}</p>
-              ) : null}
+            {/* Two clear paths: reuse vs upload. */}
+            <div className="inline-flex rounded-md border bg-panel p-0.5 text-sm">
+              {(
+                [
+                  ["reuse", "Reuse existing"],
+                  ["upload", "Upload new"],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  className={cn(
+                    "rounded px-3 py-1.5 font-semibold transition",
+                    dataMode === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+                  )}
+                  key={key}
+                  onClick={() => setDataMode(key)}
+                  type="button"
+                >
+                  {label}
+                </button>
+              ))}
             </div>
 
-            {/* Preview so the builder confirms the upload matches their intent. */}
+            {dataMode === "reuse" ? (
+              <label className="mt-3 block text-sm font-semibold">
+                Choose a dataset
+                <Select
+                  className="mt-2"
+                  onChange={(event) => {
+                    const picked = availableDatasets.find((dataset) => dataset.slug === event.target.value);
+                    update({
+                      datasetId: event.target.value || undefined,
+                      displayColumn: picked?.columns[0] ?? selection.displayColumn,
+                      valueColumn: picked?.columns[1] ?? picked?.columns[0] ?? selection.valueColumn,
+                      searchColumns: picked?.columns.length ? picked.columns : selection.searchColumns,
+                    });
+                  }}
+                  value={selection.datasetId ?? ""}
+                >
+                  <option value="">Select a dataset…</option>
+                  {availableDatasets.map((dataset) => (
+                    <option key={dataset.slug} value={dataset.slug}>
+                      {dataset.name} {dataset.kind ? `· ${dataset.kind}` : ""}
+                    </option>
+                  ))}
+                </Select>
+                {availableDatasets.length === 0 ? (
+                  <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                    No datasets yet — switch to <span className="font-semibold">Upload new</span> to create one.
+                  </span>
+                ) : null}
+              </label>
+            ) : (
+              <div className="mt-3 rounded-md border border-dashed bg-background p-3">
+                <p className="text-sm font-semibold">Upload a spreadsheet (CSV, Excel, or JSON)</p>
+                <ol className="mt-1 list-inside list-decimal space-y-0.5 text-xs text-muted-foreground">
+                  <li><span className="font-semibold">Download the template</span> — its columns match what you set below.</li>
+                  <li>Fill it with your rows.</li>
+                  <li>Choose the file — it becomes a searchable, offline dataset for this form.</li>
+                </ol>
+                <div className="mt-2">
+                  <Button onClick={downloadTemplate} size="sm" type="button" variant="ghost">
+                    <FileDown aria-hidden="true" /> Download template
+                  </Button>
+                </div>
+                {onUploadDataset ? (
+                  <input
+                    accept=".csv,.xlsx,.xls,.json"
+                    className="mt-2 block w-full text-xs"
+                    disabled={uploadState.busy}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void handleUpload(file);
+                    }}
+                    type="file"
+                  />
+                ) : (
+                  <p className="mt-2 text-xs text-warning">Save the form first to upload datasets.</p>
+                )}
+                {uploadState.message ? (
+                  <p className="mt-2 text-xs font-semibold text-primary">{uploadState.message}</p>
+                ) : null}
+              </div>
+            )}
+
+            {/* Preview so the builder confirms the data matches their intent. */}
             {sampleRows.length ? (
               <div className="mt-3 overflow-x-auto rounded-md border bg-background">
                 <p className="border-b px-3 py-1.5 text-xs font-semibold text-muted-foreground">
