@@ -74,6 +74,12 @@ import {
 } from "@/components/forms/ChoiceOptionsEditor";
 import { CrossFieldRuleBuilder } from "@/components/forms/CrossFieldRuleBuilder";
 import { FieldInputPreview } from "@/components/forms/FieldInputPreview";
+import {
+  fieldAppearanceWithMetadata,
+  fieldAppearanceWithTag,
+  fieldMetadataValue,
+  hasFieldTag,
+} from "@/components/forms/fieldMetadata";
 import { FieldPropertiesPanel, type RightPanelTab } from "@/components/forms/FieldPropertiesPanel";
 import { FieldTranslationsEditor } from "@/components/forms/FieldTranslationsEditor";
 import { FocusQuestionRow } from "@/components/forms/FocusQuestionRow";
@@ -911,38 +917,6 @@ function slugify(value: string): string {
       .replace(/^-+|-+$/g, "")
       .slice(0, 120) || `form-${Date.now()}`
   );
-}
-
-function hasFieldTag(field: FormField, tag: string): boolean {
-  return Boolean(field.appearance?.helpText?.includes(`[${tag}]`));
-}
-
-function fieldAppearanceWithTag(
-  field: FormField,
-  tag: string,
-  enabled: boolean,
-): FormField["appearance"] {
-  const token = `[${tag}]`;
-  const current = field.appearance?.helpText ?? "";
-  const cleaned = current.replace(token, "").replace(/\s+/g, " ").trim();
-  return {
-    ...field.appearance,
-    helpText: enabled ? `${cleaned} ${token}`.trim() : cleaned,
-  };
-}
-
-function fieldMetadataValue(field: FormField, key: string): string {
-  const match = (field.appearance?.helpText ?? "").match(new RegExp(`\\[${key}:([^\\]]+)\\]`));
-  return match?.[1] ?? "";
-}
-
-function fieldAppearanceWithMetadata(field: FormField, key: string, value: string): FormField["appearance"] {
-  const current = field.appearance?.helpText ?? "";
-  const cleaned = current.replace(new RegExp(`\\s*\\[${key}:[^\\]]+\\]`, "g"), "").replace(/\s+/g, " ").trim();
-  return {
-    ...field.appearance,
-    helpText: value ? `${cleaned} [${key}:${value}]`.trim() : cleaned,
-  };
 }
 
 function inferQuestionSuggestions(question: string): QuestionSuggestion[] {
