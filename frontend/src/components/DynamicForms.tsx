@@ -12430,6 +12430,10 @@ export function DynamicForms({
                                 <h3 className="text-sm font-semibold">
                                   Common settings
                                 </h3>
+                                <HelpHint label="About this tab" title="Basics">
+                                  The essentials for every question: its response type, the wording officers see, the
+                                  variable used in data exports/logic, whether it’s mandatory, and where it sits.
+                                </HelpHint>
                               </div>
                               <div className="mt-4">
                                 <ResponseTypeField
@@ -12478,9 +12482,15 @@ export function DynamicForms({
                                   />
                                 </label>
                                 <label className="block text-sm font-semibold">
-                                  Variable name
+                                  <span className="inline-flex items-center gap-1.5">
+                                    Variable name
+                                    <HelpHint label="About variable name" title="Variable name">
+                                      The stable code for this answer used in exports, calculations, logic, and reference
+                                      filters. Auto-generated from the label; lowercase letters, numbers, and underscores.
+                                    </HelpHint>
+                                  </span>
                                   <Input
-                                    className="mt-2"
+                                    className="mt-2 font-mono"
                                     onChange={(event) =>
                                       updateSelectedForm(
                                         updateField(
@@ -12576,6 +12586,46 @@ export function DynamicForms({
                                     Readonly
                                   </label>
                                 </div>
+                              </div>
+                              <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_1fr]">
+                                <label className="block text-sm font-semibold">
+                                  <span className="inline-flex items-center gap-1.5">
+                                    Help text
+                                    <HelpHint label="About help text" title="Help text">
+                                      Shown under the question to guide the field officer. Use plain language; keep it short.
+                                    </HelpHint>
+                                  </span>
+                                  <Input
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, { hint: event.target.value }),
+                                      )
+                                    }
+                                    placeholder="Optional guidance for field officers"
+                                    value={selectedField.hint ?? ""}
+                                  />
+                                </label>
+                                <label className="block text-sm font-semibold">
+                                  <span className="inline-flex items-center gap-1.5">
+                                    Placeholder
+                                    <HelpHint label="About placeholder" title="Placeholder">
+                                      Faint example text inside the answer box before anything is typed (e.g. “e.g. 25”).
+                                    </HelpHint>
+                                  </span>
+                                  <Input
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: { ...selectedField.appearance, placeholder: event.target.value },
+                                        }),
+                                      )
+                                    }
+                                    placeholder="Answer hint"
+                                    value={selectedField.appearance?.placeholder ?? ""}
+                                  />
+                                </label>
                               </div>
                               <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
                                 <label className="text-sm font-semibold">
@@ -12681,39 +12731,6 @@ export function DynamicForms({
                             </section>
                           ) : null}
 
-                          {focusSettingsTab === "response" ? (
-                            <div className="mt-4 grid gap-4 rounded-lg border bg-panel p-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-              <div className="rounded-md border border-dashed bg-background p-3 text-xs text-muted-foreground">
-                                The response type is{" "}
-                                <span className="font-semibold">{selectedField.type.replace("_", " ")}</span>.
-                                Change it on the <span className="font-semibold">Basics</span> tab.
-                              </div>
-
-                              <label className="block text-sm font-semibold">
-                                Question Mandatory Status
-                                <Select
-                                  className="mt-2"
-                                  onChange={(event) =>
-                                    updateSelectedForm(
-                                      updateField(
-                                        selectedForm,
-                                        selectedField.id,
-                                        {
-                                          required:
-                                            event.target.value === "true",
-                                        },
-                                      ),
-                                    )
-                                  }
-                                  value={String(selectedField.required)}
-                                >
-                                  <option value="true">Is Mandatory</option>
-                                  <option value="false">Not Mandatory</option>
-                                </Select>
-                              </label>
-                            </div>
-                          ) : null}
-
                           {focusSettingsTab === "logic" ? (
                             <section className="mt-4 rounded-lg border bg-panel p-4">
                               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -12726,6 +12743,10 @@ export function DynamicForms({
                                   <h3 className="text-sm font-semibold">
                                     Logic
                                   </h3>
+                                  <HelpHint label="About this tab" title="Logic">
+                                    Show, hide, require, or skip this question based on earlier answers — build the rule
+                                    as a sentence (IF a question = a value THEN …). Rules run live on web and mobile.
+                                  </HelpHint>
                                 </div>
                                 <Badge tone="neutral">
                                   {selectedField.logic?.length ?? 0} rule
@@ -12954,55 +12975,6 @@ export function DynamicForms({
                             </section>
                           ) : null}
 
-                          {focusSettingsTab === "common" ? (
-                            <>
-                            <div className="mt-4 grid gap-4 rounded-lg border bg-panel p-4 lg:grid-cols-[minmax(0,1fr)_1fr]">
-                              <label className="block text-sm font-semibold">
-                                Help Text
-                                <Input
-                                  className="mt-2"
-                                  onChange={(event) =>
-                                    updateSelectedForm(
-                                      updateField(
-                                        selectedForm,
-                                        selectedField.id,
-                                        {
-                                          hint: event.target.value,
-                                        },
-                                      ),
-                                    )
-                                  }
-                                  placeholder="Optional guidance for field officers"
-                                  value={selectedField.hint ?? ""}
-                                />
-                              </label>
-                              <label className="block text-sm font-semibold">
-                                Placeholder
-                                <Input
-                                  className="mt-2"
-                                  onChange={(event) =>
-                                    updateSelectedForm(
-                                      updateField(
-                                        selectedForm,
-                                        selectedField.id,
-                                        {
-                                          appearance: {
-                                            ...selectedField.appearance,
-                                            placeholder: event.target.value,
-                                          },
-                                        },
-                                      ),
-                                    )
-                                  }
-                                  placeholder="Answer hint"
-                                  value={
-                                    selectedField.appearance?.placeholder ?? ""
-                                  }
-                                />
-                              </label>
-                            </div>
-                            </>
-                          ) : null}
 
                           {focusSettingsTab === "response" ? (
                             <section className="mt-4 rounded-lg border bg-panel p-4">
