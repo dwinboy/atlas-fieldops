@@ -114,6 +114,8 @@ export type FormField = {
   hint?: string;
   pageId?: string;
   sectionId: string;
+  /** Pre-filled answer when the officer first opens the question (they can change it). */
+  defaultValue?: unknown;
   options?: string[];
   validation?: {
     min?: number;
@@ -349,6 +351,7 @@ type ExportedSchemaField = {
   matrix?: FormField["matrix"];
   repeat?: FormField["repeat"];
   subform?: FormField["subform"];
+  defaultValue?: unknown;
   lookup?: FormField["lookup"];
   selection?: FormField["selection"];
   media?: FormField["media"];
@@ -1105,6 +1108,7 @@ export function toMobileSchema(form: DynamicForm) {
       matrix: field.matrix,
       repeat: field.repeat,
       subform: field.subform,
+      defaultValue: field.defaultValue,
       lookup: field.lookup,
       selection: normalizeSelection(field),
       media: field.media,

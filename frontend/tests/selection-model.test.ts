@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createField, normalizeSelection, type FormField } from "@/lib/forms";
+import { createField, normalizeSelection, toMobileSchema, type FormField } from "@/lib/forms";
 
 function field(selection: FormField["selection"]): FormField {
   return { ...createField("lookup", "main"), selection };
@@ -40,5 +40,22 @@ describe("normalizeSelection", () => {
     // Incomplete autofill mapping is dropped.
     expect(result?.autofill).toHaveLength(1);
     expect(result?.autofill?.[0].toVariable).toBe("district_q");
+  });
+});
+
+describe("default value + matrix serialization", () => {
+  it("serializes a question's default value to the mobile schema", () => {
+    const form = {
+      id: "f1",
+      name: "F",
+      status: "draft" as const,
+      version: 1,
+      activeVersion: 1,
+      sections: [{ id: "main", title: "Main" }],
+      fields: [{ ...createField("text", "main"), defaultValue: "N/A" }],
+      updatedAt: new Date().toISOString(),
+    };
+    const schema = toMobileSchema(form) as { sections: { fields: { defaultValue?: unknown }[] }[] };
+    expect(schema.sections[0].fields[0].defaultValue).toBe("N/A");
   });
 });

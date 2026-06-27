@@ -12685,6 +12685,61 @@ export function DynamicForms({
                                   />
                                 </label>
                               </div>
+                              {![
+                                "subform",
+                                "repeat_group",
+                                "matrix_single",
+                                "matrix_multi",
+                                "grid",
+                                "article",
+                                "auto_id",
+                                "hidden",
+                                "calculated",
+                                "lookup",
+                              ].includes(selectedField.type) ? (
+                                <label className="mt-4 block text-sm font-semibold">
+                                  <span className="inline-flex items-center gap-1.5">
+                                    Default value
+                                    <HelpHint label="About default value" title="Default value">
+                                      Pre-fills the answer when the officer opens the question; they can still change it.
+                                      Leave blank for no default.
+                                    </HelpHint>
+                                  </span>
+                                  {selectedField.options?.length ? (
+                                    <Select
+                                      className="mt-2"
+                                      onChange={(event) =>
+                                        updateSelectedForm(
+                                          updateField(selectedForm, selectedField.id, {
+                                            defaultValue: event.target.value || undefined,
+                                          }),
+                                        )
+                                      }
+                                      value={String(selectedField.defaultValue ?? "")}
+                                    >
+                                      <option value="">No default</option>
+                                      {selectedField.options.map((option) => (
+                                        <option key={option} value={option}>
+                                          {option}
+                                        </option>
+                                      ))}
+                                    </Select>
+                                  ) : (
+                                    <Input
+                                      className="mt-2"
+                                      onChange={(event) =>
+                                        updateSelectedForm(
+                                          updateField(selectedForm, selectedField.id, {
+                                            defaultValue: event.target.value || undefined,
+                                          }),
+                                        )
+                                      }
+                                      placeholder="Pre-filled answer (optional)"
+                                      value={String(selectedField.defaultValue ?? "")}
+                                    />
+                                  )}
+                                </label>
+                              ) : null}
                               <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
                                 <label className="text-sm font-semibold">
                                   Section
@@ -13110,6 +13165,125 @@ export function DynamicForms({
                                   Advanced for the rest of its behavior.
                                 </div>
                               )}
+                              {["matrix_single", "matrix_multi", "grid"].includes(selectedField.type) ? (
+                                <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                                  <label className="block text-sm font-semibold">
+                                    <span className="inline-flex items-center gap-1.5">
+                                      Rows
+                                      <HelpHint label="About matrix rows" title="Rows">
+                                        Each row is a thing being rated/answered (e.g. each service). The officer answers every row.
+                                      </HelpHint>
+                                    </span>
+                                    <ChoiceOptionsEditor
+                                      key={`${selectedField.id}-rows`}
+                                      onChange={(rows) =>
+                                        updateSelectedForm(
+                                          updateField(selectedForm, selectedField.id, {
+                                            matrix: { rows, columns: selectedField.matrix?.columns ?? [], scoring: selectedField.matrix?.scoring },
+                                          }),
+                                        )
+                                      }
+                                      options={selectedField.matrix?.rows ?? []}
+                                    />
+                                  </label>
+                                  <label className="block text-sm font-semibold">
+                                    <span className="inline-flex items-center gap-1.5">
+                                      Columns
+                                      <HelpHint label="About matrix columns" title="Columns">
+                                        The shared answer choices applied across every row (e.g. Poor → Excellent).
+                                      </HelpHint>
+                                    </span>
+                                    <ChoiceOptionsEditor
+                                      key={`${selectedField.id}-cols`}
+                                      onChange={(columns) =>
+                                        updateSelectedForm(
+                                          updateField(selectedForm, selectedField.id, {
+                                            matrix: { rows: selectedField.matrix?.rows ?? [], columns, scoring: selectedField.matrix?.scoring },
+                                          }),
+                                        )
+                                      }
+                                      options={selectedField.matrix?.columns ?? []}
+                                    />
+                                  </label>
+                                </div>
+                              ) : null}
+                              {["number", "decimal", "currency", "rating", "nps"].includes(selectedField.type) ? (
+                                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                  <label className="text-sm font-semibold">
+                                    Minimum
+                                    <Input
+                                      className="mt-2"
+                                      onChange={(event) =>
+                                        updateSelectedFieldValidation({ min: event.target.value === "" ? undefined : Number(event.target.value) })
+                                      }
+                                      type="number"
+                                      value={selectedField.validation?.min ?? ""}
+                                    />
+                                  </label>
+                                  <label className="text-sm font-semibold">
+                                    Maximum
+                                    <Input
+                                      className="mt-2"
+                                      onChange={(event) =>
+                                        updateSelectedFieldValidation({ max: event.target.value === "" ? undefined : Number(event.target.value) })
+                                      }
+                                      type="number"
+                                      value={selectedField.validation?.max ?? ""}
+                                    />
+                                  </label>
+                                  {["decimal", "currency"].includes(selectedField.type) ? (
+                                    <>
+                                      <label className="text-sm font-semibold">
+                                        Decimal places
+                                        <Input
+                                          className="mt-2"
+                                          min={0}
+                                          onChange={(event) =>
+                                            updateSelectedFieldValidation({ decimalPlaces: event.target.value === "" ? undefined : Number(event.target.value) })
+                                          }
+                                          type="number"
+                                          value={selectedField.validation?.decimalPlaces ?? ""}
+                                        />
+                                      </label>
+                                      <label className="text-sm font-semibold">
+                                        Unit
+                                        <Input
+                                          className="mt-2"
+                                          onChange={(event) => updateSelectedFieldValidation({ unit: event.target.value || undefined })}
+                                          placeholder="kg, ha, %"
+                                          value={selectedField.validation?.unit ?? ""}
+                                        />
+                                      </label>
+                                    </>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                              {["text", "textarea"].includes(selectedField.type) ? (
+                                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                  <label className="text-sm font-semibold">
+                                    Minimum length
+                                    <Input
+                                      className="mt-2"
+                                      onChange={(event) =>
+                                        updateSelectedFieldValidation({ minLength: event.target.value === "" ? undefined : Number(event.target.value) })
+                                      }
+                                      type="number"
+                                      value={selectedField.validation?.minLength ?? ""}
+                                    />
+                                  </label>
+                                  <label className="text-sm font-semibold">
+                                    Maximum length
+                                    <Input
+                                      className="mt-2"
+                                      onChange={(event) =>
+                                        updateSelectedFieldValidation({ maxLength: event.target.value === "" ? undefined : Number(event.target.value) })
+                                      }
+                                      type="number"
+                                      value={selectedField.validation?.maxLength ?? ""}
+                                    />
+                                  </label>
+                                </div>
+                              ) : null}
                               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                                 {[
                                   ["allow-other", "Allow Other option"],

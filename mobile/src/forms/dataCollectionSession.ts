@@ -84,7 +84,15 @@ export class DataCollectionSessionService {
       throw new Error(entityWorkflow.missingSelectionHint);
     }
     const prefillResult = entity ? this.prefill.createPrefill(entity, formVersion) : null;
-    const prefilled = prefillResult?.responses ?? [];
+    // Seed each question's builder-set default value, then let entity prefill override where it applies.
+    const seeded = new Map<string, { questionId: string; variableName: string; value: unknown; updatedAt: string }>();
+    for (const response of collectFieldDefaults(formVersion)) {
+      seeded.set(response.questionId, response);
+    }
+    for (const response of prefillResult?.responses ?? []) {
+      seeded.set(response.questionId, response);
+    }
+    const prefilled = Array.from(seeded.values());
     const adjustedFormVersion = prefillResult
       ? this.applyPrefillRules(formVersion, prefillResult)
       : formVersion;
@@ -365,4 +373,30 @@ export class DataCollectionSessionService {
     }
     return null;
   }
+}
+
+/** Builds prefilled responses from each question's builder-set default value. Only primitive
+ * defaults (text/number/boolean) are seeded — repeat/matrix/lookup defaults hold metadata, not
+ * an answer. Officers can change any seeded value. */
+function collectFieldDefaults(
+  formVersion: MobileFormVersion,
+): Array<{ questionId: string; variableName: string; value: unknown; updatedAt: string }> {
+  const responses: Array<{ questionId: string; variableName: string; value: unknown; updatedAt: string }> = [];
+  for (const section of formVersion.sections ?? []) {
+    for (const question of section.questions ?? []) {
+      const value = question.defaultValue;
+      const isPrimitive =
+        (typeof value === "string" && value.trim() !== "") ||
+        typeof value === "number" ||
+        typeof value === "boolean";
+      if (!isPrimitive) continue;
+      responses.push({
+        questionId: question.id,
+        variableName: question.variableName,
+        value,
+        updatedAt: nowIso(),
+      });
+    }
+  }
+  return responses;
 }
