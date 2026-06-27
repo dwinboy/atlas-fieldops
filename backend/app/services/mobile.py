@@ -170,6 +170,7 @@ def _mobile_question_type(value: str) -> str:
         "calculated": "CalculatedField",
         "repeat_group": "RepeatGroup",
         "repeatable_group": "RepeatGroup",
+        "subform": "RepeatGroup",
         "matrix_single": "Matrix",
         "matrix_multi": "Matrix",
         "grid": "Matrix",
@@ -295,6 +296,15 @@ def _field_options(options: list[Any]) -> list[dict[str, Any]]:
 def _repeat_settings(field: dict[str, Any]) -> dict[str, Any] | None:
     existing = _as_dict(field.get("repeatSettings"))
     repeat = _as_dict(field.get("repeat"))
+    # A subform behaves as a repeat group; honor its min/max/count config when no `repeat` is set.
+    if not repeat:
+        subform = _as_dict(field.get("subform"))
+        if subform:
+            repeat = {
+                "min": subform.get("min"),
+                "max": subform.get("max"),
+                "countFromVariable": subform.get("countFromVariable"),
+            }
     if existing:
         return existing
     if not repeat:
@@ -693,7 +703,7 @@ def _mobile_default_value(
 ) -> Any:
     field_type = str(field.get("type") or "").lower()
     default_value = field.get("defaultValue")
-    if field_type not in {"matrix_single", "matrix_multi", "grid", "repeat_group", "repeatable_group", "ranking", "lookup"}:
+    if field_type not in {"matrix_single", "matrix_multi", "grid", "repeat_group", "repeatable_group", "subform", "ranking", "lookup"}:
         return default_value
 
     metadata: dict[str, Any] = default_value if isinstance(default_value, dict) else {}
@@ -713,7 +723,7 @@ def _mobile_default_value(
             "columns",
             field.get("columns") or field.get("matrixColumns") or field.get("options") or matrix_config.get("columns") or [],
         )
-    if field_type in {"repeat_group", "repeatable_group"}:
+    if field_type in {"repeat_group", "repeatable_group", "subform"}:
         raw_fields = field.get("fields") or field.get("questions") or field.get("children") or []
         metadata["fields"] = [
             _build_question_field(

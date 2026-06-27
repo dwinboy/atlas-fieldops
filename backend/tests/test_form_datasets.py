@@ -224,3 +224,25 @@ def test_question_source_resolves_from_question() -> None:
     assert compiled["source"] == "question"
     assert compiled["fromQuestionId"] == "q-farms"
     assert compiled["allowMultiple"] is True
+
+
+def test_subform_compiles_to_repeat_group_with_children() -> None:
+    from app.services.mobile import _build_question_field
+
+    field = {
+        "id": "members",
+        "type": "subform",
+        "label": "Household members",
+        "subform": {"mode": "embed", "min": 1, "max": 8},
+        "children": [
+            {"id": "m_name", "type": "text", "label": "Name"},
+            {"id": "m_age", "type": "number", "label": "Age"},
+        ],
+    }
+    compiled = _build_question_field(field, field_id="members", section_id="s", order=1)
+    assert compiled["type"] == "RepeatGroup"
+    assert compiled["repeatSettings"]["minRepeats"] == 1
+    assert compiled["repeatSettings"]["maxRepeats"] == 8
+    # Embedded questions become the repeat group's fields.
+    assert [f["variableName"] for f in compiled["defaultValue"]["fields"]]  # built
+    assert len(compiled["defaultValue"]["fields"]) == 2

@@ -618,6 +618,38 @@ def _repeat_group_fields(schema: FormSchema) -> list[FormField]:
     ]
 
 
+_REPEAT_TYPES = {"repeat_group", "repeatable_group", "subform"}
+
+
+def _collect_repeat_entries(
+    fields: list[FormField], container: dict[str, object], parent_key: str
+) -> list[dict[str, Any]]:
+    """Flattens repeat-group / subform rows (at any nesting depth) into rows for the relational
+    `submission_repeat_rows` table. A nested row's `parent_submission_key` chains the parent field
+    and row index so the hierarchy (household → members → visits) can be reconstructed."""
+    entries: list[dict[str, Any]] = []
+    for field in fields:
+        if field.type not in _REPEAT_TYPES:
+            continue
+        value = _field_response(container, field)
+        if not isinstance(value, list):
+            continue
+        rows = [row for row in value if isinstance(row, dict)]
+        for index, row in enumerate(rows):
+            entries.append(
+                {
+                    "parent_submission_key": parent_key,
+                    "field_id": field.id,
+                    "row_index": index,
+                    "row_json": row,
+                }
+            )
+            nested = [child for child in field.children if child.type in _REPEAT_TYPES]
+            if nested:
+                entries.extend(_collect_repeat_entries(nested, row, f"{parent_key}:{field.id}:{index}"))
+    return entries
+
+
 def _parse_number(value: object) -> float | None:
     if _is_blank(value):
         return None
@@ -3357,17 +3389,16 @@ class SubmissionService:
         schema: FormSchema,
     ) -> None:
         payload = _as_dict(submission.payload_json)
-        for field in _repeat_group_fields(schema):
-            value = _field_response(payload, field)
-            if not isinstance(value, list):
-                continue
-            rows = [row for row in value if isinstance(row, dict)]
-            await self.submissions.replace_repeat_rows(
-                organization_id=organization_id,
-                submission=submission,
-                field_id=field.id,
-                rows=rows,
-            )
+        entries = _collect_repeat_entries(
+            [field for section in schema.sections for field in section.fields],
+            payload,
+            submission.client_submission_id,
+        )
+        await self.submissions.replace_all_repeat_rows(
+            organization_id=organization_id,
+            submission=submission,
+            entries=entries,
+        )
 
     @staticmethod
     def _source_label(submission: Submission) -> str:

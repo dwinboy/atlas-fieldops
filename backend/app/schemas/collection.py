@@ -311,6 +311,18 @@ class FormSchema(BaseModel):
             "repeatable_group",
             "calculated",
             "grid",
+            "lookup",
+            "subform",
+            "auto_id",
+            "month",
+            "day_of_week",
+            "path",
+            "pdf",
+            "scan_document",
+            "fingerprint",
+            "article",
+            "user_select",
+            "org_select",
         }
         def validate_fields(fields: list[FormField]) -> None:
             for field in fields:

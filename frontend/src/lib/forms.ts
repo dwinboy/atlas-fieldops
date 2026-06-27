@@ -49,7 +49,8 @@ export type FieldType =
   | "fingerprint"
   | "article"
   | "user_select"
-  | "org_select";
+  | "org_select"
+  | "subform";
 
 /** A single row filter applied to a dataset- or record-backed selection. `fromVariable` makes the
  * filter dynamic — it compares against another question's answer (the basis for cascading lookups).
@@ -234,6 +235,21 @@ export type FormField = {
     overlapScope?: "form" | "project" | "organization";
   };
   variableName?: string;
+  /**
+   * Embedded sub-survey: reuse another form's questions as a repeatable group inside this form, so a
+   * household + its members are collected in one continuous, offline workflow. `embed` snapshots the
+   * referenced form's fields into `children` (version-pinned, fully offline); `linked` (future) emits
+   * separate child submissions. The repeat-group engine renders and stores it.
+   */
+  subform?: {
+    formId?: string;
+    formName?: string;
+    mode: "embed" | "linked";
+    min?: number;
+    max?: number;
+    countFromVariable?: string;
+    titleColumn?: string;
+  };
   children?: FormField[];
   /** Per-language overrides for label/hint/options (and matrix rows/columns), keyed by language
    * name (e.g. "French"). The base label/hint/options are the form's default language. */
@@ -332,6 +348,7 @@ type ExportedSchemaField = {
   calculation?: string;
   matrix?: FormField["matrix"];
   repeat?: FormField["repeat"];
+  subform?: FormField["subform"];
   lookup?: FormField["lookup"];
   selection?: FormField["selection"];
   media?: FormField["media"];
@@ -363,6 +380,13 @@ export const fieldCatalog: {
   group: string;
   fields: { type: FieldType; label: string; description: string }[];
 }[] = [
+  {
+    group: "Composition",
+    fields: [
+      { type: "repeat_group", label: "Repeat group", description: "Collect many records: members, assets, visits" },
+      { type: "subform", label: "Embedded sub-survey", description: "Reuse another form as a repeatable subform" },
+    ],
+  },
   {
     group: "Basic",
     fields: [
@@ -504,6 +528,7 @@ export const fieldTypeHelp: Record<FieldType, string> = {
   article: "Read-only content shown to the officer — instructions, consent text, or guidance. It collects no answer.",
   user_select: "Pick a user from your organization — e.g. assign a responsible officer or supervisor.",
   org_select: "Pick an organization — e.g. a partner, implementing agency, or referral body.",
+  subform: "Embed another form as a repeatable sub-survey — e.g. collect each household member with the Member form, inside this one.",
 };
 
 const choiceFieldTypes: FieldType[] = ["select", "dropdown", "multiselect", "radio", "checkbox", "ranking", "likert"];
@@ -591,7 +616,7 @@ export function fieldSupportsIndicator(type: FieldType): boolean {
 /** True when a question can populate a tracked record's profile attribute (Entity tab). Excludes
  * display-only, system, derived, and structural/grid types that don't map to a single attribute. */
 export function fieldSupportsEntityMapping(type: FieldType): boolean {
-  return !["article", "auto_id", "hidden", "calculated", "repeat_group", "matrix_single", "matrix_multi", "grid"].includes(
+  return !["article", "auto_id", "hidden", "calculated", "repeat_group", "subform", "matrix_single", "matrix_multi", "grid"].includes(
     type,
   );
 }
@@ -709,6 +734,7 @@ export function createField(type: FieldType, sectionId: string, pageId?: string)
       ? { rows: ["Row 1", "Row 2", "Row 3"], columns: ["Option 1", "Option 2", "Option 3"] }
       : undefined,
     repeat: type === "repeat_group" ? { min: 0, max: 10, allowNested: false } : undefined,
+    subform: type === "subform" ? { mode: "embed" as const, min: 0, max: 10 } : undefined,
     lookup:
       type === "lookup"
         ? { source: "entities" as const }
@@ -1078,6 +1104,7 @@ export function toMobileSchema(form: DynamicForm) {
       calculation: field.calculation?.expression ?? field.logic?.find((rule) => rule.kind === "calculation")?.expression,
       matrix: field.matrix,
       repeat: field.repeat,
+      subform: field.subform,
       lookup: field.lookup,
       selection: normalizeSelection(field),
       media: field.media,
@@ -1183,7 +1210,8 @@ function toXlsType(field: FormField, listName = fieldVariableName(field)): strin
     fingerprint: "text",
     article: "note",
     user_select: "select_one_external",
-    org_select: "select_one_external"
+    org_select: "select_one_external",
+    subform: "begin_repeat"
   };
   return typeMap[field.type];
 }

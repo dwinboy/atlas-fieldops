@@ -4289,3 +4289,41 @@ async def test_import_form_rows_flags_possible_duplicates() -> None:
         assert len(flagged) == 1
         assert flagged[0].payload_json["_quality_status"] == "needs_review"
     await engine.dispose()
+
+
+def test_collect_repeat_entries_flattens_nested_repeats() -> None:
+    from app.schemas.collection import FormField
+    from app.services.collection import _collect_repeat_entries
+
+    members = FormField(
+        id="members",
+        type="repeat_group",
+        label="Members",
+        variable_name="members",
+        children=[
+            FormField(id="m_name", type="text", label="Name", variable_name="m_name"),
+            FormField(
+                id="visits",
+                type="repeat_group",
+                label="Visits",
+                variable_name="visits",
+                children=[FormField(id="v_date", type="date", label="Date", variable_name="v_date")],
+            ),
+        ],
+    )
+    payload = {
+        "members": [
+            {"m_name": "Ama", "visits": [{"v_date": "2026-01-01"}, {"v_date": "2026-02-01"}]},
+            {"m_name": "Kofi", "visits": []},
+        ]
+    }
+    entries = _collect_repeat_entries([members], payload, "sub-1")
+
+    member_rows = [e for e in entries if e["field_id"] == "members"]
+    visit_rows = [e for e in entries if e["field_id"] == "visits"]
+    assert len(member_rows) == 2
+    assert {e["parent_submission_key"] for e in member_rows} == {"sub-1"}
+    # Nested visit rows hang off the first member's chained key.
+    assert len(visit_rows) == 2
+    assert all(e["parent_submission_key"] == "sub-1:members:0" for e in visit_rows)
+    assert {e["row_index"] for e in visit_rows} == {0, 1}

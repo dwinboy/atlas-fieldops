@@ -930,6 +930,34 @@ class SubmissionRepository:
                 )
             )
 
+    async def replace_all_repeat_rows(
+        self,
+        *,
+        organization_id: UUID,
+        submission: Submission,
+        entries: list[dict[str, Any]],
+    ) -> None:
+        """Replaces every repeat row for a submission in one pass. Each entry is
+        {parent_submission_key, field_id, row_index, row_json}, supporting nested repeats
+        where a child row's parent_submission_key points at its parent row."""
+        await self.session.execute(
+            delete(SubmissionRepeatRow).where(
+                SubmissionRepeatRow.organization_id == organization_id,
+                SubmissionRepeatRow.submission_id == submission.id,
+            )
+        )
+        for entry in entries:
+            self.session.add(
+                SubmissionRepeatRow(
+                    organization_id=organization_id,
+                    submission_id=submission.id,
+                    parent_submission_key=str(entry["parent_submission_key"]),
+                    field_id=str(entry["field_id"]),
+                    row_index=int(entry["row_index"]),
+                    row_json=entry["row_json"],
+                )
+            )
+
     async def list_repeat_rows(self, *, organization_id: UUID, submission_id: UUID) -> list[SubmissionRepeatRow]:
         result = await self.session.execute(
             select(SubmissionRepeatRow)
