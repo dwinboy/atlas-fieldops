@@ -86,6 +86,9 @@ import {
   pasteChoiceOptionLines,
   removeChoiceOptionDraft,
 } from "@/components/forms/ChoiceOptionsEditor";
+import { CrossFieldRuleBuilder } from "@/components/forms/CrossFieldRuleBuilder";
+import { FieldInputPreview } from "@/components/forms/FieldInputPreview";
+import { RepeatChildrenEditor } from "@/components/forms/RepeatChildrenEditor";
 import { SelectionConfigurator } from "@/components/forms/SelectionConfigurator";
 import { SubformConfigurator } from "@/components/forms/SubformConfigurator";
 import { HelpHint } from "@/components/ui/help-hint";
@@ -100,6 +103,8 @@ export {
   pasteChoiceOptionLines,
   removeChoiceOptionDraft,
 };
+// `typeChangePatchForField` moved to "@/lib/forms"; re-export keeps its public test import working.
+export { typeChangePatchForField };
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
@@ -137,6 +142,7 @@ import {
   reorderSections,
   toMobileSchema,
   toXlsFormWorkbook,
+  typeChangePatchForField,
   updateField,
   type DynamicForm,
   type FieldType,
@@ -1124,163 +1130,8 @@ export function labelPatchWithAutoVariable(
   };
 }
 
-const choiceTypesForSettings = new Set<FieldType>([
-  "select",
-  "dropdown",
-  "multiselect",
-  "radio",
-  "checkbox",
-  "ranking",
-  "likert",
-]);
-
-export function typeChangePatchForField(field: FormField, nextType: FieldType): Partial<FormField> {
-  const defaults = createField(nextType, field.sectionId, field.pageId);
-  const keepOptions =
-    choiceTypesForSettings.has(field.type) &&
-    choiceTypesForSettings.has(nextType) &&
-    Boolean(field.options?.length);
-  return {
-    type: nextType,
-    // Preserve author-entered choices when moving between choice types; otherwise adopt the new
-    // type's seeded options (e.g. Yes/No, allocation buckets, measurement units) or clear them.
-    options: keepOptions ? field.options : defaults.options,
-    validation: defaults.validation,
-    matrix: defaults.matrix,
-    repeat: defaults.repeat,
-    media: defaults.media,
-    gps: defaults.gps,
-    polygon: defaults.polygon,
-    calculation: defaults.calculation,
-    logic:
-      nextType === "calculated"
-        ? defaults.logic
-        : field.logic?.filter((rule) => rule.kind !== "calculation") ?? [],
-  };
-}
-
 function hasFieldTag(field: FormField, tag: string): boolean {
   return Boolean(field.appearance?.helpText?.includes(`[${tag}]`));
-}
-
-const REPEAT_CHILD_TYPES: { type: FieldType; label: string }[] = [
-  { type: "text", label: "Text" },
-  { type: "textarea", label: "Long text" },
-  { type: "number", label: "Number" },
-  { type: "decimal", label: "Decimal" },
-  { type: "select", label: "Single choice" },
-  { type: "multiselect", label: "Multiple choice" },
-  { type: "date", label: "Date" },
-  { type: "polygon", label: "Boundary (polygon)" },
-  { type: "gps", label: "GPS point" },
-  { type: "photo", label: "Photo" },
-  { type: "repeat_group", label: "Repeat group (nested)" },
-];
-
-/** Authors the questions that repeat inside a repeat group (e.g. one polygon per farm). Children
- * are stored on `field.children` and flow through to the mobile app, which renders a row per item. */
-function RepeatChildrenEditor({
-  field,
-  onChange,
-}: {
-  field: FormField;
-  onChange: (children: FormField[]) => void;
-}) {
-  const children = field.children ?? [];
-  const [newType, setNewType] = useState<FieldType>("text");
-
-  function addChild() {
-    const child = createField(newType, field.sectionId, field.pageId);
-    const label = REPEAT_CHILD_TYPES.find((item) => item.type === newType)?.label ?? "Question";
-    onChange([...children, { ...child, label: `${label} ${children.length + 1}` }]);
-  }
-
-  function patchChild(id: string, patch: Partial<FormField>) {
-    onChange(children.map((child) => (child.id === id ? { ...child, ...patch } : child)));
-  }
-
-  return (
-    <section className="rounded-md border bg-background p-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold">Questions inside this repeat group</p>
-        <HelpHint label="About repeat questions" title="Repeat questions">
-          These questions repeat once per item. On mobile the field officer adds a row per item
-          (e.g. per farm) and answers them — including mapping a boundary for each.
-        </HelpHint>
-      </div>
-      {children.length === 0 ? (
-        <p className="mt-2 text-xs text-muted-foreground">
-          No repeated questions yet. Add the questions that should be answered for each item (for
-          example, a farm name and its boundary).
-        </p>
-      ) : (
-        <div className="mt-3 space-y-2">
-          {children.map((child) => (
-            <div className="space-y-2" key={child.id}>
-            <div className="grid gap-2 rounded-md border p-2 md:grid-cols-[minmax(0,1fr)_150px_auto]">
-              <Input
-                aria-label="Repeat question label"
-                onChange={(event) => patchChild(child.id, { label: event.target.value })}
-                value={child.label}
-              />
-              <Select
-                aria-label="Repeat question type"
-                onChange={(event) => patchChild(child.id, typeChangePatchForField(child, event.target.value as FieldType))}
-                value={child.type}
-              >
-                {REPEAT_CHILD_TYPES.map((item) => (
-                  <option key={item.type} value={item.type}>
-                    {item.label}
-                  </option>
-                ))}
-              </Select>
-              <div className="flex items-center gap-2">
-                <label className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <input
-                    checked={child.required ?? false}
-                    onChange={(event) => patchChild(child.id, { required: event.target.checked })}
-                    type="checkbox"
-                  />
-                  Required
-                </label>
-                <Button
-                  aria-label={`Remove ${child.label}`}
-                  onClick={() => onChange(children.filter((item) => item.id !== child.id))}
-                  size="icon"
-                  type="button"
-                  variant="ghost"
-                >
-                  <Trash2 aria-hidden="true" size={14} />
-                </Button>
-              </div>
-            </div>
-            {child.type === "repeat_group" ? (
-              <div className="ml-3 border-l-2 border-primary/30 pl-3">
-                <RepeatChildrenEditor
-                  field={child}
-                  onChange={(grandchildren) => patchChild(child.id, { children: grandchildren })}
-                />
-              </div>
-            ) : null}
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Select aria-label="New repeat question type" onChange={(event) => setNewType(event.target.value as FieldType)} value={newType}>
-          {REPEAT_CHILD_TYPES.map((item) => (
-            <option key={item.type} value={item.type}>
-              {item.label}
-            </option>
-          ))}
-        </Select>
-        <Button onClick={addChild} size="sm" type="button" variant="secondary">
-          <Plus aria-hidden="true" size={14} />
-          Add repeat question
-        </Button>
-      </div>
-    </section>
-  );
 }
 
 /** Authors per-language label/hint for a question. Languages are shared across the form (the
@@ -2568,64 +2419,6 @@ function ResponseTypeField({
   );
 }
 
-/** Guided cross-field rule builder: pick an operator and another question to compose a comparison
- * (e.g. this answer ≥ another answer) without hand-writing `${var}` expressions. */
-function CrossFieldRuleBuilder({
-  thisVariable,
-  siblings,
-  onApply,
-}: {
-  thisVariable: string;
-  siblings: { value: string; label: string }[];
-  onApply: (expression: string) => void;
-}) {
-  const ops: { value: string; label: string }[] = [
-    { value: ">=", label: "≥ (at least)" },
-    { value: "<=", label: "≤ (at most)" },
-    { value: ">", label: "> (greater than)" },
-    { value: "<", label: "< (less than)" },
-    { value: "==", label: "= (equals)" },
-    { value: "!=", label: "≠ (not equals)" },
-  ];
-  const [op, setOp] = useState(">=");
-  const [other, setOther] = useState(siblings[0]?.value ?? "");
-  if (siblings.length === 0) return null;
-  return (
-    <div className="rounded-md border border-dashed bg-background p-3">
-      <p className="text-sm font-semibold">Compare with another question</p>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Builds a cross-field rule like “this answer ≥ another answer” — no formula typing.
-      </p>
-      <div className="mt-2 grid items-center gap-2 lg:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_auto]">
-        <span className="text-xs font-semibold text-muted-foreground">This answer</span>
-        <Select onChange={(event) => setOp(event.target.value)} value={op}>
-          {ops.map((item) => (
-            <option key={item.value} value={item.value}>
-              {item.label}
-            </option>
-          ))}
-        </Select>
-        <Select onChange={(event) => setOther(event.target.value)} value={other}>
-          {siblings.map((sibling) => (
-            <option key={sibling.value} value={sibling.value}>
-              {sibling.label}
-            </option>
-          ))}
-        </Select>
-        <Button
-          disabled={!thisVariable || !other}
-          onClick={() => onApply(`\${${thisVariable}} ${op} \${${other}}`)}
-          size="sm"
-          type="button"
-          variant="secondary"
-        >
-          Apply
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 /** Whether a focus-editor settings tab is relevant to a question's response type. Keeps builders
  * from seeing settings that can't apply (e.g. Reference on currency, Evidence on text). */
 function focusTabApplies(tab: FocusSettingsTab, type: FieldType): boolean {
@@ -2644,126 +2437,6 @@ function focusTabApplies(tab: FocusSettingsTab, type: FieldType): boolean {
     default:
       return true;
   }
-}
-
-function FieldInputPreview({ field }: { field: FormField }) {
-  if (field.options?.length) {
-    return (
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {field.options.slice(0, 6).map((option) => (
-          <span
-            className="rounded-md border bg-panel px-3 py-1.5 text-xs text-muted-foreground"
-            key={option}
-          >
-            {option}
-          </span>
-        ))}
-      </div>
-    );
-  }
-
-  if (["matrix_single", "matrix_multi", "grid"].includes(field.type)) {
-    return (
-      <div className="mt-2 overflow-hidden rounded-md border bg-panel">
-        <div className="grid grid-cols-4 border-b text-[11px] text-muted-foreground">
-          <span className="p-2">Row</span>
-          {(field.matrix?.columns ?? ["Option 1", "Option 2", "Option 3"])
-            .slice(0, 3)
-            .map((column) => (
-              <span className="border-l p-2" key={column}>
-                {column}
-              </span>
-            ))}
-        </div>
-        {(field.matrix?.rows ?? ["Row 1", "Row 2"]).slice(0, 2).map((row) => (
-          <div
-            className="grid grid-cols-4 border-b last:border-b-0 text-xs"
-            key={row}
-          >
-            <span className="p-2 text-muted-foreground">{row}</span>
-            <span className="border-l p-2 text-center text-muted-foreground">
-              ○
-            </span>
-            <span className="border-l p-2 text-center text-muted-foreground">
-              ○
-            </span>
-            <span className="border-l p-2 text-center text-muted-foreground">
-              ○
-            </span>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  if (field.type === "repeat_group") {
-    return (
-      <div className="mt-2 rounded-md border border-dashed bg-panel px-3 py-2 text-xs text-muted-foreground">
-        Add item · remove item · duplicate item · repeat limit{" "}
-        {field.repeat?.max ?? "not set"}
-      </div>
-    );
-  }
-
-  if (["gps", "geolocation", "map", "geofence"].includes(field.type)) {
-    return (
-      <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs">
-        {["Latitude", "Longitude", "Accuracy", "Timestamp"].map((label) => (
-          <span
-            className="rounded-md border bg-panel px-3 py-2 text-muted-foreground"
-            key={label}
-          >
-            {label}
-          </span>
-        ))}
-      </div>
-    );
-  }
-
-  if (field.type === "polygon") {
-    return (
-      <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs">
-        {[
-          `Min vertices: ${field.polygon?.minVertices ?? 3}`,
-          field.polygon?.requireClosed === false ? "Open shape allowed" : "Closed shape required",
-          field.polygon?.overlapCheck === false ? "Overlap check off" : "Overlap check on",
-        ].map((label) => (
-          <span
-            className="rounded-md border bg-panel px-3 py-2 text-muted-foreground"
-            key={label}
-          >
-            {label}
-          </span>
-        ))}
-      </div>
-    );
-  }
-
-  if (
-    ["photo", "image", "video", "audio", "file", "signature"].includes(
-      field.type,
-    )
-  ) {
-    return (
-      <div className="mt-2 rounded-md border border-dashed bg-panel px-3 py-2.5 text-center text-xs text-muted-foreground">
-        Capture or upload {field.type.replace("_", " ")}
-      </div>
-    );
-  }
-
-  if (field.type === "calculated") {
-    return (
-      <div className="mt-2 rounded-md border bg-panel px-3 py-2 font-mono text-xs text-muted-foreground">
-        {field.calculation?.expression ?? "Formula preview"}
-      </div>
-    );
-  }
-
-  return (
-    <div className="mt-2 rounded-md border bg-panel px-3 py-2 text-sm text-muted-foreground">
-      {field.appearance?.placeholder ?? field.hint ?? "Answer goes here"}
-    </div>
-  );
 }
 
 function SortableField({

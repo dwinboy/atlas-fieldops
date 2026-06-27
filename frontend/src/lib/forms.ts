@@ -922,6 +922,48 @@ export function createField(type: FieldType, sectionId: string, pageId?: string)
   };
 }
 
+/** Choice types whose author-entered option list should be preserved when switching between them.
+ * Intentionally narrower than `choiceFieldTypes` (e.g. excludes yes_no / constant_sum, which seed
+ * their own fixed options). */
+const choiceTypesForSettings = new Set<FieldType>([
+  "select",
+  "dropdown",
+  "multiselect",
+  "radio",
+  "checkbox",
+  "ranking",
+  "likert",
+]);
+
+/** Computes the field patch to apply when an author changes a question's response type: it adopts
+ * the new type's seeded defaults (validation, matrix, repeat, media, gps, polygon, calculation),
+ * preserves the option list only when moving between option-preserving choice types, and clears any
+ * stale calculation logic unless the new type is calculated. */
+export function typeChangePatchForField(field: FormField, nextType: FieldType): Partial<FormField> {
+  const defaults = createField(nextType, field.sectionId, field.pageId);
+  const keepOptions =
+    choiceTypesForSettings.has(field.type) &&
+    choiceTypesForSettings.has(nextType) &&
+    Boolean(field.options?.length);
+  return {
+    type: nextType,
+    // Preserve author-entered choices when moving between choice types; otherwise adopt the new
+    // type's seeded options (e.g. Yes/No, allocation buckets, measurement units) or clear them.
+    options: keepOptions ? field.options : defaults.options,
+    validation: defaults.validation,
+    matrix: defaults.matrix,
+    repeat: defaults.repeat,
+    media: defaults.media,
+    gps: defaults.gps,
+    polygon: defaults.polygon,
+    calculation: defaults.calculation,
+    logic:
+      nextType === "calculated"
+        ? defaults.logic
+        : field.logic?.filter((rule) => rule.kind !== "calculation") ?? [],
+  };
+}
+
 export function addField(form: DynamicForm, field: FormField): DynamicForm {
   const normalized = normalizeForm(form);
   const section = normalized.sections.find((candidate) => candidate.id === field.sectionId) ?? normalized.sections[0];
