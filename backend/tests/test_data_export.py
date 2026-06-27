@@ -154,6 +154,51 @@ async def test_bundle_includes_stored_media_and_manifest() -> None:
         assert "farm.jpg" in manifest and "yes" in manifest
 
 
+async def test_structured_response_types_flatten_into_columns() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session = async_sessionmaker(engine, expire_on_commit=False)()
+    org_id, user_id, form_id, version_id = (uuid4() for _ in range(4))
+    now = datetime.now(UTC)
+    session.add_all([
+        Organization(id=org_id, name="O", slug="o-struct"),
+        User(id=user_id, email="s@example.org", full_name="S", password_hash="x"),
+        DataForm(id=form_id, organization_id=org_id, created_by_user_id=user_id, name="Struct", slug="struct",
+                 status="published", current_version=1),
+        DataFormVersion(id=version_id, organization_id=org_id, form_id=form_id, version=1, offline_compatible=True,
+                        published_at=now, schema_json={"sections": [{"id": "s", "fields": [
+                            {"id": "q_window", "variable_name": "window", "type": "date_range", "label": "Visit window"},
+                            {"id": "q_weight", "variable_name": "weight", "type": "measurement", "label": "Harvest weight"},
+                            {"id": "q_budget", "variable_name": "budget", "type": "constant_sum", "label": "Budget split"},
+                        ]}]}),
+        Submission(organization_id=org_id, form_id=form_id, form_version_id=version_id, client_submission_id="struct-001",
+                   status="approved", payload_json={"_mobile_responses": [
+                       {"variableName": "window", "value": {"from": "2026-01-01", "to": "2026-01-31"}},
+                       {"variableName": "weight", "value": {"value": "42.5", "unit": "kg"}},
+                       {"variableName": "budget", "value": {"Seeds": 60, "Tools": 40}},
+                   ]}, device_id="d", captured_at=now, submitted_at=now, sync_received_at=now,
+                   latitude=0, longitude=0, location_captured_at=now),
+    ])
+    await session.commit()
+
+    service = DataExportService(session)
+    caps = await service.capabilities(org_id, form_id)
+    columns = caps["columns"]
+    assert "Visit window (from)" in columns and "Visit window (to)" in columns
+    assert "Harvest weight" in columns and "Harvest weight (unit)" in columns
+    assert "Budget split: Seeds" in columns and "Budget split: Tools" in columns
+
+    text = (await service.export(org_id, form_id, "csv")).content.decode("utf-8-sig")
+    header, row = text.splitlines()[0].split(","), text.splitlines()[1].split(",")
+    cells = dict(zip(header, row))
+    assert cells["Visit window (from)"] == "2026-01-01"
+    assert cells["Harvest weight"] == "42.5" and cells["Harvest weight (unit)"] == "kg"
+    assert cells["Budget split: Seeds"] == "60"
+    # The raw JSON blob must not leak into a single cell.
+    assert '{"from"' not in text and '{"value"' not in text
+
+
 async def test_export_all_formats_produce_valid_output() -> None:
     session, org_id, form_id = await _seed()
     service = DataExportService(session)

@@ -26,9 +26,19 @@ from app.services.operations import (
     indicator_progress,
     indicator_values_from_import_row,
     infer_mapping,
+    number_value,
     program_values_from_import_row,
     validate_sample_rows,
 )
+
+
+def test_number_value_reads_measurement_answers() -> None:
+    # Measurement answers wrap the magnitude in {value, unit}; indicators must still aggregate them.
+    assert number_value({"value": "42.5", "unit": "kg"}) == 42.5
+    assert number_value({"value": 7, "unit": "ha"}) == 7.0
+    # A structured answer with no numeric magnitude stays unaggregatable.
+    assert number_value({"from": "2026-01-01", "to": "2026-01-31"}) is None
+    assert number_value("3,200") == 3200.0
 
 
 def test_me_permissions_are_role_scoped() -> None:

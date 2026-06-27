@@ -834,6 +834,12 @@ def number_value(value: object) -> float | None:
         return None
     if isinstance(value, bool):
         return 1.0 if value else 0.0
+    if isinstance(value, dict):
+        # Measurement answers store the magnitude under "value" (alongside a separate unit), so
+        # indicators can still sum/average them by their numeric magnitude.
+        if "value" in value:
+            return number_value(value.get("value"))
+        return None
     try:
         return float(str(value).replace(",", "").strip())
     except ValueError:

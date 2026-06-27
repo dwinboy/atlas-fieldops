@@ -122,8 +122,37 @@ def _schema_labels(schema_json: dict[str, Any]) -> dict[str, str]:
     return labels
 
 
+def _schema_field_types(schema_json: dict[str, Any]) -> dict[str, str]:
+    """Map answer keys (variable_name and field id) to their response type, lower-cased."""
+    types: dict[str, str] = {}
+    for section in (schema_json or {}).get("sections", []):
+        for field_def in section.get("fields", []):
+            field_type = str(field_def.get("type") or "").strip().lower()
+            if not field_type:
+                continue
+            for key in (field_def.get("variable_name"), field_def.get("id")):
+                if key:
+                    types[str(key)] = field_type
+    return types
+
+
 def _humanize(key: str) -> str:
     return key.replace("_", " ").replace("-", " ").strip().title()
+
+
+def _flatten_structured(label: str, value: Any, field_type: str | None) -> dict[str, str] | None:
+    """Spread a structured answer (date range, measurement, constant-sum) across analyst-friendly
+    columns instead of dumping JSON into a single cell. Returns None when the value isn't one of
+    these shapes, so callers fall back to plain stringification."""
+    if not isinstance(value, dict) or not value:
+        return None
+    if field_type == "date_range":
+        return {f"{label} (from)": _stringify(value.get("from")), f"{label} (to)": _stringify(value.get("to"))}
+    if field_type == "measurement":
+        return {label: _stringify(value.get("value")), f"{label} (unit)": _stringify(value.get("unit"))}
+    if field_type == "constant_sum":
+        return {f"{label}: {key}": _stringify(item) for key, item in value.items()}
+    return None
 
 
 def _stringify(value: Any) -> str:
@@ -206,7 +235,11 @@ class DataExportService:
         return form, schema_json, submissions, media_by_submission
 
     def _to_record(
-        self, submission: Submission, labels: dict[str, str], media_rows: list[MediaEvidence]
+        self,
+        submission: Submission,
+        labels: dict[str, str],
+        types: dict[str, str],
+        media_rows: list[MediaEvidence],
     ) -> _Record:
         payload = submission.payload_json or {}
         record = _Record(
@@ -228,11 +261,11 @@ class DataExportService:
                 if not key:
                     continue
                 seen_keys.add(key)
-                self._absorb_value(record, labels.get(key, _humanize(key)), response.get("value"))
+                self._absorb_value(record, labels.get(key, _humanize(key)), response.get("value"), types.get(key))
         for key, value in payload.items():
             if key.startswith("_") or key == "responses" or key in seen_keys:
                 continue
-            self._absorb_value(record, labels.get(key, _humanize(key)), value)
+            self._absorb_value(record, labels.get(key, _humanize(key)), value, types.get(key))
 
         # A submission-level GPS fix becomes a point when no answer supplied one.
         if not any(geometry.get("type") == "Point" for geometry in record.geometries):
@@ -247,7 +280,7 @@ class DataExportService:
             record.attributes.setdefault("Media files", "; ".join(item["url"] for item in record.media))
         return record
 
-    def _absorb_value(self, record: _Record, label: str, value: Any) -> None:
+    def _absorb_value(self, record: _Record, label: str, value: Any, field_type: str | None = None) -> None:
         if _is_polygon(value):
             record.geometries.append({"type": "Polygon", "coordinates": value["coordinates"]})
             record.attributes[label] = f"Polygon ({len(value['coordinates'][0]) if value['coordinates'] else 0} points)"
@@ -256,6 +289,10 @@ class DataExportService:
         if point is not None:
             record.geometries.append({"type": "Point", "coordinates": [point[1], point[0]]})
             record.attributes[label] = f"{point[0]:.6f}, {point[1]:.6f}"
+            return
+        structured = _flatten_structured(label, value, field_type)
+        if structured is not None:
+            record.attributes.update(structured)
             return
         record.attributes[label] = _stringify(value)
 
@@ -266,7 +303,8 @@ class DataExportService:
         if form is None:
             return None
         labels = _schema_labels(schema_json)
-        records = [self._to_record(submission, labels, media_by_submission.get(submission.id, [])) for submission in submissions]
+        types = _schema_field_types(schema_json)
+        records = [self._to_record(submission, labels, types, media_by_submission.get(submission.id, [])) for submission in submissions]
         has_points = any(any(g.get("type") == "Point" for g in record.geometries) for record in records)
         has_polygons = any(any(g.get("type") == "Polygon" for g in record.geometries) for record in records)
         has_media = any(record.media for record in records)
@@ -312,7 +350,8 @@ class DataExportService:
         if form is None:
             return None
         labels = _schema_labels(schema_json)
-        records = [self._to_record(submission, labels, media_by_submission.get(submission.id, [])) for submission in submissions]
+        types = _schema_field_types(schema_json)
+        records = [self._to_record(submission, labels, types, media_by_submission.get(submission.id, [])) for submission in submissions]
         if fields:
             # Restrict to the chosen attribute columns; geometry, media, and submission
             # metadata are always retained so the export stays usable.
