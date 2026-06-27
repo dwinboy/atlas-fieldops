@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  Alert,
   Pressable,
   ScrollView,
   Text,
@@ -479,6 +480,24 @@ function LookupQuestion({
     : legacySource;
   const multi = Boolean(selection?.allowMultiple);
 
+  // Records already chosen in other submissions on this device — used to enforce "no reuse".
+  const usedRecordIds = useMemo(() => {
+    const used = new Set<string>();
+    if (selection?.allowReuse !== false) return used;
+    for (const draft of localDatabase.draftSubmissions.list()) {
+      for (const response of draft.responses) {
+        if (response.questionId !== question.id) continue;
+        const recorded = response.value;
+        if (Array.isArray(recorded)) recorded.forEach((item) => used.add(String(item)));
+        else if (recorded !== null && recorded !== undefined) used.add(String(recorded));
+      }
+    }
+    if (Array.isArray(value)) value.forEach((item) => used.delete(String(item)));
+    else if (value !== null && value !== undefined) used.delete(String(value));
+    return used;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selection?.allowReuse, question.id, value]);
+
   const blocked = isCascadeBlocked(question, allResponses);
 
   const options = useMemo<SimpleOption[]>(() => {
@@ -503,6 +522,8 @@ function LookupQuestion({
         .filter((record) => (selection?.recordFormId ? record.formId === selection.recordFormId : true))
         .filter((record) => (selection?.showOnlyVerified ? record.verified : true))
         .filter((record) => recordOldEnough(record, selection?.minimumAgeDays))
+        // "Allow a record to be reused" off → hide records already chosen in other submissions.
+        .filter((record) => (selection?.allowReuse === false ? !usedRecordIds.has(record.id) : true))
         .filter((record) => matchesLinkedRecordFilters(record, selection, allResponses))
         .map((record) => ({
           id: record.id,
@@ -537,7 +558,7 @@ function LookupQuestion({
   }, [source, referenceLists, question.id, blocked, allResponses]);
 
   // On selection, copy mapped columns from the chosen row into other questions (auto-fill).
-  function handlePick(picked: unknown) {
+  function commitPick(picked: unknown) {
     answer(picked);
     // Multi-select picks are arrays; auto-fill applies to a single chosen record only.
     if (Array.isArray(picked)) return;
@@ -555,6 +576,19 @@ function LookupQuestion({
       if (!mapping.overwrite && alreadyAnswered) continue;
       onAnswer(mapping.toQuestionId, mapping.toVariable, data[mapping.fromColumn] ?? "");
     }
+  }
+
+  function handlePick(picked: unknown) {
+    // "Confirm responses": ask the officer to confirm a single pick before saving (guards mis-taps).
+    if (selection?.confirmResponses && !Array.isArray(picked) && picked !== "" && picked !== undefined) {
+      const label = options.find((option) => option.value === picked)?.label ?? String(picked);
+      Alert.alert("Confirm selection", `Use “${label}” for this question?`, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Use it", onPress: () => commitPick(picked) },
+      ]);
+      return;
+    }
+    commitPick(picked);
   }
 
   if (blocked) {
@@ -582,7 +616,15 @@ function LookupQuestion({
       </View>
     );
   }
-  return <SearchableOptionList multi={multi} onChange={handlePick} options={options} value={value} />;
+  return (
+    <SearchableOptionList
+      allowOther={Boolean(selection?.allowAddNew)}
+      multi={multi}
+      onChange={handlePick}
+      options={options}
+      value={value}
+    />
+  );
 }
 
 /** Whether a linked record is at least `minimumAgeDays` old (based on its source submission time). */

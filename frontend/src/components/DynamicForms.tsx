@@ -3403,26 +3403,61 @@ function SelectionConfigurator({
           <div className="grid gap-2 lg:col-span-2 lg:grid-cols-2">
             {(
               [
-                ["allowMultiple", "Allow multiple responses at once"],
-                ["allowReuse", "Allow a record to be reused"],
-                ["allowAddNew", "Allow new records to be added"],
-                ["confirmResponses", "Confirm responses before saving"],
-                ["showOnlyVerified", "Show only verified responses"],
+                [
+                  "allowMultiple",
+                  "Allow multiple responses at once",
+                  "The officer can pick several records for this one question (multi-select) instead of just one.",
+                ],
+                [
+                  "allowReuse",
+                  "Allow a record to be reused",
+                  "A record can be chosen again even if it was already used in another submission of this form. Turn off to hide records already used on this device.",
+                ],
+                [
+                  "allowAddNew",
+                  "Allow new records to be added",
+                  "If the record isn’t in the list, the officer can type a new value to add it as the answer.",
+                ],
+                [
+                  "confirmResponses",
+                  "Confirm responses before saving",
+                  "After the officer taps a record, ask them to confirm the choice before it’s saved — guards against mis-taps.",
+                ],
+                [
+                  "showOnlyVerified",
+                  "Show only verified responses",
+                  "Only records whose source submission is approved/verified appear in the list.",
+                ],
               ] as const
-            ).map(([key, label]) => (
+            ).map(([key, label, help]) => (
               <label className="flex items-center gap-2 text-sm font-medium" key={key}>
                 <input
-                  checked={Boolean(selection[key])}
+                  checked={key === "allowReuse" ? selection.allowReuse !== false : Boolean(selection[key])}
                   className="h-4 w-4"
-                  onChange={(event) => update({ [key]: event.target.checked || undefined })}
+                  onChange={(event) =>
+                    key === "allowReuse"
+                      ? update({ allowReuse: event.target.checked })
+                      : update({ [key]: event.target.checked || undefined })
+                  }
                   type="checkbox"
                 />
-                {label}
+                <span className="inline-flex items-center gap-1.5">
+                  {label}
+                  <HelpHint label={`About ${label}`} title={label}>
+                    {help}
+                  </HelpHint>
+                </span>
               </label>
             ))}
           </div>
           <label className="text-sm font-semibold lg:col-span-2">
-            Minimum age of response (days)
+            <span className="inline-flex items-center gap-1.5">
+              Minimum age of response (days)
+              <HelpHint label="About minimum age" title="Minimum age of response">
+                Only show records at least this many days old (based on when they were collected). Leave blank for no limit —
+                useful when answers should “settle” before being referenced.
+              </HelpHint>
+            </span>
             <Input
               className="mt-2"
               min={0}

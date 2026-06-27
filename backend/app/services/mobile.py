@@ -264,7 +264,8 @@ def _mobile_selection(field: dict[str, Any], variable_to_id: dict[str, str]) -> 
         "autofill": autofill,
         "loadColumns": load_columns,
         "allowMultiple": bool(selection.get("allowMultiple", False)),
-        "allowReuse": bool(selection.get("allowReuse", False)),
+        # Reuse is allowed unless the builder explicitly turns it off.
+        "allowReuse": bool(selection.get("allowReuse", True)),
         "confirmResponses": bool(selection.get("confirmResponses", False)),
         "showOnlyVerified": bool(selection.get("showOnlyVerified", False)),
         "minimumAgeDays": int(minimum_age) if isinstance(minimum_age, (int, float, str)) and str(minimum_age).strip().isdigit() else None,
