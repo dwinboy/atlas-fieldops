@@ -13315,31 +13315,54 @@ export function DynamicForms({
                                 "likert",
                               ].includes(selectedField.type) ||
                               selectedField.options ? (
-                                <label className="mt-4 block text-sm font-semibold">
-                                  {selectedField.type === "measurement"
-                                    ? "Units of measure"
-                                    : "Options"}
-                                  <ChoiceOptionsEditor
-                                    key={selectedField.id}
-                                    onChange={(options) =>
-                                      updateSelectedForm(
-                                        updateField(
-                                          selectedForm,
-                                          selectedField.id,
-                                          {
-                                            options,
-                                          },
-                                        ),
-                                      )
-                                    }
-                                    options={selectedField.options ?? []}
-                                  />
-                                  <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                                <>
+                                  {fieldSupportsSelection(selectedField.type) &&
+                                  (!selectedField.selection ||
+                                    selectedField.selection.source === "static") ? (
+                                    <div className="mt-4 flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+                                      <p className="text-xs text-muted-foreground">
+                                        This is a fixed list typed below. To pull answers from{" "}
+                                        <span className="font-semibold">another form</span>, a dataset, or
+                                        saved records, set the source on the Reference tab.
+                                      </p>
+                                      <Button
+                                        className="shrink-0"
+                                        onClick={() => setFocusSettingsTab("reference")}
+                                        size="sm"
+                                        type="button"
+                                        variant="secondary"
+                                      >
+                                        <Database aria-hidden="true" className="mr-1" size={14} />
+                                        Choose a data source
+                                      </Button>
+                                    </div>
+                                  ) : null}
+                                  <label className="mt-4 block text-sm font-semibold">
                                     {selectedField.type === "measurement"
-                                      ? "List the units a field officer can pick (e.g. kg, g, lb). The first one is selected by default."
-                                      : "Press Enter to add the next response. Paste multiple lines to create many options at once. These values are used by web and mobile collection."}
-                                  </span>
-                                </label>
+                                      ? "Units of measure"
+                                      : "Options"}
+                                    <ChoiceOptionsEditor
+                                      key={selectedField.id}
+                                      onChange={(options) =>
+                                        updateSelectedForm(
+                                          updateField(
+                                            selectedForm,
+                                            selectedField.id,
+                                            {
+                                              options,
+                                            },
+                                          ),
+                                        )
+                                      }
+                                      options={selectedField.options ?? []}
+                                    />
+                                    <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                                      {selectedField.type === "measurement"
+                                        ? "List the units a field officer can pick (e.g. kg, g, lb). The first one is selected by default."
+                                        : "Press Enter to add the next response. Paste multiple lines to create many options at once. These values are used by web and mobile collection."}
+                                    </span>
+                                  </label>
+                                </>
                               ) : (
                                 <div className="mt-4 rounded-md border bg-background p-3 text-xs text-muted-foreground">
                                   This response type does not need a manual
