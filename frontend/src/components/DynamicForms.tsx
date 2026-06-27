@@ -13212,7 +13212,24 @@ export function DynamicForms({
                                   />
                                 </div>
                               ) : null}
-                              {selectedField.type === "subform" ? null : [
+                              {selectedField.type === "subform" ? null : selectedField.selection &&
+                                selectedField.selection.source !== "static" ? (
+                                <div className="mt-4 rounded-md border border-primary/30 bg-primary/5 p-3 text-xs">
+                                  <p className="text-sm font-semibold">
+                                    {selectedField.selection.source === "dataset"
+                                      ? `Answers come from the dataset “${selectedField.selection.datasetId || "(pick one)"}”.`
+                                      : selectedField.selection.source === "question"
+                                        ? "Answers come from another question’s answers."
+                                        : selectedField.selection.recordSource === "form"
+                                          ? "Answers come from records in another form."
+                                          : "Answers come from registered records (entities)."}
+                                  </p>
+                                  <p className="mt-1 text-muted-foreground">
+                                    The manual option list isn’t used. Set up the source, columns, and filters on the{" "}
+                                    <span className="font-semibold">Reference</span> tab.
+                                  </p>
+                                </div>
+                              ) : [
                                 "select",
                                 "dropdown",
                                 "multiselect",
