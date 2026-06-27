@@ -354,7 +354,7 @@ export default function FormFillScreen() {
     entityName,
     entityWorkflow,
     integrity,
-    draft.linkedEntityIds.length,
+    draft.linkedEntityIds?.length ?? 0,
     entityHierarchy?.summary ?? null,
   );
 

@@ -160,6 +160,24 @@ export class DraftSubmissionService {
   }
 }
 
+/**
+ * Rebuilds the attachment list from a submission's responses. Used both for locally created
+ * drafts and for server-returned submissions, which arrive without an attachments array.
+ */
+export function buildSubmissionAttachments(
+  draftLocalId: string,
+  responses: MobileSubmissionResponse[],
+  existingAttachments: MobileAttachment[] = [],
+  timestamp: string = nowIso(),
+): MobileAttachment[] {
+  return buildDraftAttachments({ draftLocalId, responses, existingAttachments, timestamp });
+}
+
+/** Derives the representative location from a submission's responses (GPS/polygon answers). */
+export function deriveSubmissionLocation(responses: MobileSubmissionResponse[]): MobileSubmission["location"] | null {
+  return deriveDraftLocation(responses);
+}
+
 function buildDraftAttachments(input: {
   draftLocalId: string;
   responses: MobileSubmissionResponse[];

@@ -1,6 +1,7 @@
 import { createMobileApis } from "@/api/mobileApis";
-import type { MobileEntityCategory, MobileSyncPackage } from "@/models/contracts";
+import type { MobileEntityCategory, MobileSubmission, MobileSyncPackage } from "@/models/contracts";
 import { normalizeEntityCategoryRecord } from "@/entities/entityCategoryUtils";
+import { buildSubmissionAttachments, deriveSubmissionLocation } from "@/submissions/draftSubmissionService";
 import { AuditEventService } from "@/services/auditEventService";
 import { LocalDatabase } from "@/storage/localDatabase";
 import { ConflictService } from "@/sync/conflictService";
@@ -86,7 +87,7 @@ export class BootstrapSyncService {
       });
     }
     for (const returnedSubmission of syncPackage.returnedSubmissions) {
-      this.database.draftSubmissions.upsert(this.database.importServerRecord(returnedSubmission));
+      this.database.draftSubmissions.upsert(this.hydrateReturnedSubmission(returnedSubmission));
     }
     for (const submissionStatus of syncPackage.submissionStatuses) {
       const draft = this.database.draftSubmissions.get(submissionStatus.clientSubmissionId);
@@ -110,5 +111,29 @@ export class BootstrapSyncService {
       returnedSubmissions: syncPackage.returnedSubmissions.length,
     });
     return syncPackage;
+  }
+
+  /**
+   * The server's returned-submission payload only carries the review fields and responses — it
+   * omits the device-side draft fields (linkedEntityIds, attachments, location). Importing it as-is
+   * produced a draft with `linkedEntityIds === undefined`, which crashed the form-fill screen the
+   * moment a field officer tapped a returned submission to correct it (it read on as a logout).
+   * Hydrate it into a complete draft so it opens, edits, and re-uploads like any other draft.
+   */
+  private hydrateReturnedSubmission(record: MobileSubmission): MobileSubmission {
+    const imported = this.database.importServerRecord(record);
+    const responses = Array.isArray(record.responses) ? record.responses : [];
+    return {
+      ...imported,
+      linkedEntityIds: Array.isArray(record.linkedEntityIds) ? record.linkedEntityIds : [],
+      entityType: record.entityType ?? null,
+      attachments: buildSubmissionAttachments(imported.localId, responses, [], imported.updatedAt),
+      location: deriveSubmissionLocation(responses),
+      submittedAt: record.submittedAt ?? null,
+      appVersion: record.appVersion ?? null,
+      integritySignals: record.integritySignals ?? null,
+      reviewStatus: record.reviewStatus ?? "returned",
+      syncStatus: "ReturnedForCorrection",
+    };
   }
 }
