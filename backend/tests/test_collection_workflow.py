@@ -2350,7 +2350,17 @@ async def test_mobile_returned_submission_can_be_corrected_and_resubmitted() -> 
         assert approved_submission.entity_id == beneficiary.id
 
 
-async def _seed_dedup_environment(controls_json: dict[str, object]) -> dict[str, object]:
+async def _seed_dedup_environment(
+    controls_json: dict[str, object], *, unique_variables: set[str] | None = None
+) -> dict[str, object]:
+    unique_variables = unique_variables or set()
+
+    def _field(field_id: str, variable: str, field_type: str, label: str, **extra: object) -> dict[str, object]:
+        field: dict[str, object] = {"id": field_id, "variable_name": variable, "type": field_type, "label": label, **extra}
+        if variable in unique_variables:
+            field["validation"] = {"uniqueResponse": True}
+        return field
+
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
@@ -2409,11 +2419,11 @@ async def _seed_dedup_environment(controls_json: dict[str, object]) -> dict[str,
                             "id": "identity",
                             "title": "Identity",
                             "fields": [
-                                {"id": "q_name", "variable_name": "farmer_name", "type": "text", "label": "Farmer Name", "required": True},
-                                {"id": "q_phone", "variable_name": "phone", "type": "phone", "label": "Phone"},
-                                {"id": "q_village", "variable_name": "village", "type": "text", "label": "Village"},
-                                {"id": "q_district", "variable_name": "district", "type": "text", "label": "District"},
-                                {"id": "household_members", "variable_name": "household_members", "type": "repeat_group", "label": "Household Members"},
+                                _field("q_name", "farmer_name", "text", "Farmer Name", required=True),
+                                _field("q_phone", "phone", "phone", "Phone"),
+                                _field("q_village", "village", "text", "Village"),
+                                _field("q_district", "district", "text", "District"),
+                                _field("household_members", "household_members", "repeat_group", "Household Members"),
                             ],
                         }
                     ]
@@ -2547,6 +2557,51 @@ async def test_create_submission_enforces_once_ever_frequency() -> None:
                     env, client_submission_id="freq-101", payload={"farmer_name": "Repeat Farmer"}, entity_id=beneficiary.id
                 ),
             )
+
+
+@pytest.mark.asyncio
+async def test_create_submission_flags_unique_response_duplicates() -> None:
+    env = await _seed_dedup_environment({}, unique_variables={"phone"})
+    session: object = env["session"]
+    async with session:
+        service = SubmissionService(session)
+        first = await service.create_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["field_user_id"],
+            payload=_dedup_submission_payload(
+                env, client_submission_id="uniq-001", payload={"farmer_name": "Amina", "phone": "677000111"}
+            ),
+        )
+        await session.commit()
+        assert first.payload_json.get("_quality_status") != "needs_review"
+
+        # A second submission reusing the same phone (a unique-flagged field) is flagged for review.
+        flagged = await service.create_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["field_user_id"],
+            payload=_dedup_submission_payload(
+                env, client_submission_id="uniq-002", payload={"farmer_name": "Bola", "phone": "677000111"}
+            ),
+        )
+        await session.commit()
+        signals = flagged.payload_json.get("_duplicate_field_signals")
+        assert isinstance(signals, list) and len(signals) == 1
+        assert signals[0]["field"] == "phone"
+        assert signals[0]["matched_client_submission_id"] == "uniq-001"
+        assert flagged.payload_json.get("_quality_status") == "needs_review"
+        assert flagged.payload_json.get("_review_required") is True
+        assert any("already recorded" in str(issue) for issue in flagged.payload_json.get("_validation_issues", []))
+
+        # A distinct phone is accepted cleanly.
+        clean = await service.create_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["field_user_id"],
+            payload=_dedup_submission_payload(
+                env, client_submission_id="uniq-003", payload={"farmer_name": "Cira", "phone": "677000222"}
+            ),
+        )
+        await session.commit()
+        assert "_duplicate_field_signals" not in clean.payload_json
 
 
 @pytest.mark.asyncio

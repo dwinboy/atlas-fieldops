@@ -13883,6 +13883,14 @@ export function DynamicForms({
                                   </label>
                                 ))}
                               </div>
+                              {fieldValidationCapabilities(selectedField.type).uniqueness &&
+                              (selectedField.validation?.uniqueResponse || selectedField.validation?.duplicateCheck) ? (
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                  When this answer repeats a value already submitted for this form, the new
+                                  submission is flagged for supervisor review (the officer is not blocked, so
+                                  offline data is never lost). Best for IDs like national ID or phone number.
+                                </p>
+                              ) : null}
                               <div className="mt-4 rounded-md border bg-background p-3">
                                 <div className="flex items-center justify-between gap-2">
                                   <div>

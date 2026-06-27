@@ -575,6 +575,25 @@ def _question_control_metadata(schema: FormSchema) -> dict[str, dict[str, object
     return metadata
 
 
+def _unique_response_fields(schema: FormSchema) -> list[dict[str, str]]:
+    """Variable names of questions the author flagged as needing a unique answer across submissions
+    (the builder's "answers must be unique" / "check for duplicates" controls). Each flagged field is
+    checked on its own — a submission is a possible duplicate if *any* such answer already exists."""
+    unique: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for section in schema.sections:
+        for field in section.fields:
+            rules = field.validation or {}
+            if not (rules.get("uniqueResponse") or rules.get("duplicateCheck")):
+                continue
+            key = (field.variable_name or field.id or "").strip().lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            unique.append({"variable": key, "label": field.label or key})
+    return unique
+
+
 SENSITIVE_PRIVACY_LEVELS = {"pii", "restricted"}
 
 
@@ -2503,6 +2522,28 @@ class SubmissionService:
                 submission_payload["_duplicate_submission_signal"] = duplicate_submission
                 submission_payload["_quality_status"] = "needs_review"
                 submission_payload["_review_required"] = True
+        unique_fields = _unique_response_fields(schema)
+        if unique_fields:
+            unique_duplicates = await self._find_unique_field_duplicates(
+                organization_id=organization_id,
+                form_id=payload.form_id,
+                payload_values=self._flat_payload_values(payload.payload),
+                unique_fields=unique_fields,
+                exclude_submission_id=existing.id if can_resubmit_existing and existing is not None else None,
+            )
+            if unique_duplicates:
+                submission_payload["_duplicate_field_signals"] = unique_duplicates
+                submission_payload["_quality_status"] = "needs_review"
+                submission_payload["_review_required"] = True
+                duplicate_messages = [
+                    f"{signal['label']} “{signal['value']}” already recorded in submission "
+                    f"{signal.get('matched_client_submission_id') or signal.get('matched_submission_id')}."
+                    for signal in unique_duplicates
+                ]
+                existing_issues = submission_payload.get("_validation_issues")
+                submission_payload["_validation_issues"] = (
+                    list(existing_issues) if isinstance(existing_issues, list) else []
+                ) + duplicate_messages
         if can_resubmit_existing and existing is not None:
             return await self._resubmit_existing_submission(
                 organization_id=organization_id,
@@ -4818,6 +4859,55 @@ class SubmissionService:
                     "matched_fields": list(fingerprint.keys()),
                 }
         return None
+
+    async def _find_unique_field_duplicates(
+        self,
+        *,
+        organization_id: UUID,
+        form_id: UUID,
+        payload_values: dict[str, object],
+        unique_fields: list[dict[str, str]],
+        exclude_submission_id: UUID | None = None,
+    ) -> list[dict[str, object]]:
+        """Per-question duplicate detection with OR semantics: each flagged field is matched on its
+        own value against other submissions of the same form. Returns one signal per field that
+        collides with an existing answer (case-insensitive, blanks ignored)."""
+        targets: list[tuple[dict[str, str], str, str]] = []
+        for entry in unique_fields:
+            raw = payload_values.get(entry["variable"])
+            text = "" if raw is None else str(raw).strip()
+            if text:
+                targets.append((entry, text, text.lower()))
+        if not targets:
+            return []
+        result = await self.session.execute(
+            select(Submission).where(
+                Submission.organization_id == organization_id,
+                Submission.form_id == form_id,
+                Submission.deleted_at.is_(None),
+                Submission.status != "rejected",
+            )
+        )
+        signals: dict[str, dict[str, object]] = {}
+        for other in result.scalars():
+            if exclude_submission_id is not None and other.id == exclude_submission_id:
+                continue
+            other_values = self._flat_payload_values(other.payload_json or {})
+            for entry, original, normalized in targets:
+                if entry["variable"] in signals:
+                    continue
+                other_value = other_values.get(entry["variable"])
+                if other_value is not None and str(other_value).strip().lower() == normalized:
+                    signals[entry["variable"]] = {
+                        "field": entry["variable"],
+                        "label": entry["label"],
+                        "value": original,
+                        "matched_submission_id": str(other.id),
+                        "matched_client_submission_id": other.client_submission_id,
+                    }
+            if len(signals) == len(targets):
+                break
+        return list(signals.values())
 
     def _string_from_object(self, value: object) -> str | None:
         if value is None:
