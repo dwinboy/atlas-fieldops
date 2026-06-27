@@ -559,24 +559,134 @@ export const fieldTypeHelp: Record<FieldType, string> = {
   slider: "Drag a handle along a scale to pick a number between a minimum and maximum (set the step for finer or coarser answers).",
 };
 
-const choiceFieldTypes: FieldType[] = ["select", "dropdown", "multiselect", "radio", "checkbox", "ranking", "likert", "yes_no", "constant_sum"];
-const locationFieldTypes: FieldType[] = ["gps", "geolocation", "map", "geofence", "polygon", "path"];
-const mediaFieldTypes: FieldType[] = ["photo", "image", "signature", "audio", "video", "file", "pdf", "scan_document"];
+/**
+ * Capabilities a response type can carry. A capability is the single, declarative fact that drives
+ * how every layer treats a type — which validations apply, whether it captures a numeric/text/date
+ * answer, whether it draws geometry, whether it collects no answer at all, and so on.
+ *
+ *  - `choice`       answer is picked from a list (selectable-answers / Reference configurator applies)
+ *  - `multiSelect`  a choice type where more than one answer can be picked (min/max selections apply)
+ *  - `numeric`      captures a number (min/max value apply)
+ *  - `decimal`      a numeric type that can carry a fractional part (decimal-places / unit apply)
+ *  - `text`         free-text answer (length / pattern apply)
+ *  - `date`         a date/time answer (date range / future-past apply)
+ *  - `location`     captures geographic location
+ *  - `shape`        geometry drawn as multiple vertices on a map (no single-point GPS metadata)
+ *  - `media`        captures a file/photo/audio/video/signature
+ *  - `displayOnly`  read-only / system type that collects no validated answer
+ */
+export type FieldCapability =
+  | "choice"
+  | "multiSelect"
+  | "numeric"
+  | "decimal"
+  | "text"
+  | "date"
+  | "location"
+  | "shape"
+  | "media"
+  | "displayOnly";
+
+/**
+ * The single source of truth for what each response type *is*. Every capability array below is
+ * derived from this table, so a new field type declares its nature in exactly one place and every
+ * consumer (validation gating, selection support, the web→mobile compiler's expectations) stays in
+ * sync automatically. Because it is an exhaustive `Record<FieldType, …>`, TypeScript fails the build
+ * if a new `FieldType` is added without classifying it here.
+ */
+export const FIELD_TYPE_REGISTRY: Record<FieldType, FieldCapability[]> = {
+  text: ["text"],
+  textarea: ["text"],
+  number: ["numeric"],
+  decimal: ["numeric", "decimal"],
+  currency: ["numeric", "decimal"],
+  phone: ["text"],
+  email: ["text"],
+  url: ["text"],
+  password: ["text"],
+  select: ["choice"],
+  dropdown: ["choice"],
+  multiselect: ["choice", "multiSelect"],
+  radio: ["choice"],
+  checkbox: ["choice", "multiSelect"],
+  ranking: ["choice"],
+  likert: ["choice"],
+  matrix_single: [],
+  matrix_multi: [],
+  nps: ["numeric"],
+  rating: ["numeric"],
+  gps: ["location"],
+  geolocation: ["location"],
+  map: ["location"],
+  geofence: ["location"],
+  polygon: ["location", "shape"],
+  photo: ["media"],
+  image: ["media"],
+  signature: ["media"],
+  barcode: [],
+  qr: [],
+  audio: ["media"],
+  video: ["media"],
+  file: ["media"],
+  date: ["date"],
+  time: ["date"],
+  datetime: ["date"],
+  hidden: ["displayOnly"],
+  calculated: [],
+  repeat_group: [],
+  grid: [],
+  lookup: [],
+  auto_id: ["displayOnly"],
+  month: ["date"],
+  day_of_week: [],
+  path: ["location", "shape"],
+  pdf: ["media"],
+  scan_document: ["media"],
+  fingerprint: [],
+  article: ["displayOnly"],
+  user_select: [],
+  org_select: [],
+  subform: [],
+  percentage: ["numeric"],
+  yes_no: ["choice"],
+  counter: ["numeric"],
+  date_range: ["date"],
+  measurement: ["numeric", "decimal"],
+  constant_sum: ["choice"],
+  slider: ["numeric"],
+};
+
+/** All response types that carry a given capability. The capability arrays below are membership
+ * sets consumed via `.includes()`, so ordering is irrelevant to behavior. */
+export function fieldTypesWithCapability(capability: FieldCapability): FieldType[] {
+  return (Object.keys(FIELD_TYPE_REGISTRY) as FieldType[]).filter((type) =>
+    FIELD_TYPE_REGISTRY[type].includes(capability),
+  );
+}
+
+/** True when a response type carries a capability. */
+export function fieldTypeHasCapability(type: FieldType, capability: FieldCapability): boolean {
+  return FIELD_TYPE_REGISTRY[type]?.includes(capability) ?? false;
+}
+
+const choiceFieldTypes: FieldType[] = fieldTypesWithCapability("choice");
+const locationFieldTypes: FieldType[] = fieldTypesWithCapability("location");
+const mediaFieldTypes: FieldType[] = fieldTypesWithCapability("media");
 /** Geometry types drawn as multiple vertices on a map (no single-point GPS metadata). */
-const shapeFieldTypes: FieldType[] = ["polygon", "path"];
+const shapeFieldTypes: FieldType[] = fieldTypesWithCapability("shape");
 /** Read-only / system question types that collect no validated answer from the officer. */
-const displayOnlyFieldTypes: FieldType[] = ["article", "auto_id", "hidden"];
+const displayOnlyFieldTypes: FieldType[] = fieldTypesWithCapability("displayOnly");
 
 /** Question types that capture a numeric answer. */
-const numericFieldTypes: FieldType[] = ["number", "decimal", "currency", "rating", "nps", "percentage", "counter", "measurement", "slider"];
+const numericFieldTypes: FieldType[] = fieldTypesWithCapability("numeric");
 /** Numeric types that can carry a fractional part (so decimal-places / unit make sense). */
-const decimalFieldTypes: FieldType[] = ["decimal", "currency", "measurement"];
+const decimalFieldTypes: FieldType[] = fieldTypesWithCapability("decimal");
 /** Question types whose answer is free text (so length / pattern make sense). */
-const textFieldTypes: FieldType[] = ["text", "textarea", "email", "url", "phone", "password"];
+const textFieldTypes: FieldType[] = fieldTypesWithCapability("text");
 /** Question types whose answer is a date/time (so date range / future-past make sense). */
-const dateFieldTypes: FieldType[] = ["date", "time", "datetime", "month", "date_range"];
+const dateFieldTypes: FieldType[] = fieldTypesWithCapability("date");
 /** Choice types where picking more than one answer is possible (so min/max selections apply). */
-const multiSelectFieldTypes: FieldType[] = ["multiselect", "checkbox"];
+const multiSelectFieldTypes: FieldType[] = fieldTypesWithCapability("multiSelect");
 
 /**
  * Which validation rules are meaningful for a given question's response type. The form builder
