@@ -478,7 +478,9 @@ function LookupQuestion({
           ? "form"
           : "entities"
     : legacySource;
-  const multi = Boolean(selection?.allowMultiple);
+  // Multi-select / checkbox response types are inherently multiple; single types (radio/select/
+  // dropdown/lookup) become multiple only when the builder turns on "allow multiple".
+  const multi = question.type === "MultiSelect" || Boolean(selection?.allowMultiple);
 
   // Records already chosen in other submissions on this device — used to enforce "no reuse".
   const usedRecordIds = useMemo(() => {

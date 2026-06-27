@@ -3400,14 +3400,23 @@ function SelectionConfigurator({
               )}
             </div>
           ) : null}
+          {["multiselect", "checkbox"].includes(field.type) ? (
+            <p className="rounded-md border border-primary/30 bg-primary/5 p-2 text-xs text-primary lg:col-span-2">
+              This is a multi-select response type — officers can pick several records automatically.
+            </p>
+          ) : null}
           <div className="grid gap-2 lg:col-span-2 lg:grid-cols-2">
             {(
               [
-                [
-                  "allowMultiple",
-                  "Allow multiple responses at once",
-                  "The officer can pick several records for this one question (multi-select) instead of just one.",
-                ],
+                ...(["multiselect", "checkbox"].includes(field.type)
+                  ? []
+                  : [
+                      [
+                        "allowMultiple",
+                        "Allow multiple responses at once",
+                        "The officer can pick several records for this one question (multi-select) instead of just one.",
+                      ] as const,
+                    ]),
                 [
                   "allowReuse",
                   "Allow a record to be reused",
