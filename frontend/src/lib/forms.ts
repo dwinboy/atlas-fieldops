@@ -403,6 +403,80 @@ const choiceFieldTypes: FieldType[] = ["select", "dropdown", "multiselect", "rad
 const locationFieldTypes: FieldType[] = ["gps", "geolocation", "map", "geofence", "polygon"];
 const mediaFieldTypes: FieldType[] = ["photo", "image", "signature", "audio", "video", "file"];
 
+/** Question types that capture a numeric answer. */
+const numericFieldTypes: FieldType[] = ["number", "decimal", "currency", "rating", "nps"];
+/** Numeric types that can carry a fractional part (so decimal-places / unit make sense). */
+const decimalFieldTypes: FieldType[] = ["decimal", "currency"];
+/** Question types whose answer is free text (so length / pattern make sense). */
+const textFieldTypes: FieldType[] = ["text", "textarea", "email", "url", "phone", "password"];
+/** Question types whose answer is a date/time (so date range / future-past make sense). */
+const dateFieldTypes: FieldType[] = ["date", "time", "datetime"];
+/** Choice types where picking more than one answer is possible (so min/max selections apply). */
+const multiSelectFieldTypes: FieldType[] = ["multiselect", "checkbox"];
+
+/**
+ * Which validation rules are meaningful for a given question's response type. The form builder
+ * uses this so a field officer only ever sees validations that fit the answer — e.g. a whole-number
+ * question shows min/max value and "whole numbers only", never "minimum length" or "decimal places".
+ */
+export type FieldValidationCapabilities = {
+  numericRange: boolean;
+  wholeNumberToggle: boolean;
+  decimals: boolean;
+  textLength: boolean;
+  pattern: boolean;
+  dateRange: boolean;
+  selections: boolean;
+  allowOther: boolean;
+  gpsAccuracy: boolean;
+  fileLimits: boolean;
+  uniqueness: boolean;
+  dontKnowRefused: boolean;
+};
+
+export function fieldValidationCapabilities(type: FieldType): FieldValidationCapabilities {
+  const isNumeric = numericFieldTypes.includes(type);
+  const isText = textFieldTypes.includes(type);
+  const isDate = dateFieldTypes.includes(type);
+  const isChoice = choiceFieldTypes.includes(type);
+  return {
+    numericRange: isNumeric,
+    // "whole numbers only" only applies to a plain number (decimal/currency/rating/nps don't need it).
+    wholeNumberToggle: type === "number",
+    decimals: decimalFieldTypes.includes(type),
+    textLength: isText,
+    pattern: isText,
+    dateRange: isDate,
+    selections: multiSelectFieldTypes.includes(type),
+    allowOther: ["select", "dropdown", "radio", "multiselect", "checkbox"].includes(type),
+    gpsAccuracy: ["gps", "geolocation", "map", "geofence"].includes(type),
+    fileLimits: mediaFieldTypes.includes(type),
+    // Uniqueness/duplicate checks only make sense for a single scalar answer.
+    uniqueness: isNumeric || isText || isDate,
+    // "Don't know / Refused" are answer-bearing question conveniences.
+    dontKnowRefused: isNumeric || isText || isDate || isChoice,
+  };
+}
+
+/**
+ * The HTML input type to use for a logic condition's answer value, and (for choice questions) the
+ * list of options to choose from — so the logic builder matches the picked question's response type.
+ */
+export function logicValueInputForField(field: FormField | undefined): {
+  kind: "text" | "number" | "date" | "datetime" | "time" | "select" | "boolean";
+  options?: string[];
+} {
+  if (!field) return { kind: "text" };
+  if (choiceFieldTypes.includes(field.type)) {
+    return { kind: "select", options: field.options ?? [] };
+  }
+  if (numericFieldTypes.includes(field.type)) return { kind: "number" };
+  if (field.type === "date") return { kind: "date" };
+  if (field.type === "datetime") return { kind: "datetime" };
+  if (field.type === "time") return { kind: "time" };
+  return { kind: "text" };
+}
+
 export function defaultPages(form: DynamicForm): FormPage[] {
   if (form.pages?.length) {
     return form.pages;
