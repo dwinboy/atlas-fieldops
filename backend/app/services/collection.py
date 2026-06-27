@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.core.events import event_publisher
 from app.core.permissions import canonical_role
 from app.core.security import hash_password
+from app.models.administration import PlatformReferenceList, PlatformReferenceValue
 from app.models.audit import AuditLog
 from app.models.collection import (
     DataForm,
@@ -1794,9 +1795,132 @@ class FieldOfficerService:
 
 class FormService:
     def __init__(self, session: AsyncSession) -> None:
+        self.session = session
         self.forms = FormRepository(session)
         self.surveys = SurveyRepository(session)
         self.audit = AuditRepository(session)
+
+    async def upload_form_dataset(
+        self,
+        *,
+        organization_id: UUID,
+        form_id: UUID,
+        actor_user_id: UUID,
+        filename: str,
+        content: bytes,
+        value_column: str | None = None,
+        display_column: str | None = None,
+        parent_column: str | None = None,
+    ) -> dict[str, Any]:
+        """Parses an uploaded CSV/Excel/JSON file into a form-scoped reference dataset.
+
+        Each row becomes a reference value whose full row is kept in metadata `data` (so
+        display/value/search columns and filters work on mobile), with an optional `parentCode`
+        for cascading. Reuses the shared upload parser so all supported formats are accepted.
+        """
+        form = await self.session.get(DataForm, form_id)
+        if form is None or form.organization_id != organization_id or form.deleted_at is not None:
+            raise CollectionNotFoundError("Form not found")
+
+        from app.services.file_imports import parse_uploaded_dataset
+
+        _format, columns, rows = parse_uploaded_dataset(filename, content)
+        if not columns or not rows:
+            raise ValueError("The uploaded file has no columns or rows to import.")
+
+        value_col = value_column if value_column in columns else columns[0]
+        display_col = (
+            display_column
+            if display_column in columns
+            else (columns[1] if len(columns) > 1 else columns[0])
+        )
+        parent_col = parent_column if parent_column in columns else None
+
+        base_slug = re.sub(r"[^a-z0-9]+", "-", f"{form.slug}-{filename.rsplit('.', 1)[0]}".lower()).strip("-")
+        slug = await self._unique_reference_slug(organization_id, base_slug or "form-dataset")
+
+        reference_list = PlatformReferenceList(
+            organization_id=organization_id,
+            name=filename,
+            slug=slug,
+            description=f"Dataset uploaded for form {form.name}",
+            category="Form dataset",
+            status="active",
+            scope="form",
+            form_id=form_id,
+            columns_json=columns,
+            version=1,
+            created_by_user_id=actor_user_id,
+        )
+        self.session.add(reference_list)
+        await self.session.flush()
+
+        for index, row in enumerate(rows):
+            code = str(row.get(value_col) if row.get(value_col) not in (None, "") else index + 1)
+            label = str(row.get(display_col) if row.get(display_col) not in (None, "") else code)
+            parent_value = row.get(parent_col) if parent_col else None
+            self.session.add(
+                PlatformReferenceValue(
+                    reference_list_id=reference_list.id,
+                    code=code,
+                    label=label,
+                    sort_order=index,
+                    is_active=True,
+                    metadata_json={
+                        "data": row,
+                        "parentCode": str(parent_value) if parent_value not in (None, "") else None,
+                    },
+                    created_by_user_id=actor_user_id,
+                )
+            )
+
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="form.dataset_uploaded",
+            resource_type="form",
+            resource_id=str(form_id),
+            metadata={"slug": slug, "columns": columns, "rows": len(rows)},
+        )
+        return {
+            "id": slug,
+            "slug": slug,
+            "name": filename,
+            "columns": columns,
+            "row_count": len(rows),
+            "value_column": value_col,
+            "display_column": display_col,
+            "parent_column": parent_col,
+        }
+
+    async def list_form_datasets(self, *, organization_id: UUID, form_id: UUID) -> list[dict[str, Any]]:
+        result = await self.session.execute(
+            select(PlatformReferenceList).where(
+                PlatformReferenceList.organization_id == organization_id,
+                PlatformReferenceList.scope == "form",
+                PlatformReferenceList.form_id == form_id,
+                PlatformReferenceList.deleted_at.is_(None),
+            )
+        )
+        return [
+            {"id": item.slug, "slug": item.slug, "name": item.name, "columns": item.columns_json or []}
+            for item in result.scalars()
+        ]
+
+    async def _unique_reference_slug(self, organization_id: UUID, base: str) -> str:
+        candidate = base
+        suffix = 2
+        while True:
+            existing = await self.session.execute(
+                select(PlatformReferenceList.id).where(
+                    PlatformReferenceList.organization_id == organization_id,
+                    PlatformReferenceList.slug == candidate,
+                )
+            )
+            if existing.scalar_one_or_none() is None:
+                return candidate
+            candidate = f"{base}-{suffix}"
+            suffix += 1
 
     async def create_form(self, *, organization_id: UUID, actor_user_id: UUID, payload: DataFormCreate) -> object:
         survey = await self.surveys.get_for_project(

@@ -40,6 +40,11 @@ class PlatformReferenceList(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     category: Mapped[str] = mapped_column(String(120), default="General", index=True)
     status: Mapped[str] = mapped_column(String(40), default="active", index=True)
+    # `global` lists are tenant-wide; `form` lists are datasets uploaded for a specific form.
+    scope: Mapped[str] = mapped_column(String(20), default="global", index=True)
+    form_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_forms.id"), nullable=True, index=True)
+    # Ordered column names for multi-column datasets (display/value/search refer to these).
+    columns_json: Mapped[list[Any]] = mapped_column(JsonType, default=list)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     updated_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)

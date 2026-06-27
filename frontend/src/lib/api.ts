@@ -3285,6 +3285,46 @@ export async function updateUser(token: string, userId: string, payload: UserUpd
   return request<UserRead>(`/users/${userId}`, { method: "PATCH", token, bodyJson: payload });
 }
 
+export type FormDatasetSummary = {
+  id: string;
+  slug: string;
+  name: string;
+  columns: string[];
+  row_count?: number;
+  value_column?: string;
+  display_column?: string;
+  parent_column?: string | null;
+};
+
+/** Uploads a CSV/Excel/JSON dataset for a form's selectable questions and returns its slug + columns
+ * so the builder can wire display/value/search columns and cascade against it. */
+export async function uploadFormDataset(
+  token: string,
+  formId: string,
+  file: File,
+  options?: { valueColumn?: string; displayColumn?: string; parentColumn?: string },
+): Promise<FormDatasetSummary> {
+  const body = new FormData();
+  body.set("file", file);
+  if (options?.valueColumn) body.set("value_column", options.valueColumn);
+  if (options?.displayColumn) body.set("display_column", options.displayColumn);
+  if (options?.parentColumn) body.set("parent_column", options.parentColumn);
+  const response = await fetch(`${getApiBaseUrl()}/forms/${formId}/datasets`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, accept: "application/json" },
+    body,
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new ApiError(detail || response.statusText, response.status);
+  }
+  return response.json() as Promise<FormDatasetSummary>;
+}
+
+export async function listFormDatasets(token: string, formId: string): Promise<FormDatasetSummary[]> {
+  return request<FormDatasetSummary[]>(`/forms/${formId}/datasets`, { token });
+}
+
 export async function addUserRoleAssignment(token: string, userId: string, payload: UserRoleAssignmentCreate): Promise<UserRead> {
   return request<UserRead>(`/users/${userId}/role-assignments`, { method: "POST", token, bodyJson: payload });
 }

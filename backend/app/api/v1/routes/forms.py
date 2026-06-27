@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.dependencies import require_permission
@@ -122,6 +122,52 @@ async def create_form(
     except CollectionNotFoundError as exc:
         await session.rollback()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.get("/{form_id}/datasets", summary="List datasets uploaded for a form's selectable questions")
+async def list_form_datasets(
+    form_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.FORM_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[dict[str, object]]:
+    return await FormService(session).list_form_datasets(
+        organization_id=UUID(principal.organization_id), form_id=form_id
+    )
+
+
+@router.post("/{form_id}/datasets", status_code=status.HTTP_201_CREATED, summary="Upload a CSV/Excel/JSON dataset for a form")
+async def upload_form_dataset(
+    form_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.FORM_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    file: Annotated[UploadFile, File(description="CSV, Excel, or JSON dataset")],
+    value_column: Annotated[str | None, Form()] = None,
+    display_column: Annotated[str | None, Form()] = None,
+    parent_column: Annotated[str | None, Form()] = None,
+) -> dict[str, object]:
+    content = await file.read()
+    try:
+        result = await FormService(session).upload_form_dataset(
+            organization_id=UUID(principal.organization_id),
+            form_id=form_id,
+            actor_user_id=UUID(principal.user_id),
+            filename=file.filename or "dataset.csv",
+            content=content,
+            value_column=value_column,
+            display_column=display_column,
+            parent_column=parent_column,
+        )
+        await session.commit()
+        return result
+    except CollectionNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception:
         await session.rollback()
         raise

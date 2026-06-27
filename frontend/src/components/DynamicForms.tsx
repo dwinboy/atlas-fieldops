@@ -134,7 +134,9 @@ import {
   listSurveys,
   reviewSubmission,
   updateFormControls,
+  uploadFormDataset,
   type DataFormRead,
+  type FormDatasetSummary,
   type FormControlsSettings,
   type FormType,
   type FormWorkflowStage,
@@ -2676,14 +2678,36 @@ function SelectionConfigurator({
   field,
   siblings,
   onChange,
+  onUploadDataset,
 }: {
   field: FormField;
   siblings: FormField[];
   onChange: (selection: FormField["selection"]) => void;
+  onUploadDataset?: (file: File) => Promise<FormDatasetSummary>;
 }) {
   const selection = field.selection ?? { source: "static" as const };
+  const [uploadState, setUploadState] = useState<{ busy: boolean; message: string }>({ busy: false, message: "" });
   const update = (patch: Partial<NonNullable<FormField["selection"]>>) =>
     onChange({ ...selection, ...patch });
+
+  async function handleUpload(file: File) {
+    if (!onUploadDataset) return;
+    setUploadState({ busy: true, message: `Uploading ${file.name}…` });
+    try {
+      const summary = await onUploadDataset(file);
+      onChange({
+        ...selection,
+        source: "dataset",
+        datasetId: summary.slug,
+        displayColumn: summary.display_column ?? summary.columns[0],
+        valueColumn: summary.value_column ?? summary.columns[0],
+        searchColumns: summary.columns,
+      });
+      setUploadState({ busy: false, message: `Loaded ${summary.row_count ?? "?"} rows · columns: ${summary.columns.join(", ")}` });
+    } catch (error) {
+      setUploadState({ busy: false, message: error instanceof Error ? error.message : "Upload failed." });
+    }
+  }
   const filters = selection.filters ?? [];
   const updateFilter = (index: number, patch: Partial<SelectionFilter>) =>
     update({ filters: filters.map((filter, i) => (i === index ? { ...filter, ...patch } : filter)) });
@@ -2789,6 +2813,27 @@ function SelectionConfigurator({
               value={(selection.searchColumns ?? []).join(", ")}
             />
           </label>
+          {onUploadDataset ? (
+            <div className="rounded-md border border-dashed bg-background p-3 lg:col-span-2">
+              <p className="text-sm font-semibold">Upload a dataset (CSV, Excel, or JSON)</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Creates a form dataset and fills the columns above automatically. Officers search it offline.
+              </p>
+              <input
+                accept=".csv,.xlsx,.xls,.json"
+                className="mt-2 block w-full text-xs"
+                disabled={uploadState.busy}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void handleUpload(file);
+                }}
+                type="file"
+              />
+              {uploadState.message ? (
+                <p className="mt-2 text-xs text-muted-foreground">{uploadState.message}</p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -13639,6 +13684,11 @@ export function DynamicForms({
                                     updateSelectedForm(
                                       updateField(selectedForm, selectedField.id, { selection }),
                                     )
+                                  }
+                                  onUploadDataset={
+                                    token && !isPreview
+                                      ? (file) => uploadFormDataset(token, selectedForm.id, file)
+                                      : undefined
                                   }
                                   siblings={selectedForm.fields.filter((item) => item.id !== selectedField.id)}
                                 />
