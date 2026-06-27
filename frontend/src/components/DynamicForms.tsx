@@ -102,6 +102,7 @@ import { templateToForm } from "@/components/forms/formTemplates";
 import { describeEntityCollectionWorkflow } from "@/components/forms/describeEntityCollectionWorkflow";
 import { EvidenceSettingsPanel } from "@/components/forms/EvidenceSettingsPanel";
 import { MobileSettingsPanel } from "@/components/forms/MobileSettingsPanel";
+import { GovernanceSettingsPanel } from "@/components/forms/GovernanceSettingsPanel";
 import { PrivacySettingsPanel } from "@/components/forms/PrivacySettingsPanel";
 import { focusTabApplies, type FocusSettingsTab } from "@/components/forms/focusSettingsTabs";
 import {
@@ -9937,91 +9938,7 @@ export function DynamicForms({
                           ) : null}
 
                           {focusSettingsTab === "governance" && focusTabApplies("governance", selectedField.type) ? (
-                            <section className="mt-4 rounded-lg border bg-panel p-4">
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-2">
-                                  <History aria-hidden="true" className="text-primary" size={16} />
-                                  <h3 className="text-sm font-semibold">Review, editing, and audit governance</h3><HelpHint label="About this tab" title="Review, editing, and audit governance">Control who can edit this answer, whether changes need a reason, and how it is versioned and audited.</HelpHint>
-                                </div>
-                                <Badge tone="admin">Audit-safe</Badge>
-                              </div>
-                              <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                                <label className="text-sm font-semibold">
-                                  Edit after submission
-                                  <Select
-                                    className="mt-2"
-                                    onChange={(event) =>
-                                      updateSelectedForm(
-                                        updateField(selectedForm, selectedField.id, {
-                                          appearance: fieldAppearanceWithMetadata(selectedField, "edit-rule", event.target.value),
-                                        }),
-                                      )
-                                    }
-                                    value={fieldMetadataValue(selectedField, "edit-rule")}
-                                  >
-                                    <option value="">Form default</option>
-                                    <option value="allowed_before_approval">Allowed before approval</option>
-                                    <option value="change_request">Change request required</option>
-                                    <option value="locked_after_approval">Locked after approval</option>
-                                    <option value="never_editable">Never editable</option>
-                                  </Select>
-                                </label>
-                                <label className="text-sm font-semibold">
-                                  Reviewer role
-                                  <Input
-                                    className="mt-2"
-                                    onChange={(event) =>
-                                      updateSelectedForm(
-                                        updateField(selectedForm, selectedField.id, {
-                                          appearance: fieldAppearanceWithMetadata(selectedField, "reviewer-role", event.target.value),
-                                        }),
-                                      )
-                                    }
-                                    placeholder="supervisor, data_manager, me_manager"
-                                    value={fieldMetadataValue(selectedField, "reviewer-role")}
-                                  />
-                                </label>
-                                <label className="text-sm font-semibold">
-                                  Audit label
-                                  <Input
-                                    className="mt-2"
-                                    onChange={(event) =>
-                                      updateSelectedForm(
-                                        updateField(selectedForm, selectedField.id, {
-                                          appearance: fieldAppearanceWithMetadata(selectedField, "audit-label", event.target.value),
-                                        }),
-                                      )
-                                    }
-                                    placeholder="Profile phone update, consent, GPS proof"
-                                    value={fieldMetadataValue(selectedField, "audit-label")}
-                                  />
-                                </label>
-                                {[
-                                  ["change-reason-required", "Require reason when edited"],
-                                  ["approved-data-lock", "Lock after approval"],
-                                  ["reviewer-comment-required", "Reviewer comment required"],
-                                  ["include-in-data-freeze", "Include in report data freeze"],
-                                  ["quality-flag-visible", "Show quality flag in data grid"],
-                                  ["source-lineage-visible", "Show source lineage"],
-                                ].map(([tag, label]) => (
-                                  <label className="flex items-center gap-2 text-sm font-semibold" key={tag}>
-                                    <input
-                                      checked={hasFieldTag(selectedField, tag)}
-                                      className="h-4 w-4"
-                                      onChange={(event) =>
-                                        updateSelectedForm(
-                                          updateField(selectedForm, selectedField.id, {
-                                            appearance: fieldAppearanceWithTag(selectedField, tag, event.target.checked),
-                                          }),
-                                        )
-                                      }
-                                      type="checkbox"
-                                    />
-                                    {label}
-                                  </label>
-                                ))}
-                              </div>
-                            </section>
+                            <GovernanceSettingsPanel field={selectedField} form={selectedForm} onUpdateForm={updateSelectedForm} />
                           ) : null}
 
                           {focusSettingsTab === "appearance" ? (
