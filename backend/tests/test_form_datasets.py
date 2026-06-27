@@ -246,3 +246,27 @@ def test_subform_compiles_to_repeat_group_with_children() -> None:
     # Embedded questions become the repeat group's fields.
     assert [f["variableName"] for f in compiled["defaultValue"]["fields"]]  # built
     assert len(compiled["defaultValue"]["fields"]) == 2
+
+
+def test_logic_rules_compile_and_or_conditions() -> None:
+    from app.services.mobile import _logic_rules
+
+    variable_to_id = {"gender": "q-gender", "age": "q-age"}
+    field = {
+        "id": "q3",
+        "type": "text",
+        "logic": [
+            {"id": "r1", "kind": "show", "expression": "${gender} = 'Female' and ${age} > 18"},
+            {"id": "r2", "kind": "hide", "expression": "${gender} = 'Male' or ${age} < 5"},
+            {"id": "r3", "kind": "required", "expression": "${age} > 60"},
+        ],
+    }
+    rules = _logic_rules(field, variable_to_id)
+    by_id = {r["id"]: r for r in rules}
+    assert by_id["r1"]["match"] == "all"
+    assert [c["sourceQuestionId"] for c in by_id["r1"]["conditions"]] == ["q-gender", "q-age"]
+    assert by_id["r1"]["conditions"][1]["operator"] == "GreaterThan"
+    assert by_id["r2"]["match"] == "any"
+    # Single-condition rule stays simple (no conditions array).
+    assert "conditions" not in by_id["r3"]
+    assert by_id["r3"]["sourceQuestionId"] == "q-age"

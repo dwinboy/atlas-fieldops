@@ -306,13 +306,33 @@ export type MobileValidationRule = {
   severity: "Warning" | "Block";
 };
 
+export type MobileLogicOperator =
+  | "Equals"
+  | "NotEquals"
+  | "GreaterThan"
+  | "LessThan"
+  | "Contains"
+  | "IsEmpty"
+  | "IsNotEmpty";
+
+/** One condition within a multi-condition logic rule. */
+export type MobileLogicCondition = {
+  sourceQuestionId: string;
+  operator: MobileLogicOperator;
+  value: string | number | boolean | null;
+};
+
 export type MobileLogicRule = {
   id: string;
   action: "ShowIf" | "HideIf" | "SkipTo" | "RequiredIf" | "Calculate";
   sourceQuestionId: string;
-  operator: "Equals" | "NotEquals" | "GreaterThan" | "LessThan" | "Contains" | "IsEmpty" | "IsNotEmpty";
+  operator: MobileLogicOperator;
   value: string | number | boolean | null;
   targetQuestionId: string | null;
+  /** When present, the rule fires based on these conditions combined by `match` (AND/OR). The
+   * top-level sourceQuestionId/operator/value mirror the first condition for backward compatibility. */
+  conditions?: MobileLogicCondition[];
+  match?: "all" | "any";
 };
 
 export type MobileQuestion = {

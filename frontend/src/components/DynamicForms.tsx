@@ -12858,7 +12858,9 @@ export function DynamicForms({
                                   </h3>
                                   <HelpHint label="About this tab" title="Logic">
                                     Show, hide, require, or skip this question based on earlier answers — build the rule
-                                    as a sentence (IF a question = a value THEN …). Rules run live on web and mobile.
+                                    as a sentence (IF a question = a value THEN …). Combine several conditions with
+                                    {" "}<code>and</code> / <code>or</code> (e.g. <code>{"${gender} = 'Female' and ${age} > 18"}</code>).
+                                    Rules run live on web and mobile.
                                   </HelpHint>
                                 </div>
                                 <Badge tone="neutral">

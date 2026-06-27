@@ -8,30 +8,42 @@ export type QuestionLogicState = {
   skippedToQuestionId: string | null;
 };
 
-function compare(value: unknown, rule: MobileLogicRule): boolean {
-  if (rule.operator === "IsEmpty") {
+function compareValue(value: unknown, operator: MobileLogicRule["operator"], ruleValue: unknown): boolean {
+  if (operator === "IsEmpty") {
     return isEmptyValue(value);
   }
-  if (rule.operator === "IsNotEmpty") {
+  if (operator === "IsNotEmpty") {
     return !isEmptyValue(value);
   }
-  if (rule.operator === "Equals") {
-    return String(value) === String(rule.value);
+  if (operator === "Equals") {
+    return String(value) === String(ruleValue);
   }
-  if (rule.operator === "NotEquals") {
-    return String(value) !== String(rule.value);
+  if (operator === "NotEquals") {
+    return String(value) !== String(ruleValue);
   }
-  if (rule.operator === "Contains") {
+  if (operator === "Contains") {
     return Array.isArray(value)
-      ? value.some((item) => String(item) === String(rule.value))
-      : String(value ?? "").includes(String(rule.value));
+      ? value.some((item) => String(item) === String(ruleValue))
+      : String(value ?? "").includes(String(ruleValue));
   }
   const numericValue = Number(value);
-  const numericRule = Number(rule.value);
+  const numericRule = Number(ruleValue);
   if (!Number.isFinite(numericValue) || !Number.isFinite(numericRule)) {
     return false;
   }
-  return rule.operator === "GreaterThan" ? numericValue > numericRule : numericValue < numericRule;
+  return operator === "GreaterThan" ? numericValue > numericRule : numericValue < numericRule;
+}
+
+/** Evaluates a rule's condition(s). Multi-condition rules combine by `match` (all = AND, any = OR);
+ * single-condition rules use the top-level source/operator/value. */
+function rulePasses(rule: MobileLogicRule, responses: Map<string, unknown>): boolean {
+  if (rule.conditions && rule.conditions.length > 0) {
+    const results = rule.conditions.map((condition) =>
+      compareValue(responses.get(condition.sourceQuestionId), condition.operator, condition.value),
+    );
+    return rule.match === "any" ? results.some(Boolean) : results.every(Boolean);
+  }
+  return compareValue(responses.get(rule.sourceQuestionId), rule.operator, rule.value);
 }
 
 function isEmptyValue(value: unknown): boolean {
@@ -97,7 +109,7 @@ function applyQuestionRules(
       target.calculatedValue = evaluateExpression(String(rule.value ?? ""), variableValues);
       continue;
     }
-    const passes = compare(responses.get(rule.sourceQuestionId), rule);
+    const passes = rulePasses(rule, responses);
     if (rule.action === "ShowIf") {
       target.visible = passes;
     }

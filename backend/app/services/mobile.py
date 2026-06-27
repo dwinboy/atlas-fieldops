@@ -631,31 +631,65 @@ def _slugify_reference(value: str | None) -> str | None:
     return value.strip().lower().replace(" ", "-").replace("_", "-")
 
 
+def _parse_logic_condition(clause: str, variable_to_id: dict[str, str]) -> dict[str, Any] | None:
+    """Parses one `${variable} OP value` clause into a structured condition, resolving the variable
+    to its question id. Returns None when the clause can't be parsed (so it's skipped)."""
+    clause = clause.strip()
+    if not (clause.startswith("${") and "}" in clause):
+        return None
+    variable, _, remaining = clause[2:].partition("}")
+    source_question_id = variable_to_id.get(variable)
+    if not source_question_id:
+        return None
+    text = remaining.strip()
+    operator = "Equals"
+    value: str | int | float | bool | None = None
+    if text.startswith("!="):
+        operator, value = "NotEquals", text[2:]
+    elif text.startswith("=="):
+        value = text[2:]
+    elif text.startswith(">="):
+        operator, value = "GreaterThan", text[2:]
+    elif text.startswith("<="):
+        operator, value = "LessThan", text[2:]
+    elif text.startswith(">"):
+        operator, value = "GreaterThan", text[1:]
+    elif text.startswith("<"):
+        operator, value = "LessThan", text[1:]
+    elif text.startswith("="):
+        value = text[1:]
+    else:
+        return None
+    return {
+        "sourceQuestionId": source_question_id,
+        "operator": operator,
+        "value": str(value).strip().strip("'\""),
+    }
+
+
 def _logic_rules(field: dict[str, Any], variable_to_id: dict[str, str]) -> list[dict[str, Any]]:
     rules: list[dict[str, Any]] = []
     for index, rule in enumerate(field.get("logic") or []):
         if not isinstance(rule, dict):
             continue
         expression = str(rule.get("expression") or "")
-        source_question_id: str | None = None
-        value: str | int | float | bool | None = None
-        operator = "Equals"
-        if expression.startswith("${") and "}" in expression:
-            variable, _, remaining = expression[2:].partition("}")
-            source_question_id = variable_to_id.get(variable)
-            text = remaining.strip()
-            if text.startswith("="):
-                value = text[1:].strip().strip("'\"")
-            elif text.startswith("!="):
-                operator = "NotEquals"
-                value = text[2:].strip().strip("'\"")
-            elif text.startswith(">"):
-                operator = "GreaterThan"
-                value = text[1:].strip().strip("'\"")
-            elif text.startswith("<"):
-                operator = "LessThan"
-                value = text[1:].strip().strip("'\"")
-        if not source_question_id:
+        # Support multi-condition rules joined by "and"/"or" (case-insensitive), e.g.
+        # "${gender} = 'Female' and ${age} > 18". A single clause stays a simple rule.
+        match = "all"
+        lowered = expression.lower()
+        if " or " in lowered:
+            match = "any"
+            clauses = re.split(r"\s+or\s+", expression, flags=re.IGNORECASE)
+        elif " and " in lowered:
+            clauses = re.split(r"\s+and\s+", expression, flags=re.IGNORECASE)
+        else:
+            clauses = [expression]
+        conditions = [
+            condition
+            for clause in clauses
+            if (condition := _parse_logic_condition(clause, variable_to_id)) is not None
+        ]
+        if not conditions:
             continue
         kind = str(rule.get("kind") or "show")
         action = {
@@ -668,16 +702,19 @@ def _logic_rules(field: dict[str, Any], variable_to_id: dict[str, str]) -> list[
         }.get(kind)
         if not action:
             continue
-        rules.append(
-            {
-                "id": str(rule.get("id") or f"{field.get('id')}-logic-{index + 1}"),
-                "action": action,
-                "sourceQuestionId": source_question_id,
-                "operator": operator,
-                "value": value,
-                "targetQuestionId": rule.get("targetId") or field.get("id"),
-            }
-        )
+        first = conditions[0]
+        compiled_rule = {
+            "id": str(rule.get("id") or f"{field.get('id')}-logic-{index + 1}"),
+            "action": action,
+            "sourceQuestionId": first["sourceQuestionId"],
+            "operator": first["operator"],
+            "value": first["value"],
+            "targetQuestionId": rule.get("targetId") or field.get("id"),
+        }
+        if len(conditions) > 1:
+            compiled_rule["conditions"] = conditions
+            compiled_rule["match"] = match
+        rules.append(compiled_rule)
     calculation = field.get("calculation")
     calculation_expression = (
         calculation.get("expression") if isinstance(calculation, dict) else field.get("calculation")
