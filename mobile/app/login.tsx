@@ -17,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { AuthService } from "@/auth/authService";
 import { MobileApiError } from "@/api/httpClient";
 import { ExpoSecureSessionStore } from "@/auth/expoSecureSessionStore.native";
+import { pinService } from "@/auth/pinService";
 import { Button, Card, Input } from "@/components/ui";
 import { useAppContext } from "@/context/AppContext";
 import { colors, fontFamily, radii, spacing, tone, typography } from "@/theme";
@@ -74,7 +75,7 @@ export default function LoginScreen() {
     try {
       const s = await authService.login(email.trim(), password, orgSlug.trim());
       setSession(s);
-      router.replace("/(tabs)/home");
+      router.replace((await pinService.hasPin()) ? "/(tabs)/home" : "/pin?mode=set");
     } catch (err) {
       setMessage(loginErrorMessage(err));
     } finally {
@@ -93,7 +94,7 @@ export default function LoginScreen() {
     try {
       const s = await authService.loginWithQr(data);
       setSession(s);
-      router.replace("/(tabs)/home");
+      router.replace((await pinService.hasPin()) ? "/(tabs)/home" : "/pin?mode=set");
     } catch (err) {
       setQrScanned(false);
       setMessage(

@@ -1,12 +1,13 @@
-import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
-import { Activity, ChevronRight, FileText, LogOut, ScrollText, Trash2 } from "lucide-react-native";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
+import { Activity, ChevronRight, FileText, KeyRound, LogOut, ScrollText, Trash2 } from "lucide-react-native";
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import Constants from "expo-constants";
 
 import { Button, Card } from "@/components/ui";
+import { pinService } from "@/auth/pinService";
 import { useAppContext } from "@/context/AppContext";
 import { androidReleaseConfig } from "@/config/releaseConfig";
 import { localDatabase } from "@/storage/localDatabase";
@@ -16,6 +17,37 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { session, logout, refreshKey } = useAppContext();
   const [clearing, setClearing] = useState(false);
+  const [hasPin, setHasPin] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      pinService.hasPin().then((value) => {
+        if (active) setHasPin(value);
+      });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
+
+  function handleRemovePin() {
+    Alert.alert(
+      "Remove login PIN",
+      "You'll need internet to sign in next time you open the app. Continue?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove PIN",
+          style: "destructive",
+          onPress: async () => {
+            await pinService.clearPin();
+            setHasPin(false);
+          },
+        },
+      ],
+    );
+  }
 
   const user = session?.bootstrap?.user;
   const org = session?.bootstrap?.organization;
@@ -147,6 +179,29 @@ export default function SettingsScreen() {
           <Row label="GPS required" value={mobileRules?.gpsRequired ? "Yes" : "No"} />
           <Row label="Photo required" value={mobileRules?.photoRequired ? "Yes" : "No"} />
           <Row label="Minimum app version" value={mobileRules?.minimumAppVersion ?? "—"} last />
+        </Section>
+
+        <Section title="Security">
+          <ActionRow
+            icon={KeyRound}
+            label={hasPin ? "Change login PIN" : "Set up login PIN"}
+            sub={
+              hasPin
+                ? "Update the 4-digit PIN you use to sign in offline."
+                : "Create a 4-digit PIN to sign in offline, without internet."
+            }
+            onPress={() => router.push("/pin?mode=set")}
+            last={!hasPin}
+          />
+          {hasPin ? (
+            <ActionRow
+              icon={Trash2}
+              label="Remove login PIN"
+              sub="Disable offline PIN sign-in. Internet will be required to sign in."
+              onPress={handleRemovePin}
+              last
+            />
+          ) : null}
         </Section>
 
         <Section title="Storage">

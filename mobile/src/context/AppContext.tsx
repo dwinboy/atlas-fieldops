@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { AppState, type AppStateStatus } from "react-native";
 
 import { AuthService } from "@/auth/authService";
+import { pinService } from "@/auth/pinService";
 import { ExpoSecureSessionStore } from "@/auth/expoSecureSessionStore.native";
 import type { MobileSession } from "@/auth/sessionStore";
 import { localDatabase } from "@/storage/localDatabase";
@@ -131,6 +132,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     await authService.logout();
+    await pinService.clearPin();
     setSessionState(null);
     refresh();
   }, [refresh]);
