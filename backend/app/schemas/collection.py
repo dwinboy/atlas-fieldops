@@ -228,6 +228,11 @@ class DeviceMetadata(BaseModel):
 
 
 class FormField(BaseModel):
+    # Keep builder-authored configuration that isn't explicitly modelled here — logic rules,
+    # selection (reference/dataset/record), subform, lookup, gps, media, translations, etc. Without
+    # this, pydantic silently drops those keys on save and the features never reach the device.
+    model_config = {"extra": "allow"}
+
     id: str = Field(min_length=1, max_length=120)
     type: str = Field(min_length=2, max_length=80)
     label: str = Field(min_length=1, max_length=240)

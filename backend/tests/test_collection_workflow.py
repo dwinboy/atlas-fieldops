@@ -4327,3 +4327,34 @@ def test_collect_repeat_entries_flattens_nested_repeats() -> None:
     assert len(visit_rows) == 2
     assert all(e["parent_submission_key"] == "sub-1:members:0" for e in visit_rows)
     assert {e["row_index"] for e in visit_rows} == {0, 1}
+
+
+def test_form_schema_preserves_builder_field_config() -> None:
+    """Logic, selection, subform, lookup, gps, and media config must survive a save round-trip —
+    pydantic must not drop builder-authored keys (regression for silent feature loss)."""
+    from app.schemas.collection import FormSchema
+
+    raw = {
+        "sections": [
+            {
+                "id": "s1",
+                "title": "S1",
+                "fields": [
+                    {
+                        "id": "q1",
+                        "type": "select",
+                        "label": "Q1",
+                        "variable_name": "q1",
+                        "logic": [{"id": "r1", "kind": "show", "expression": "IF ${x} = 'y'"}],
+                        "selection": {"source": "record", "recordSource": "form", "recordFormId": "f2"},
+                        "subform": {"mode": "embed"},
+                        "lookup": {"source": "entities"},
+                        "gps": {"latitude": True},
+                    }
+                ],
+            }
+        ]
+    }
+    field = FormSchema(**raw).model_dump(mode="json")["sections"][0]["fields"][0]
+    for key in ("logic", "selection", "subform", "lookup", "gps"):
+        assert key in field, f"{key} was dropped on save"
