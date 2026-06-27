@@ -51,6 +51,15 @@ export type FieldType =
   | "user_select"
   | "org_select";
 
+/** A single row filter applied to a dataset- or record-backed selection. `fromVariable` makes the
+ * filter dynamic — it compares against another question's answer (the basis for cascading lookups). */
+export type SelectionFilter = {
+  column: string;
+  op: "eq" | "neq" | "in" | "contains";
+  value?: string;
+  fromVariable?: string;
+};
+
 export type LogicRule = {
   id: string;
   kind:
@@ -138,6 +147,30 @@ export type FormField = {
   /** Config for a `lookup` question: which on-device dataset the field officer searches. */
   lookup?: {
     source: "entities" | "categories" | "reference";
+  };
+  /**
+   * Unified selectable-field configuration. The `source` is the parent decision:
+   * - `static`   → the field's own `options` (manual list).
+   * - `dataset`  → a reference list / uploaded dataset (`datasetId` = list slug), with configurable
+   *                display/value/search columns, row `filters`, and `cascadeFromVariable` for
+   *                parent-child cascading.
+   * - `record`   → live records collected elsewhere: registered entities (`recordSource: "entity"`,
+   *                optional `entityType`) or another form's submissions (`recordSource: "form"`,
+   *                `recordFormId`). Supports the same filters/cascade for relational lookups.
+   * Static stays the default so existing choice questions are unaffected.
+   */
+  selection?: {
+    source: "static" | "dataset" | "record";
+    datasetId?: string;
+    displayColumn?: string;
+    valueColumn?: string;
+    searchColumns?: string[];
+    recordSource?: "entity" | "form";
+    recordFormId?: string;
+    entityType?: string;
+    cascadeFromVariable?: string;
+    allowAddNew?: boolean;
+    filters?: SelectionFilter[];
   };
   beneficiary?: {
     profileField?: string;
@@ -262,6 +295,7 @@ type ExportedSchemaField = {
   matrix?: FormField["matrix"];
   repeat?: FormField["repeat"];
   lookup?: FormField["lookup"];
+  selection?: FormField["selection"];
   media?: FormField["media"];
   gps?: FormField["gps"];
   translations?: FormField["translations"];
@@ -609,6 +643,14 @@ export function createField(type: FieldType, sectionId: string, pageId?: string)
           : type === "org_select"
             ? { source: "reference" as const }
             : undefined,
+    selection:
+      type === "lookup"
+        ? { source: "record" as const, recordSource: "entity" as const }
+        : type === "user_select"
+          ? { source: "record" as const, recordSource: "entity" as const, entityType: "user" }
+          : type === "org_select"
+            ? { source: "record" as const, recordSource: "entity" as const, entityType: "organisation" }
+            : undefined,
     media: mediaFieldTypes.includes(type) ? { compression: "standard", metadata: true } : undefined,
     gps: locationFieldTypes.includes(type) && !shapeFieldTypes.includes(type)
       ? { latitude: true, longitude: true, altitude: true, accuracy: true, timestamp: true, geofenceRadius: type === "geofence" ? 250 : undefined }
@@ -914,6 +956,24 @@ export function createDraftVersion(form: DynamicForm): DynamicForm {
   };
 }
 
+/**
+ * Returns a clean selection config for serialization, or undefined when the field uses plain static
+ * options (the default — no need to bloat the payload). Trims empty filter rows so the compiler and
+ * mobile resolver only ever see actionable configuration.
+ */
+export function normalizeSelection(field: FormField): FormField["selection"] | undefined {
+  const selection = field.selection;
+  if (!selection || selection.source === "static") return undefined;
+  const filters = (selection.filters ?? []).filter(
+    (filter) => filter.column && (filter.fromVariable || filter.value !== undefined),
+  );
+  return {
+    ...selection,
+    searchColumns: (selection.searchColumns ?? []).filter(Boolean),
+    filters: filters.length ? filters : undefined,
+  };
+}
+
 export function toMobileSchema(form: DynamicForm) {
   const normalized = normalizeForm(form);
   const usedVariableNames = new Set<string>();
@@ -936,6 +996,7 @@ export function toMobileSchema(form: DynamicForm) {
       matrix: field.matrix,
       repeat: field.repeat,
       lookup: field.lookup,
+      selection: normalizeSelection(field),
       media: field.media,
       gps: field.gps,
       translations: field.translations,

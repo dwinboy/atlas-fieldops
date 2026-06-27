@@ -47,6 +47,8 @@ export type {
   MobileQuestionType,
   MobileReferenceList,
   MobileReferenceValue,
+  MobileSelectionConfig,
+  MobileSelectionFilter,
   MobileSupervisorSummary,
   MobilePilotRecord,
   MobilePilotStatus,

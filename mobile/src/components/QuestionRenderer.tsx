@@ -21,6 +21,7 @@ import { localDatabase } from "@/storage/localDatabase";
 import type { GPSResult } from "@/hooks/useGPS";
 import type { PhotoResult } from "@/hooks/usePhotoCapture";
 import type {
+  MobileEntity,
   MobileLogicRule,
   MobilePolygonGeometry,
   MobileQuestion,
@@ -230,7 +231,9 @@ function SearchableOptionList({
     if (!needle) return options;
     return options.filter(
       (option) =>
-        option.label.toLowerCase().includes(needle) || String(option.value).toLowerCase().includes(needle),
+        option.label.toLowerCase().includes(needle) ||
+        String(option.value).toLowerCase().includes(needle) ||
+        (option.search ? option.search.toLowerCase().includes(needle) : false),
     );
   }, [options, query]);
 
@@ -349,6 +352,53 @@ function optionMarkStyle(selected: boolean, multi: boolean) {
   } as const;
 }
 
+/** Reads a single comparable string from a response value (handles arrays and {id,label} objects). */
+function responseScalar(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (Array.isArray(value)) return responseScalar(value[0]);
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return String(record.value ?? record.id ?? record.code ?? "");
+  }
+  return String(value);
+}
+
+/** Applies a record (entity) selection's relationship/column filters offline. Supports the common
+ * parent-child case (column `parent`) via the entity's parentEntityIds, plus generic column equality
+ * against entity fields — enough for relational lookups like "farms in the chosen household". */
+function matchesEntityFilters(
+  entity: MobileEntity,
+  selection: NonNullable<MobileQuestion["selection"]> | null,
+  responses: Map<string, unknown>,
+): boolean {
+  for (const filter of selection?.filters ?? []) {
+    const target = (
+      filter.fromQuestionId ? responseScalar(responses.get(filter.fromQuestionId)) : filter.value ?? ""
+    )
+      .trim()
+      .toLowerCase();
+    if (!target) continue;
+    if (["parent", "parententityid", "parententityids"].includes(filter.column.toLowerCase())) {
+      const parents = entity.parentEntityIds.map((id) => String(id).toLowerCase());
+      if (!parents.includes(target)) return false;
+      continue;
+    }
+    const actual = String((entity as unknown as Record<string, unknown>)[filter.column] ?? "")
+      .trim()
+      .toLowerCase();
+    const ok =
+      filter.op === "neq"
+        ? actual !== target
+        : filter.op === "contains"
+          ? actual.includes(target)
+          : filter.op === "in"
+            ? target.split(",").map((item) => item.trim()).includes(actual)
+            : actual === target;
+    if (!ok) return false;
+  }
+  return true;
+}
+
 /** Search-and-pick over an on-device dataset: registered records (entities), entity categories,
  * or reference data. Works offline from the local database; reuses the searchable option list. */
 function LookupQuestion({
@@ -364,8 +414,25 @@ function LookupQuestion({
   referenceLists: MobileReferenceList[];
   allResponses: Map<string, unknown>;
 }) {
-  const source = isRecord(question.defaultValue) ? String(question.defaultValue.lookupSource ?? "entities") : "entities";
+  const selection = question.selection ?? null;
+  // The `selection` config is authoritative when present; otherwise fall back to the legacy
+  // defaultValue.lookupSource. A dataset selection resolves to a reference list; a record
+  // selection searches registered entities (filtered by type/relationship); categories are legacy.
+  const legacySource = isRecord(question.defaultValue)
+    ? String(question.defaultValue.lookupSource ?? "entities")
+    : "entities";
+  const source = selection
+    ? selection.source === "dataset"
+      ? "reference"
+      : selection.recordSource === "form"
+        ? "form"
+        : "entities"
+    : legacySource;
+
+  const blocked = isCascadeBlocked(question, allResponses);
+
   const options = useMemo<SimpleOption[]>(() => {
+    if (blocked) return [];
     if (source === "categories") {
       return localDatabase.entityCategories
         .list()
@@ -374,18 +441,45 @@ function LookupQuestion({
     if (source === "reference") {
       return resolveQuestionOptions(question, allResponses, referenceLists);
     }
+    // Registered records (entities). Honor an entity-type filter and any dynamic relationship
+    // filters (e.g. only children of the household chosen in another question) so cross-form
+    // relational lookups stay simple and offline.
     return localDatabase.entities
       .list()
-      .map((entity) => ({ id: entity.id, label: entity.name || entity.entityUid, value: entity.name || entity.entityUid }));
+      .filter((entity) =>
+        selection?.entityType ? entity.entityType === selection.entityType : true,
+      )
+      .filter((entity) => matchesEntityFilters(entity, selection, allResponses))
+      .map((entity) => ({
+        id: entity.id,
+        label: entity.name || entity.entityUid,
+        value: entity.id,
+        search: [entity.name, entity.entityUid, entity.nationalId, entity.householdId]
+          .filter(Boolean)
+          .join(" "),
+      }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, referenceLists, question.id]);
+  }, [source, referenceLists, question.id, blocked, allResponses]);
+
+  if (blocked) {
+    return (
+      <View style={emptySubCard}>
+        <Text style={{ color: "#49635a", fontWeight: "700" }}>Answer the previous question first</Text>
+        <Text style={{ color: "#8aa79b", fontSize: 12 }}>
+          This list is filtered by an earlier answer. Choose that first to see matching options.
+        </Text>
+      </View>
+    );
+  }
 
   if (options.length === 0) {
     return (
       <View style={emptySubCard}>
         <Text style={{ color: "#49635a", fontWeight: "700" }}>Nothing to search yet</Text>
         <Text style={{ color: "#8aa79b", fontSize: 12 }}>
-          Sync to download {source === "categories" ? "categories" : source === "reference" ? "reference data" : "records"} for this question.
+          {source === "form"
+            ? "No linked records are available yet for this question."
+            : `Sync to download ${source === "categories" ? "categories" : source === "reference" ? "reference data" : "records"} for this question.`}
         </Text>
       </View>
     );

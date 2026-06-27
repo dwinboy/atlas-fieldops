@@ -331,6 +331,7 @@ export type MobileQuestion = {
   logicRules: MobileLogicRule[];
   referenceListId: string | null;
   cascadingParentQuestionId: string | null;
+  selection?: MobileSelectionConfig | null;
   sensitive: boolean;
   metadataTags?: string[];
   indicatorMapping?: {
@@ -487,6 +488,32 @@ export type MobileReferenceValue = LocalRecord & {
   parentCode: string | null;
   active: boolean;
   order: number;
+  /** Full multi-column row for datasets that define display/value/search columns. */
+  data?: Record<string, unknown> | null;
+};
+
+/** Resolved, on-device selection config compiled from the form builder. Drives dataset- and
+ * record-backed pickers: which list/records to search, which columns to show/store/search, plus
+ * cascade and filter rules that reference other answers by question id. */
+export type MobileSelectionFilter = {
+  column: string;
+  op: "eq" | "neq" | "in" | "contains";
+  value?: string | null;
+  fromQuestionId?: string | null;
+};
+
+export type MobileSelectionConfig = {
+  source: "static" | "dataset" | "record";
+  datasetId?: string | null;
+  displayColumn?: string | null;
+  valueColumn?: string | null;
+  searchColumns?: string[];
+  recordSource?: "entity" | "form" | null;
+  recordFormId?: string | null;
+  entityType?: string | null;
+  allowAddNew?: boolean;
+  cascadingParentQuestionId?: string | null;
+  filters?: MobileSelectionFilter[];
 };
 
 export type MobileReferenceList = LocalRecord & {

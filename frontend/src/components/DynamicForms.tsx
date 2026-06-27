@@ -117,6 +117,7 @@ import {
   type FormField,
   type FormSection,
   type LogicRule,
+  type SelectionFilter,
   type MobileDeployment,
   type FormReadinessItem,
 } from "@/lib/forms";
@@ -2661,6 +2662,265 @@ function ResponseTypeField({
           )}
         </div>
       </Modal>
+    </div>
+  );
+}
+
+/**
+ * Configures where a selectable question's answers come from. The `source` is the parent choice:
+ * Static options (the field's own list), From dataset (a reference list / uploaded spreadsheet with
+ * display/value/search columns + filters + cascade), or Linked records (live entities or another
+ * form's submissions, with relationship filters). Writes the unified `field.selection`.
+ */
+function SelectionConfigurator({
+  field,
+  siblings,
+  onChange,
+}: {
+  field: FormField;
+  siblings: FormField[];
+  onChange: (selection: FormField["selection"]) => void;
+}) {
+  const selection = field.selection ?? { source: "static" as const };
+  const update = (patch: Partial<NonNullable<FormField["selection"]>>) =>
+    onChange({ ...selection, ...patch });
+  const filters = selection.filters ?? [];
+  const updateFilter = (index: number, patch: Partial<SelectionFilter>) =>
+    update({ filters: filters.map((filter, i) => (i === index ? { ...filter, ...patch } : filter)) });
+  const siblingOptions = siblings.map((sibling) => ({
+    value: sibling.variableName ?? sibling.id,
+    label: sibling.label,
+  }));
+
+  const modes: { key: NonNullable<FormField["selection"]>["source"]; label: string; hint: string }[] = [
+    { key: "static", label: "Static options", hint: "A fixed list you type on the Response tab" },
+    { key: "dataset", label: "From dataset", hint: "A reference list or uploaded CSV/Excel" },
+    { key: "record", label: "Linked records", hint: "Records from entities or another form" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-2 sm:grid-cols-3">
+        {modes.map((mode) => {
+          const active = selection.source === mode.key;
+          return (
+            <button
+              className={cn(
+                "rounded-md border p-3 text-left transition hover:border-primary",
+                active ? "border-primary bg-primary/5" : "bg-background",
+              )}
+              key={mode.key}
+              onClick={() => update({ source: mode.key })}
+              type="button"
+            >
+              <span className="block text-sm font-semibold">{mode.label}</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">{mode.hint}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {selection.source === "static" ? (
+        <p className="rounded-md border bg-background p-3 text-xs text-muted-foreground">
+          This question uses the manual options list edited on the Response tab. Switch to
+          “From dataset” or “Linked records” to pull answers from shared data.
+        </p>
+      ) : null}
+
+      {selection.source === "dataset" ? (
+        <div className="grid gap-3 lg:grid-cols-2">
+          <label className="text-sm font-semibold">
+            Dataset (reference list)
+            <Input
+              className="mt-2"
+              onChange={(event) => update({ datasetId: event.target.value || undefined })}
+              placeholder="districts, facilities, crops…"
+              value={selection.datasetId ?? ""}
+            />
+            <span className="mt-1 block text-xs font-normal text-muted-foreground">
+              The reference list slug, or upload one below to create a form dataset.
+            </span>
+          </label>
+          <label className="text-sm font-semibold">
+            Cascade from question
+            <Select
+              className="mt-2"
+              onChange={(event) => update({ cascadeFromVariable: event.target.value || undefined })}
+              value={selection.cascadeFromVariable ?? ""}
+            >
+              <option value="">No parent</option>
+              {siblingOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="text-sm font-semibold">
+            Display column
+            <Input
+              className="mt-2"
+              onChange={(event) => update({ displayColumn: event.target.value || undefined })}
+              placeholder="label"
+              value={selection.displayColumn ?? ""}
+            />
+          </label>
+          <label className="text-sm font-semibold">
+            Value column (stored)
+            <Input
+              className="mt-2"
+              onChange={(event) => update({ valueColumn: event.target.value || undefined })}
+              placeholder="code"
+              value={selection.valueColumn ?? ""}
+            />
+          </label>
+          <label className="text-sm font-semibold lg:col-span-2">
+            Search columns (comma-separated)
+            <Input
+              className="mt-2"
+              onChange={(event) =>
+                update({
+                  searchColumns: event.target.value
+                    ? event.target.value.split(",").map((column) => column.trim()).filter(Boolean)
+                    : undefined,
+                })
+              }
+              placeholder="label, code, region"
+              value={(selection.searchColumns ?? []).join(", ")}
+            />
+          </label>
+        </div>
+      ) : null}
+
+      {selection.source === "record" ? (
+        <div className="grid gap-3 lg:grid-cols-2">
+          <label className="text-sm font-semibold">
+            Record source
+            <Select
+              className="mt-2"
+              onChange={(event) => update({ recordSource: event.target.value as "entity" | "form" })}
+              value={selection.recordSource ?? "entity"}
+            >
+              <option value="entity">Registered records (entities)</option>
+              <option value="form">Records from another form</option>
+            </Select>
+          </label>
+          {selection.recordSource === "form" ? (
+            <label className="text-sm font-semibold">
+              Source form ID
+              <Input
+                className="mt-2"
+                onChange={(event) => update({ recordFormId: event.target.value || undefined })}
+                placeholder="form id to reference"
+                value={selection.recordFormId ?? ""}
+              />
+            </label>
+          ) : (
+            <label className="text-sm font-semibold">
+              Entity type (optional)
+              <Input
+                className="mt-2"
+                onChange={(event) => update({ entityType: event.target.value || undefined })}
+                placeholder="household, farm, facility…"
+                value={selection.entityType ?? ""}
+              />
+            </label>
+          )}
+          <label className="flex items-center gap-2 text-sm font-semibold lg:col-span-2">
+            <input
+              checked={selection.allowAddNew ?? false}
+              className="h-4 w-4"
+              onChange={(event) => update({ allowAddNew: event.target.checked || undefined })}
+              type="checkbox"
+            />
+            Let the officer create a new record if it isn’t found
+          </label>
+        </div>
+      ) : null}
+
+      {selection.source !== "static" ? (
+        <div className="rounded-md border bg-background p-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-semibold">Filters</span>
+            <Button
+              onClick={() => update({ filters: [...filters, { column: "", op: "eq", value: "" }] })}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              <Plus aria-hidden="true" /> Add filter
+            </Button>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Narrow the options. Use “from answer” to make a filter depend on another question
+            (the basis for parent-child relational lookups).
+          </p>
+          <div className="mt-3 space-y-2">
+            {filters.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No filters — all records are shown.</p>
+            ) : null}
+            {filters.map((filter, index) => (
+              <div className="grid items-center gap-2 lg:grid-cols-[1fr_auto_1fr_auto]" key={index}>
+                <Input
+                  onChange={(event) => updateFilter(index, { column: event.target.value })}
+                  placeholder="column (e.g. parent, region)"
+                  value={filter.column}
+                />
+                <Select
+                  onChange={(event) => updateFilter(index, { op: event.target.value as SelectionFilter["op"] })}
+                  value={filter.op}
+                >
+                  <option value="eq">equals</option>
+                  <option value="neq">not equals</option>
+                  <option value="in">in list</option>
+                  <option value="contains">contains</option>
+                </Select>
+                {filter.fromVariable ? (
+                  <Select
+                    onChange={(event) => updateFilter(index, { fromVariable: event.target.value })}
+                    value={filter.fromVariable}
+                  >
+                    {siblingOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                ) : (
+                  <Input
+                    onChange={(event) => updateFilter(index, { value: event.target.value })}
+                    placeholder="value"
+                    value={filter.value ?? ""}
+                  />
+                )}
+                <div className="flex items-center gap-1">
+                  <Button
+                    onClick={() =>
+                      updateFilter(index, filter.fromVariable
+                        ? { fromVariable: undefined, value: "" }
+                        : { fromVariable: siblingOptions[0]?.value ?? "", value: undefined })
+                    }
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    {filter.fromVariable ? "static" : "from answer"}
+                  </Button>
+                  <Button
+                    aria-label="Remove filter"
+                    onClick={() => update({ filters: filters.filter((_, i) => i !== index) })}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Trash2 aria-hidden="true" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -13364,8 +13624,30 @@ export function DynamicForms({
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
                                   <Database aria-hidden="true" className="text-primary" size={16} />
-                                  <h3 className="text-sm font-semibold">Reference data and controlled lists</h3>
+                                  <h3 className="text-sm font-semibold">Selectable answers &amp; reference data</h3>
                                 </div>
+                                <HelpHint label="About selectable answers" title="Selectable answers">
+                                  Choose where this question’s answers come from — a fixed list, a shared
+                                  dataset (with columns, filters, and cascading), or live records from
+                                  entities or another form. This drives how the field officer searches and picks.
+                                </HelpHint>
+                              </div>
+                              <div className="mt-4">
+                                <SelectionConfigurator
+                                  field={selectedField}
+                                  onChange={(selection) =>
+                                    updateSelectedForm(
+                                      updateField(selectedForm, selectedField.id, { selection }),
+                                    )
+                                  }
+                                  siblings={selectedForm.fields.filter((item) => item.id !== selectedField.id)}
+                                />
+                              </div>
+                              <details className="mt-4 rounded-md border bg-background p-3">
+                                <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">
+                                  Advanced reference-list bindings (legacy)
+                                </summary>
+                              <div className="mt-3 flex items-center justify-end gap-2">
                                 <Button onClick={() => addReferenceBinding(selectedField)} size="sm" type="button" variant="secondary">
                                   Bind list
                                 </Button>
@@ -13448,6 +13730,7 @@ export function DynamicForms({
                                   </label>
                                 ))}
                               </div>
+                              </details>
                             </section>
                           ) : null}
 

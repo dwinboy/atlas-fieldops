@@ -191,6 +191,51 @@ def _mobile_question_type(value: str) -> str:
     }.get(value.lower(), "Text")
 
 
+def _mobile_selection(field: dict[str, Any], variable_to_id: dict[str, str]) -> dict[str, Any] | None:
+    """Compiles the builder's `selection` config into a mobile-ready block, resolving
+    cascade/filter `fromVariable` references to the concrete question ids the app uses
+    on-device. Returns None for plain static option fields."""
+    selection = field.get("selection")
+    if not isinstance(selection, dict):
+        return None
+    source = str(selection.get("source") or "static")
+    if source == "static":
+        return None
+
+    def resolve(variable: Any) -> str | None:
+        if not variable:
+            return None
+        return variable_to_id.get(str(variable)) or str(variable)
+
+    filters: list[dict[str, Any]] = []
+    for raw in selection.get("filters") or []:
+        if not isinstance(raw, dict) or not raw.get("column"):
+            continue
+        filters.append(
+            {
+                "column": str(raw.get("column")),
+                "op": str(raw.get("op") or "eq"),
+                "value": raw.get("value"),
+                "fromQuestionId": resolve(raw.get("fromVariable")),
+            }
+        )
+
+    search_columns = [str(column) for column in (selection.get("searchColumns") or []) if column]
+    return {
+        "source": source,
+        "datasetId": selection.get("datasetId"),
+        "displayColumn": selection.get("displayColumn"),
+        "valueColumn": selection.get("valueColumn"),
+        "searchColumns": search_columns,
+        "recordSource": selection.get("recordSource"),
+        "recordFormId": selection.get("recordFormId"),
+        "entityType": selection.get("entityType"),
+        "allowAddNew": bool(selection.get("allowAddNew", False)),
+        "cascadingParentQuestionId": resolve(selection.get("cascadeFromVariable")),
+        "filters": filters,
+    }
+
+
 def _mobile_input_mode(value: str) -> str | None:
     return {
         "phone": "phone",
@@ -672,6 +717,14 @@ def _build_question_field(
     cascading_parent = field.get("cascadingParentQuestionId") or variable_to_id.get(
         str(_field_metadata_value(field, "reference-parent") or "")
     )
+    # The unified `selection` config (static/dataset/record) is the authoritative source when present.
+    # A dataset selection supplies the reference list; either kind may declare a cascade parent.
+    selection = _mobile_selection(field, variable_to_id)
+    if selection:
+        if selection.get("source") == "dataset" and selection.get("datasetId"):
+            reference_list_id = selection["datasetId"]
+        if selection.get("cascadingParentQuestionId"):
+            cascading_parent = selection["cascadingParentQuestionId"]
     privacy_controls = _field_privacy_controls(field)
     return {
         "id": field_id,
@@ -689,6 +742,7 @@ def _build_question_field(
         "logicRules": _logic_rules(field, variable_to_id),
         "referenceListId": reference_list_id,
         "cascadingParentQuestionId": cascading_parent,
+        "selection": selection,
         "sensitive": bool(
             field.get("sensitive", False)
             or privacy_controls["sensitivity"] in {"sensitive", "restricted", "pii"}
@@ -1190,6 +1244,13 @@ class MobileService:
         )
         values_by_list: dict[UUID, list[dict[str, Any]]] = {}
         for value in values_result.scalars():
+            metadata = value.metadata_json or {}
+            # parentCode powers cascading selects on mobile. It lives in metadata_json
+            # (keyed `parentCode` or `parent_code`); emit it explicitly so the offline
+            # resolver can filter child options by the parent answer. `data` carries the
+            # full multi-column row for datasets with display/value/search columns.
+            parent_code = metadata.get("parentCode") or metadata.get("parent_code")
+            data = metadata.get("data") if isinstance(metadata.get("data"), dict) else None
             values_by_list.setdefault(value.reference_list_id, []).append(
                 {
                     "id": str(value.id),
@@ -1197,8 +1258,11 @@ class MobileService:
                     "label": value.label,
                     "description": value.description,
                     "active": value.is_active,
+                    "parentCode": str(parent_code) if parent_code not in (None, "") else None,
+                    "order": value.sort_order,
                     "sortOrder": value.sort_order,
-                    "metadata": value.metadata_json or {},
+                    "data": data,
+                    "metadata": metadata,
                 }
             )
         return [
