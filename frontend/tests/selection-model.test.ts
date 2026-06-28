@@ -58,4 +58,26 @@ describe("default value + matrix serialization", () => {
     const schema = toMobileSchema(form) as { sections: { fields: { defaultValue?: unknown }[] }[] };
     expect(schema.sections[0].fields[0].defaultValue).toBe("N/A");
   });
+
+  it("uses author answer codes for options when set, else auto-derives them", () => {
+    const form = {
+      id: "f2",
+      name: "F",
+      status: "draft" as const,
+      version: 1,
+      activeVersion: 1,
+      sections: [{ id: "main", title: "Main" }],
+      fields: [
+        { ...createField("select", "main"), options: ["Strongly agree", "Disagree"], optionValues: ["5", ""] },
+      ],
+      updatedAt: new Date().toISOString(),
+    };
+    const schema = toMobileSchema(form) as {
+      sections: { fields: { options: { label: string; value: string }[] }[] }[];
+    };
+    const options = schema.sections[0].fields[0].options;
+    // Custom code preserved exactly; blank code falls back to the slugified label.
+    expect(options[0]).toEqual({ label: "Strongly agree", value: "5" });
+    expect(options[1]).toEqual({ label: "Disagree", value: "disagree" });
+  });
 });

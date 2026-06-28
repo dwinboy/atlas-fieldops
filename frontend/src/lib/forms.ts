@@ -124,6 +124,9 @@ export type FormField = {
   /** Pre-filled answer when the officer first opens the question (they can change it). */
   defaultValue?: unknown;
   options?: string[];
+  /** Optional per-option stored answer codes (index-aligned with `options`). When an entry is set it
+   * overrides the auto-derived value; blank/absent entries fall back to the slugified label. */
+  optionValues?: string[];
   validation?: {
     /** When true, this question's value rules surface as warnings (officer can proceed) instead of blocking. */
     warnOnly?: boolean;
@@ -950,6 +953,8 @@ export function typeChangePatchForField(field: FormField, nextType: FieldType): 
     // Preserve author-entered choices when moving between choice types; otherwise adopt the new
     // type's seeded options (e.g. Yes/No, allocation buckets, measurement units) or clear them.
     options: keepOptions ? field.options : defaults.options,
+    // Custom answer codes only make sense alongside their preserved options.
+    optionValues: keepOptions ? field.optionValues : undefined,
     validation: defaults.validation,
     matrix: defaults.matrix,
     repeat: defaults.repeat,
@@ -1018,12 +1023,26 @@ function uniqueExportName(base: string, usedNames: Set<string>): string {
   return candidate;
 }
 
-function exportedOptions(options: string[] | undefined): Array<{ label: string; value: string }> {
+function exportedOptions(
+  options: string[] | undefined,
+  optionValues?: string[],
+): Array<{ label: string; value: string }> {
   const usedValues = new Set<string>();
-  return (options ?? []).map((option) => ({
-    label: option,
-    value: uniqueExportName(option, usedValues),
-  }));
+  return (options ?? []).map((option, index) => {
+    const custom = optionValues?.[index]?.trim();
+    if (custom) {
+      // Use the author's exact answer code, only de-duplicating collisions.
+      let value = custom;
+      let suffix = 2;
+      while (usedValues.has(value)) {
+        value = `${custom}_${suffix}`;
+        suffix += 1;
+      }
+      usedValues.add(value);
+      return { label: option, value };
+    }
+    return { label: option, value: uniqueExportName(option, usedValues) };
+  });
 }
 
 export function duplicateField(form: DynamicForm, fieldId: string): DynamicForm {
@@ -1292,7 +1311,7 @@ export function toMobileSchema(form: DynamicForm) {
       page_id: field.pageId,
       section_id: field.sectionId,
       variable_name: variableName,
-      options: exportedOptions(field.options),
+      options: exportedOptions(field.options, field.optionValues),
       validation: field.validation ?? {},
       logic: field.logic ?? [],
       appearance: field.appearance ?? {},
@@ -1484,7 +1503,7 @@ export function toXlsFormWorkbook(form: DynamicForm): XlsFormWorkbook {
         calculation
       });
 
-      for (const option of exportedOptions(field.options)) {
+      for (const option of exportedOptions(field.options, field.optionValues)) {
         choices.push({
           list_name: name,
           name: option.value,
@@ -1503,7 +1522,7 @@ export function toXlsFormWorkbook(form: DynamicForm): XlsFormWorkbook {
             required: child.required ? "yes" : "no",
             constraint: toConstraint(child)
           });
-          for (const option of exportedOptions(child.options)) {
+          for (const option of exportedOptions(child.options, child.optionValues)) {
             choices.push({
               list_name: childName,
               name: option.value,

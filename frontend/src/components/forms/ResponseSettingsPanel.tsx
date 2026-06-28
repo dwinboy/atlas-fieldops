@@ -132,7 +132,16 @@ export function ResponseSettingsPanel({
                                           ),
                                         )
                                       }
+                                      onValuesChange={
+                                        field.type === "measurement"
+                                          ? undefined
+                                          : (optionValues) =>
+                                              onUpdateForm(
+                                                updateField(form, field.id, { optionValues }),
+                                              )
+                                      }
                                       options={field.options ?? []}
+                                      values={field.type === "measurement" ? undefined : field.optionValues}
                                     />
                                     <span className="mt-1 block text-xs font-normal text-muted-foreground">
                                       {field.type === "measurement"
