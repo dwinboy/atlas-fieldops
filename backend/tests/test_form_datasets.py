@@ -72,6 +72,26 @@ async def test_form_dataset_upload_creates_cascading_reference_list() -> None:
 
 
 @pytest.mark.asyncio
+async def test_upload_form_dataset_rejects_duplicate_value_column() -> None:
+    factory = await _session()
+    async with factory() as session:
+        org_id = uuid4()
+        user_id = uuid4()
+        form_id = uuid4()
+        session.add(Organization(id=org_id, name="DS Org", slug="ds-org-dup"))
+        session.add(User(id=user_id, email="o@dsdup.org", full_name="O", password_hash="x"))
+        session.add(DataForm(id=form_id, organization_id=org_id, created_by_user_id=user_id, name="Dup", slug="dup", controls_json={}))
+        await session.flush()
+
+        with pytest.raises(ValueError, match="duplicate values"):
+            await FormService(session).upload_form_dataset(
+                organization_id=org_id, form_id=form_id, actor_user_id=user_id,
+                filename="dupes.csv", content=b"name,code\nKumasi,KMA\nTema,KMA\n",
+                value_column="code", display_column="name",
+            )
+
+
+@pytest.mark.asyncio
 async def test_list_form_datasets_reuses_other_forms_and_reports_row_counts() -> None:
     factory = await _session()
     async with factory() as session:

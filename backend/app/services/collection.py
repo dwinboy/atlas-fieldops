@@ -1887,6 +1887,25 @@ class FormService:
         )
         parent_col = parent_column if parent_column in columns else None
 
+        # The value column is the lookup key (DB-unique per dataset). Catch duplicate keys here so the
+        # builder gets a clear message instead of an opaque database constraint error on insert.
+        seen_keys: set[str] = set()
+        duplicate_keys: list[str] = []
+        for row in rows:
+            raw_value = row.get(value_col)
+            if raw_value in (None, ""):
+                continue
+            key = str(raw_value)
+            if key in seen_keys and key not in duplicate_keys:
+                duplicate_keys.append(key)
+            seen_keys.add(key)
+        if duplicate_keys:
+            preview = ", ".join(duplicate_keys[:5]) + ("…" if len(duplicate_keys) > 5 else "")
+            raise ValueError(
+                f"The value column “{value_col}” has duplicate values ({preview}). "
+                "Pick a column with unique values, or remove the duplicate rows before uploading."
+            )
+
         base_slug = re.sub(r"[^a-z0-9]+", "-", f"{form.slug}-{filename.rsplit('.', 1)[0]}".lower()).strip("-")
         slug = await self._unique_reference_slug(organization_id, base_slug or "form-dataset")
 
