@@ -397,6 +397,37 @@ def test_matrix_rows_from_source_compile() -> None:
     assert q["selection"]["fromQuestionId"] == "q-crops"
 
 
+def test_logic_operators_compile_to_mobile() -> None:
+    from app.services.mobile import _parse_logic_condition
+
+    vmap = {"age": "q-age", "region": "q-region", "name": "q-name", "notes": "q-notes"}
+
+    def parse(clause: str) -> dict:
+        result = _parse_logic_condition(clause, vmap)
+        assert result is not None
+        return result
+
+    # >= / <= must keep the "or equal" meaning (previously collapsed to strict GreaterThan/LessThan).
+    assert parse("${age} >= 18")["operator"] == "GreaterOrEqual"
+    assert parse("${age} <= 49")["operator"] == "LessOrEqual"
+    assert parse("${age} > 18")["operator"] == "GreaterThan"
+    assert parse("${age} < 5")["operator"] == "LessThan"
+    assert parse("${name} != 'Done'")["operator"] == "NotEquals"
+
+    between = parse("${age} between 12,49")
+    assert between["operator"] == "Between"
+    assert between["value"] == "12,49"
+
+    in_list = parse("${region} in Kano,Lagos")
+    assert in_list["operator"] == "In"
+    assert in_list["value"] == "Kano,Lagos"
+
+    assert parse("${name} contains 'ali'")["operator"] == "Contains"
+    assert parse("${name} starts_with 'KN'")["operator"] == "StartsWith"
+    assert parse("${notes} is empty")["operator"] == "IsEmpty"
+    assert parse("${notes} is not empty")["operator"] == "IsNotEmpty"
+
+
 def test_warn_only_validation_emits_tag() -> None:
     from app.services.mobile import _build_question_field
 

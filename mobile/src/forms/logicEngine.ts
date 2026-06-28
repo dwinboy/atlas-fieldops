@@ -21,17 +21,45 @@ function compareValue(value: unknown, operator: MobileLogicRule["operator"], rul
   if (operator === "NotEquals") {
     return String(value) !== String(ruleValue);
   }
-  if (operator === "Contains") {
-    return Array.isArray(value)
+  if (operator === "Contains" || operator === "NotContains") {
+    const hit = Array.isArray(value)
       ? value.some((item) => String(item) === String(ruleValue))
-      : String(value ?? "").includes(String(ruleValue));
+      : String(value ?? "").toLowerCase().includes(String(ruleValue).toLowerCase());
+    return operator === "Contains" ? hit : !hit;
+  }
+  if (operator === "StartsWith") {
+    return String(value ?? "").toLowerCase().startsWith(String(ruleValue).toLowerCase());
+  }
+  if (operator === "In") {
+    // The rule value is a comma-separated allow-list (e.g. "Kano,Lagos"); a multi-select answer
+    // passes if any of its picks is in the list.
+    const allowed = splitList(ruleValue);
+    const picks = (Array.isArray(value) ? value : [value]).map((item) => String(item).trim());
+    return picks.some((pick) => allowed.includes(pick));
+  }
+  if (operator === "Between") {
+    // The rule value is "low,high"; inclusive on both ends.
+    const [low, high] = splitList(ruleValue).map(Number);
+    const numeric = Number(value);
+    if (![low, high, numeric].every(Number.isFinite)) return false;
+    return numeric >= low && numeric <= high;
   }
   const numericValue = Number(value);
   const numericRule = Number(ruleValue);
   if (!Number.isFinite(numericValue) || !Number.isFinite(numericRule)) {
     return false;
   }
+  if (operator === "GreaterOrEqual") return numericValue >= numericRule;
+  if (operator === "LessOrEqual") return numericValue <= numericRule;
   return operator === "GreaterThan" ? numericValue > numericRule : numericValue < numericRule;
+}
+
+/** Splits a comma-separated rule value (used by `In` / `Between`) into trimmed, non-empty parts. */
+function splitList(ruleValue: unknown): string[] {
+  return String(ruleValue ?? "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
 }
 
 /** Evaluates a rule's condition(s). Multi-condition rules combine by `match` (all = AND, any = OR);

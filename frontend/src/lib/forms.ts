@@ -113,6 +113,83 @@ export type LogicRule = {
   operator?: "and" | "or";
 };
 
+/** Operators offered by the visual logic builder. They map to the expression syntax the backend
+ * compiler understands (`>=`, `between a,b`, `contains`, `is empty`, …) so a builder never types one. */
+export type LogicConditionOperator =
+  | "equals"
+  | "not_equals"
+  | "at_least"
+  | "at_most"
+  | "greater"
+  | "less"
+  | "between"
+  | "in"
+  | "contains"
+  | "starts_with"
+  | "is_empty"
+  | "is_not_empty";
+
+export const LOGIC_CONDITION_OPERATORS: {
+  value: LogicConditionOperator;
+  label: string;
+  needsValue: boolean;
+  needsSecondValue?: boolean;
+  valuePlaceholder?: string;
+}[] = [
+  { value: "equals", label: "is equal to", needsValue: true, valuePlaceholder: "Answer value" },
+  { value: "not_equals", label: "is not equal to", needsValue: true, valuePlaceholder: "Answer value" },
+  { value: "at_least", label: "is at least (≥)", needsValue: true, valuePlaceholder: "Number" },
+  { value: "at_most", label: "is at most (≤)", needsValue: true, valuePlaceholder: "Number" },
+  { value: "greater", label: "is greater than (>)", needsValue: true, valuePlaceholder: "Number" },
+  { value: "less", label: "is less than (<)", needsValue: true, valuePlaceholder: "Number" },
+  { value: "between", label: "is between", needsValue: true, needsSecondValue: true, valuePlaceholder: "Low" },
+  { value: "in", label: "is one of", needsValue: true, valuePlaceholder: "Comma,separated,list" },
+  { value: "contains", label: "contains", needsValue: true, valuePlaceholder: "Text" },
+  { value: "starts_with", label: "starts with", needsValue: true, valuePlaceholder: "Text" },
+  { value: "is_empty", label: "is empty", needsValue: false },
+  { value: "is_not_empty", label: "is answered", needsValue: false },
+];
+
+/** Builds the logic expression string from a visual-builder condition, in the syntax the mobile/web
+ * compiler parses. Keeping this here (not inline in the panel) makes it unit-testable. */
+export function buildLogicConditionExpression(
+  variable: string,
+  operator: LogicConditionOperator,
+  value: string,
+  value2 = "",
+): string {
+  const ref = `\${${variable}}`;
+  const v = value.trim();
+  const esc = (input: string) => input.replaceAll("'", "\\'");
+  switch (operator) {
+    case "not_equals":
+      return `${ref} != '${esc(v)}'`;
+    case "at_least":
+      return `${ref} >= ${v}`;
+    case "at_most":
+      return `${ref} <= ${v}`;
+    case "greater":
+      return `${ref} > ${v}`;
+    case "less":
+      return `${ref} < ${v}`;
+    case "between":
+      return `${ref} between ${v},${value2.trim()}`;
+    case "in":
+      return `${ref} in ${v}`;
+    case "contains":
+      return `${ref} contains '${esc(v)}'`;
+    case "starts_with":
+      return `${ref} starts_with '${esc(v)}'`;
+    case "is_empty":
+      return `${ref} is empty`;
+    case "is_not_empty":
+      return `${ref} is not empty`;
+    case "equals":
+    default:
+      return `${ref} = '${esc(v)}'`;
+  }
+}
+
 export type FormField = {
   id: string;
   label: string;

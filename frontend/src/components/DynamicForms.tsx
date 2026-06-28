@@ -214,10 +214,13 @@ import {
   toXlsFormWorkbook,
   typeChangePatchForField,
   updateField,
+  buildLogicConditionExpression,
+  LOGIC_CONDITION_OPERATORS,
   type DynamicForm,
   type FieldType,
   type FormField,
   type FormSection,
+  type LogicConditionOperator,
   type LogicRule,
   type SelectionAutofill,
   type SelectionFilter,
@@ -368,6 +371,9 @@ export function DynamicForms({
   const [questionComposerText, setQuestionComposerText] = useState("");
   const [logicConditionFieldId, setLogicConditionFieldId] = useState("");
   const [logicConditionValue, setLogicConditionValue] = useState("");
+  const [logicConditionValue2, setLogicConditionValue2] = useState("");
+  const [logicConditionOperator, setLogicConditionOperator] =
+    useState<LogicConditionOperator>("equals");
   const [logicActionKind, setLogicActionKind] =
     useState<LogicRule["kind"]>("show");
   const [advancedLogicKind, setAdvancedLogicKind] =
@@ -2242,8 +2248,18 @@ export function DynamicForms({
       return;
     }
     const variable = sourceField.variableName ?? sourceField.id;
-    const value = logicConditionValue.trim() || "Yes";
-    const expression = `\${${variable}} = '${value.replaceAll("'", "\\'")}'`;
+    const operatorSpec = LOGIC_CONDITION_OPERATORS.find((item) => item.value === logicConditionOperator);
+    const needsValue = operatorSpec?.needsValue ?? true;
+    const value = needsValue ? logicConditionValue.trim() || "Yes" : "";
+    const expression = buildLogicConditionExpression(
+      variable,
+      logicConditionOperator,
+      value,
+      logicConditionValue2,
+    );
+    const readable = needsValue
+      ? `${operatorSpec?.label ?? "is"} ${value}${operatorSpec?.needsSecondValue ? `–${logicConditionValue2.trim()}` : ""}`
+      : (operatorSpec?.label ?? "is empty");
     updateSelectedForm(
       updateField(selectedForm, selectedField.id, {
         logic: [
@@ -2252,7 +2268,7 @@ export function DynamicForms({
             id: `${selectedField.id}-${logicActionKind}-${Date.now()}`,
             kind: logicActionKind,
             expression,
-            message: `${logicActionKind.replace("_", " ")} this question when ${sourceField.label} is ${value}.`,
+            message: `${logicActionKind.replace("_", " ")} this question when ${sourceField.label} ${readable}.`,
             targetId: selectedField.id,
           },
         ],
@@ -2260,7 +2276,7 @@ export function DynamicForms({
     );
     setRightPanelTab("logic");
     setBuilderResult(
-      `Logic added: ${logicActionKind.replace("_", " ")} "${selectedField.label}" when "${sourceField.label}" is "${value}".`,
+      `Logic added: ${logicActionKind.replace("_", " ")} "${selectedField.label}" when "${sourceField.label}" ${readable}.`,
     );
     pushToast({
       title: "Logic rule added",
@@ -6676,6 +6692,10 @@ export function DynamicForms({
                               setLogicConditionFieldId={setLogicConditionFieldId}
                               logicConditionValue={logicConditionValue}
                               setLogicConditionValue={setLogicConditionValue}
+                              logicConditionValue2={logicConditionValue2}
+                              setLogicConditionValue2={setLogicConditionValue2}
+                              logicConditionOperator={logicConditionOperator}
+                              setLogicConditionOperator={setLogicConditionOperator}
                               advancedLogicKind={advancedLogicKind}
                               setAdvancedLogicKind={setAdvancedLogicKind}
                               advancedLogicExpression={advancedLogicExpression}

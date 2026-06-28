@@ -311,7 +311,13 @@ export type MobileLogicOperator =
   | "NotEquals"
   | "GreaterThan"
   | "LessThan"
+  | "GreaterOrEqual"
+  | "LessOrEqual"
+  | "Between"
+  | "In"
   | "Contains"
+  | "NotContains"
+  | "StartsWith"
   | "IsEmpty"
   | "IsNotEmpty";
 

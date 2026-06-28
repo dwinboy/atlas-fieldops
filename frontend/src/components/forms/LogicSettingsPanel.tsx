@@ -4,7 +4,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
-import { updateField, type DynamicForm, type FormField, type LogicRule } from "@/lib/forms";
+import {
+  LOGIC_CONDITION_OPERATORS,
+  updateField,
+  type DynamicForm,
+  type FormField,
+  type LogicConditionOperator,
+  type LogicRule,
+} from "@/lib/forms";
 
 /** Conditional logic settings tab: visual rule builder (action/condition) + advanced expression rules. */
 export function LogicSettingsPanel({
@@ -17,6 +24,10 @@ export function LogicSettingsPanel({
   setLogicConditionFieldId,
   logicConditionValue,
   setLogicConditionValue,
+  logicConditionValue2,
+  setLogicConditionValue2,
+  logicConditionOperator,
+  setLogicConditionOperator,
   advancedLogicKind,
   setAdvancedLogicKind,
   advancedLogicExpression,
@@ -35,6 +46,10 @@ export function LogicSettingsPanel({
   setLogicConditionFieldId: (id: string) => void;
   logicConditionValue: string;
   setLogicConditionValue: (value: string) => void;
+  logicConditionValue2: string;
+  setLogicConditionValue2: (value: string) => void;
+  logicConditionOperator: LogicConditionOperator;
+  setLogicConditionOperator: (operator: LogicConditionOperator) => void;
   advancedLogicKind: LogicRule["kind"];
   setAdvancedLogicKind: (kind: LogicRule["kind"]) => void;
   advancedLogicExpression: string;
@@ -70,69 +85,115 @@ export function LogicSettingsPanel({
                                     : "s"}
                                 </Badge>
                               </div>
-                              <div className="mt-3 grid gap-2 lg:grid-cols-[170px_minmax(0,1fr)_minmax(160px,220px)_auto]">
-                                <Select
-                                  value={
-                                    logicActionKind === "hide" ||
-                                    logicActionKind === "required" ||
-                                    logicActionKind === "skip"
-                                      ? logicActionKind
-                                      : "show"
-                                  }
-                                  onChange={(event) =>
-                                    setLogicActionKind(
-                                      event.target.value as LogicRule["kind"],
-                                    )
-                                  }
-                                >
-                                  <option value="show">Show when</option>
-                                  <option value="hide">Hide when</option>
-                                  <option value="required">Require when</option>
-                                  <option value="skip">Skip to when</option>
-                                </Select>
-                                <Select
-                                  value={
-                                    logicConditionFieldId ||
-                                    form.fields.find(
-                                      (candidate) => candidate.id !== field.id,
-                                    )?.id ||
-                                    ""
-                                  }
-                                  onChange={(event) =>
-                                    setLogicConditionFieldId(event.target.value)
-                                  }
-                                >
-                                  {form.fields
-                                    .filter(
-                                      (candidate) => candidate.id !== field.id,
-                                    )
-                                    .map((candidate) => (
-                                      <option key={candidate.id} value={candidate.id}>
-                                        {candidate.label}
-                                      </option>
-                                    ))}
-                                </Select>
-                                <Input
-                                  onChange={(event) =>
-                                    setLogicConditionValue(event.target.value)
-                                  }
-                                  placeholder="Answer value"
-                                  value={logicConditionValue}
-                                />
-                                <Button
-                                  disabled={
-                                    form.fields.filter(
-                                      (candidate) => candidate.id !== field.id,
-                                    ).length === 0
-                                  }
-                                  onClick={onAddVisualLogicRule}
-                                  type="button"
-                                  variant="primary"
-                                >
-                                  <Plus aria-hidden="true" />
-                                  Add logic
-                                </Button>
-                              </div>
+                              {(() => {
+                                const operatorSpec =
+                                  LOGIC_CONDITION_OPERATORS.find(
+                                    (item) => item.value === logicConditionOperator,
+                                  ) ?? LOGIC_CONDITION_OPERATORS[0];
+                                return (
+                                  <div className="mt-3 grid gap-2 lg:grid-cols-[150px_minmax(0,1fr)_minmax(150px,200px)_minmax(0,1fr)_auto]">
+                                    <Select
+                                      value={
+                                        logicActionKind === "hide" ||
+                                        logicActionKind === "required" ||
+                                        logicActionKind === "skip"
+                                          ? logicActionKind
+                                          : "show"
+                                      }
+                                      onChange={(event) =>
+                                        setLogicActionKind(
+                                          event.target.value as LogicRule["kind"],
+                                        )
+                                      }
+                                    >
+                                      <option value="show">Show when</option>
+                                      <option value="hide">Hide when</option>
+                                      <option value="required">Require when</option>
+                                      <option value="skip">Skip to when</option>
+                                    </Select>
+                                    <Select
+                                      value={
+                                        logicConditionFieldId ||
+                                        form.fields.find(
+                                          (candidate) => candidate.id !== field.id,
+                                        )?.id ||
+                                        ""
+                                      }
+                                      onChange={(event) =>
+                                        setLogicConditionFieldId(event.target.value)
+                                      }
+                                    >
+                                      {form.fields
+                                        .filter(
+                                          (candidate) => candidate.id !== field.id,
+                                        )
+                                        .map((candidate) => (
+                                          <option key={candidate.id} value={candidate.id}>
+                                            {candidate.label}
+                                          </option>
+                                        ))}
+                                    </Select>
+                                    <Select
+                                      value={logicConditionOperator}
+                                      onChange={(event) =>
+                                        setLogicConditionOperator(
+                                          event.target.value as LogicConditionOperator,
+                                        )
+                                      }
+                                    >
+                                      {LOGIC_CONDITION_OPERATORS.map((item) => (
+                                        <option key={item.value} value={item.value}>
+                                          {item.label}
+                                        </option>
+                                      ))}
+                                    </Select>
+                                    {operatorSpec.needsValue ? (
+                                      <div className="flex items-center gap-1">
+                                        <Input
+                                          onChange={(event) =>
+                                            setLogicConditionValue(event.target.value)
+                                          }
+                                          placeholder={
+                                            operatorSpec.valuePlaceholder ?? "Answer value"
+                                          }
+                                          value={logicConditionValue}
+                                        />
+                                        {operatorSpec.needsSecondValue ? (
+                                          <>
+                                            <span className="text-xs text-muted-foreground">
+                                              and
+                                            </span>
+                                            <Input
+                                              onChange={(event) =>
+                                                setLogicConditionValue2(event.target.value)
+                                              }
+                                              placeholder="High"
+                                              value={logicConditionValue2}
+                                            />
+                                          </>
+                                        ) : null}
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center text-xs text-muted-foreground">
+                                        No value needed
+                                      </div>
+                                    )}
+                                    <Button
+                                      disabled={
+                                        form.fields.filter(
+                                          (candidate) => candidate.id !== field.id,
+                                        ).length === 0
+                                      }
+                                      onClick={onAddVisualLogicRule}
+                                      type="button"
+                                      variant="primary"
+                                    >
+                                      <Plus aria-hidden="true" />
+                                      Add logic
+                                    </Button>
+                                  </div>
+                                );
+                              })()}
                               <div className="mt-4 rounded-md border bg-background p-3">
                                 <div className="flex items-center justify-between gap-2">
                                   <div>

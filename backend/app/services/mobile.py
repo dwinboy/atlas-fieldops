@@ -596,16 +596,35 @@ def _parse_logic_condition(clause: str, variable_to_id: dict[str, str]) -> dict[
     if not source_question_id:
         return None
     text = remaining.strip()
+    lowered = text.lower()
+    # Keyword operators are checked first; none contain the " and "/" or " tokens that the
+    # multi-condition splitter uses, so they survive intact (e.g. "between 12,49", "is not empty").
+    if lowered in {"is empty", "empty"}:
+        return {"sourceQuestionId": source_question_id, "operator": "IsEmpty", "value": None}
+    if lowered in {"is not empty", "not empty"}:
+        return {"sourceQuestionId": source_question_id, "operator": "IsNotEmpty", "value": None}
     operator = "Equals"
     value: str | int | float | bool | None = None
-    if text.startswith("!="):
+    keyword_ops: list[tuple[str, str]] = [
+        ("between ", "Between"),
+        ("not contains ", "NotContains"),
+        ("contains ", "Contains"),
+        ("starts_with ", "StartsWith"),
+        ("starts with ", "StartsWith"),
+        ("in ", "In"),
+    ]
+    matched_keyword = next((pair for pair in keyword_ops if lowered.startswith(pair[0])), None)
+    if matched_keyword is not None:
+        prefix, operator = matched_keyword
+        value = text[len(prefix):]
+    elif text.startswith("!="):
         operator, value = "NotEquals", text[2:]
+    elif text.startswith(">="):
+        operator, value = "GreaterOrEqual", text[2:]
+    elif text.startswith("<="):
+        operator, value = "LessOrEqual", text[2:]
     elif text.startswith("=="):
         value = text[2:]
-    elif text.startswith(">="):
-        operator, value = "GreaterThan", text[2:]
-    elif text.startswith("<="):
-        operator, value = "LessThan", text[2:]
     elif text.startswith(">"):
         operator, value = "GreaterThan", text[1:]
     elif text.startswith("<"):
