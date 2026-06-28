@@ -375,6 +375,28 @@ def test_logic_rules_compile_and_or_conditions() -> None:
     assert by_id["r3"]["sourceQuestionId"] == "q-age"
 
 
+def test_matrix_rows_from_source_compile() -> None:
+    from app.services.mobile import _build_question_field
+
+    q = _build_question_field(
+        {
+            "id": "m1",
+            "type": "matrix_single",
+            "label": "Rate crops",
+            "matrix": {"rows": [], "columns": ["Poor", "Good"]},
+            "selection": {"source": "question", "fromQuestionVariable": "crops"},
+        },
+        field_id="m1",
+        section_id="s",
+        order=1,
+        variable_to_id={"crops": "q-crops"},
+    )
+    assert q["type"] == "Matrix"
+    # The row source compiles like any selection so mobile can resolve rows from the crops question.
+    assert q["selection"]["source"] == "question"
+    assert q["selection"]["fromQuestionId"] == "q-crops"
+
+
 def test_warn_only_validation_emits_tag() -> None:
     from app.services.mobile import _build_question_field
 

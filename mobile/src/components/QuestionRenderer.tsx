@@ -1334,7 +1334,7 @@ function renderInput(
 
   // ── Matrix ───────────────────────────────────────────────────────────────
   if (type === "Matrix") {
-    return renderMatrix(question, value, answer, activeLanguage);
+    return renderMatrix(question, value, answer, activeLanguage, allResponses, referenceLists);
   }
 
   // ── Lookup (search records, categories, or reference data) ────────────────
@@ -1769,10 +1769,35 @@ function applyLabelOverrides(options: SimpleOption[], labels?: string[]): Simple
   );
 }
 
-function renderMatrix(question: MobileQuestion, value: unknown, answer: (v: unknown) => void, activeLanguage?: string) {
+/** Resolves matrix/grid rows from a data source when the builder set one (dataset / linked records /
+ * another question), or returns null to fall back to the typed-in rows. */
+function matrixDynamicRows(
+  question: MobileQuestion,
+  allResponses: Map<string, unknown>,
+  referenceLists: MobileReferenceList[],
+): SimpleOption[] | null {
+  const selection = question.selection ?? null;
+  if (!selection || selection.source === "static") return null;
+  if (selection.source === "dataset") {
+    return resolveQuestionOptions(question, allResponses, referenceLists);
+  }
+  return recordSourceOptions(question, allResponses);
+}
+
+function renderMatrix(
+  question: MobileQuestion,
+  value: unknown,
+  answer: (v: unknown) => void,
+  activeLanguage?: string,
+  allResponses?: Map<string, unknown>,
+  referenceLists?: MobileReferenceList[],
+) {
   const base = matrixMetadata(question);
   const translation = activeLanguage && question.translations ? question.translations[activeLanguage] : undefined;
-  const rows = applyLabelOverrides(base.rows, translation?.matrixRows);
+  // Rows can be pulled live from another question, a dataset, or linked records (the builder stores
+  // that as the question's `selection`); otherwise use the typed-in rows.
+  const dynamicRows = matrixDynamicRows(question, allResponses ?? new Map(), referenceLists ?? []);
+  const rows = dynamicRows ?? applyLabelOverrides(base.rows, translation?.matrixRows);
   const columns = applyLabelOverrides(base.columns, translation?.matrixColumns);
   const multi = base.multi;
   const matrix = isRecord(value) ? value : {};

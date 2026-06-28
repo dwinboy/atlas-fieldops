@@ -11,8 +11,8 @@ import { SubformConfigurator } from "@/components/forms/SubformConfigurator";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
-import { Input } from "@/components/ui/input";
-import { type DataFormRead } from "@/lib/api";
+import { Input, Select } from "@/components/ui/input";
+import { type DataFormRead, type FormDatasetSummary } from "@/lib/api";
 import { fieldSupportsSelection, updateField, type DynamicForm, type FormField } from "@/lib/forms";
 
 /** Response-configuration tab: per-type answer options/units, subform setup, and data-source pointer. */
@@ -21,6 +21,7 @@ export function ResponseSettingsPanel({
   form,
   onUpdateForm,
   otherForms,
+  datasets,
   onUpdateValidation,
   onTabChange,
 }: {
@@ -28,9 +29,26 @@ export function ResponseSettingsPanel({
   form: DynamicForm;
   onUpdateForm: (form: DynamicForm) => void;
   otherForms: DataFormRead[];
+  datasets: FormDatasetSummary[];
   onUpdateValidation: (patch: Partial<NonNullable<FormField["validation"]>>) => void;
   onTabChange: (tab: FocusSettingsTab) => void;
 }) {
+  // Matrix/grid rows can be typed, or pulled live from another question, a dataset, or linked records.
+  // The row source reuses the question's `selection` (matrix doesn't otherwise use it).
+  const matrixRowSource = field.selection?.source ?? "static";
+  const setMatrixRowSource = (source: string) => {
+    const base = source === "static" ? undefined
+      : source === "question" ? { source: "question" as const, fromQuestionVariable: field.selection?.fromQuestionVariable }
+      : source === "dataset" ? { source: "dataset" as const, datasetId: field.selection?.datasetId, displayColumn: field.selection?.displayColumn }
+      : { source: "record" as const, recordSource: "form" as const, recordFormId: field.selection?.recordFormId, displayColumn: field.selection?.displayColumn };
+    onUpdateForm(updateField(form, field.id, { selection: base }));
+  };
+  const updateMatrixSelection = (patch: Partial<NonNullable<FormField["selection"]>>) =>
+    onUpdateForm(updateField(form, field.id, { selection: { ...(field.selection ?? { source: "static" }), ...patch } }));
+  const matrixSourceColumns =
+    field.selection?.source === "dataset"
+      ? datasets.find((dataset) => dataset.slug === field.selection?.datasetId)?.columns ?? []
+      : [];
   return (
                             <section className="mt-4 rounded-lg border bg-panel p-4">
                               <div className="flex items-center justify-between gap-2">
@@ -158,45 +176,154 @@ export function ResponseSettingsPanel({
                                 </div>
                               )}
                               {["matrix_single", "matrix_multi", "grid"].includes(field.type) ? (
-                                <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                                <div className="mt-4 space-y-4">
                                   <label className="block text-sm font-semibold">
                                     <span className="inline-flex items-center gap-1.5">
-                                      Rows
-                                      <HelpHint label="About matrix rows" title="Rows">
-                                        Each row is a thing being rated/answered (e.g. each service). The officer answers every row.
+                                      Rows come from
+                                      <HelpHint label="About matrix rows source" title="Where the rows come from">
+                                        Rows are the things being rated (one row per item). Type them yourself, or pull
+                                        them in automatically from another question’s answers, a shared dataset, or
+                                        records collected by another form — so the officer rates exactly what applies.
                                       </HelpHint>
                                     </span>
-                                    <ChoiceOptionsEditor
-                                      key={`${field.id}-rows`}
-                                      onChange={(rows) =>
-                                        onUpdateForm(
-                                          updateField(form, field.id, {
-                                            matrix: { rows, columns: field.matrix?.columns ?? [], scoring: field.matrix?.scoring },
-                                          }),
-                                        )
-                                      }
-                                      options={field.matrix?.rows ?? []}
-                                    />
+                                    <Select
+                                      className="mt-2"
+                                      onChange={(event) => setMatrixRowSource(event.target.value)}
+                                      value={matrixRowSource}
+                                    >
+                                      <option value="static">Type them</option>
+                                      <option value="question">Another question’s answers</option>
+                                      <option value="dataset">A dataset</option>
+                                      <option value="record">Records from another form</option>
+                                    </Select>
                                   </label>
-                                  <label className="block text-sm font-semibold">
-                                    <span className="inline-flex items-center gap-1.5">
-                                      Columns
-                                      <HelpHint label="About matrix columns" title="Columns">
-                                        The shared answer choices applied across every row (e.g. Poor → Excellent).
-                                      </HelpHint>
-                                    </span>
-                                    <ChoiceOptionsEditor
-                                      key={`${field.id}-cols`}
-                                      onChange={(columns) =>
-                                        onUpdateForm(
-                                          updateField(form, field.id, {
-                                            matrix: { rows: field.matrix?.rows ?? [], columns, scoring: field.matrix?.scoring },
-                                          }),
-                                        )
-                                      }
-                                      options={field.matrix?.columns ?? []}
-                                    />
-                                  </label>
+                                  <div className="grid gap-4 lg:grid-cols-2">
+                                    <div className="space-y-2">
+                                      {matrixRowSource === "static" ? (
+                                        <label className="block text-sm font-semibold">
+                                          Rows
+                                          <ChoiceOptionsEditor
+                                            key={`${field.id}-rows`}
+                                            onChange={(rows) =>
+                                              onUpdateForm(
+                                                updateField(form, field.id, {
+                                                  matrix: { rows, columns: field.matrix?.columns ?? [], scoring: field.matrix?.scoring },
+                                                }),
+                                              )
+                                            }
+                                            options={field.matrix?.rows ?? []}
+                                          />
+                                        </label>
+                                      ) : matrixRowSource === "question" ? (
+                                        <label className="block text-sm font-semibold">
+                                          <span className="inline-flex items-center gap-1.5">
+                                            Take rows from
+                                            <HelpHint label="About the source question" title="Source question">
+                                              One row is created for each answer the officer gave to this question (e.g.
+                                              each crop they selected, or each member added in a repeat group).
+                                            </HelpHint>
+                                          </span>
+                                          <Select
+                                            className="mt-2"
+                                            onChange={(event) => updateMatrixSelection({ fromQuestionVariable: event.target.value || undefined })}
+                                            value={field.selection?.fromQuestionVariable ?? ""}
+                                          >
+                                            <option value="">Choose a question…</option>
+                                            {form.fields
+                                              .filter((candidate) => candidate.id !== field.id)
+                                              .map((candidate) => (
+                                                <option key={candidate.id} value={candidate.variableName ?? candidate.id}>
+                                                  {candidate.label}
+                                                </option>
+                                              ))}
+                                          </Select>
+                                        </label>
+                                      ) : matrixRowSource === "dataset" ? (
+                                        <>
+                                          <label className="block text-sm font-semibold">
+                                            <span className="inline-flex items-center gap-1.5">
+                                              Dataset
+                                              <HelpHint label="About the dataset" title="Dataset rows">
+                                                One row is created for each entry in the chosen dataset.
+                                              </HelpHint>
+                                            </span>
+                                            <Select
+                                              className="mt-2"
+                                              onChange={(event) => updateMatrixSelection({ datasetId: event.target.value || undefined })}
+                                              value={field.selection?.datasetId ?? ""}
+                                            >
+                                              <option value="">Choose a dataset…</option>
+                                              {datasets.map((dataset) => (
+                                                <option key={dataset.slug} value={dataset.slug}>
+                                                  {dataset.name}
+                                                  {dataset.row_count !== undefined ? ` · ${dataset.row_count} rows` : ""}
+                                                </option>
+                                              ))}
+                                            </Select>
+                                          </label>
+                                          {matrixSourceColumns.length ? (
+                                            <label className="block text-sm font-semibold">
+                                              Row label column
+                                              <Select
+                                                className="mt-2"
+                                                onChange={(event) => updateMatrixSelection({ displayColumn: event.target.value || undefined })}
+                                                value={field.selection?.displayColumn ?? ""}
+                                              >
+                                                <option value="">Auto (first column)</option>
+                                                {matrixSourceColumns.map((column) => (
+                                                  <option key={column} value={column}>
+                                                    {column}
+                                                  </option>
+                                                ))}
+                                              </Select>
+                                            </label>
+                                          ) : null}
+                                        </>
+                                      ) : (
+                                        <label className="block text-sm font-semibold">
+                                          <span className="inline-flex items-center gap-1.5">
+                                            Source form
+                                            <HelpHint label="About the source form" title="Records as rows">
+                                              One row is created for each record collected by the chosen form.
+                                            </HelpHint>
+                                          </span>
+                                          <Select
+                                            className="mt-2"
+                                            onChange={(event) => updateMatrixSelection({ recordFormId: event.target.value || undefined })}
+                                            value={field.selection?.recordFormId ?? ""}
+                                          >
+                                            <option value="">{otherForms.length ? "Choose a form…" : "No other forms yet"}</option>
+                                            {otherForms
+                                              .filter((candidate) => candidate.id !== form.id)
+                                              .map((candidate) => (
+                                                <option key={candidate.id} value={candidate.id}>
+                                                  {candidate.name}
+                                                </option>
+                                              ))}
+                                          </Select>
+                                        </label>
+                                      )}
+                                    </div>
+                                    <label className="block text-sm font-semibold">
+                                      <span className="inline-flex items-center gap-1.5">
+                                        Columns
+                                        <HelpHint label="About matrix columns" title="Columns">
+                                          The shared answer choices applied across every row (e.g. Poor → Excellent).
+                                        </HelpHint>
+                                      </span>
+                                      <ChoiceOptionsEditor
+                                        key={`${field.id}-cols`}
+                                        onChange={(columns) =>
+                                          onUpdateForm(
+                                            updateField(form, field.id, {
+                                              matrix: { rows: field.matrix?.rows ?? [], columns, scoring: field.matrix?.scoring },
+                                            }),
+                                          )
+                                        }
+                                        options={field.matrix?.columns ?? []}
+                                      />
+                                    </label>
+                                  </div>
                                 </div>
                               ) : null}
                               {["number", "decimal", "currency", "rating", "nps", "slider", "percentage", "counter", "measurement"].includes(field.type) ? (

@@ -80,4 +80,29 @@ describe("default value + matrix serialization", () => {
     expect(options[0]).toEqual({ label: "Strongly agree", value: "5" });
     expect(options[1]).toEqual({ label: "Disagree", value: "disagree" });
   });
+
+  it("serializes a matrix row source (rows from another question)", () => {
+    const form = {
+      id: "f3",
+      name: "F",
+      status: "draft" as const,
+      version: 1,
+      activeVersion: 1,
+      sections: [{ id: "main", title: "Main" }],
+      fields: [
+        {
+          ...createField("matrix_single", "main"),
+          matrix: { rows: [], columns: ["Poor", "Good"] },
+          selection: { source: "question" as const, fromQuestionVariable: "crops" },
+        },
+      ],
+      updatedAt: new Date().toISOString(),
+    };
+    const schema = toMobileSchema(form) as {
+      sections: { fields: { selection?: { source: string; fromQuestionVariable?: string } }[] }[];
+    };
+    const selection = schema.sections[0].fields[0].selection;
+    expect(selection?.source).toBe("question");
+    expect(selection?.fromQuestionVariable).toBe("crops");
+  });
 });

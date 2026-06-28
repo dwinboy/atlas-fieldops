@@ -6694,6 +6694,7 @@ export function DynamicForms({
                               form={selectedForm}
                               onUpdateForm={updateSelectedForm}
                               otherForms={backendFormsQuery.data ?? []}
+                              datasets={datasetsQuery.data ?? []}
                               onUpdateValidation={updateSelectedFieldValidation}
                               onTabChange={setFocusSettingsTab}
                             />
