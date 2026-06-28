@@ -255,6 +255,7 @@ export function CommonSettingsPanel({
                                 "calculated",
                                 "lookup",
                               ].includes(field.type) ? (
+                                <>
                                 <label className="mt-4 block text-sm font-semibold">
                                   <span className="inline-flex items-center gap-1.5">
                                     Default value
@@ -297,6 +298,31 @@ export function CommonSettingsPanel({
                                     />
                                   )}
                                 </label>
+                                <label className="mt-3 block text-sm font-semibold">
+                                  <span className="inline-flex items-center gap-1.5">
+                                    Dynamic default
+                                    <HelpHint label="About dynamic default" title="Dynamic default">
+                                      Pre-fills from a formula when the question first opens (still
+                                      editable). Use <code>today()</code> for today’s date,{" "}
+                                      <code>{"${question}"}</code> to copy an earlier answer, or a
+                                      formula like <code>{"concat(${first}, ' ', ${last})"}</code>.
+                                      Overrides the fixed default above.
+                                    </HelpHint>
+                                  </span>
+                                  <Input
+                                    className="mt-2 font-mono"
+                                    onChange={(event) =>
+                                      onUpdateForm(
+                                        updateField(form, field.id, {
+                                          dynamicDefault: event.target.value || undefined,
+                                        }),
+                                      )
+                                    }
+                                    placeholder="e.g. today()  ·  ${visit_date}"
+                                    value={String(field.dynamicDefault ?? "")}
+                                  />
+                                </label>
+                                </>
                               ) : null}
                               <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
                                 <label className="text-sm font-semibold">

@@ -20,6 +20,7 @@ import { DateTimeField } from "@/components/ui";
 import type { FormValidationIssue } from "@/forms/formValidationService";
 import { evaluateQuestionLogicStates } from "@/forms/logicEngine";
 import { pipeText } from "@/forms/pipeText";
+import { resolveDynamicDefault } from "@/forms/dynamicDefault";
 import { evaluateFilter, isCascadeBlocked, resolveQuestionOptions, type SimpleOption } from "@/forms/optionResolver";
 import { localDatabase } from "@/storage/localDatabase";
 import type { GPSResult } from "@/hooks/useGPS";
@@ -117,6 +118,28 @@ export function QuestionRenderer({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAutoId]);
+
+  // Dynamic default: pre-fill from a formula (today(), a prior answer, or a computed value) the first
+  // time the question is empty. A ref ensures we seed only once, so the officer can clear/edit freely.
+  const dynamicDefaultSeeded = useRef(false);
+  useEffect(() => {
+    if (dynamicDefaultSeeded.current || !question.dynamicDefault) return;
+    const empty =
+      value === null ||
+      value === undefined ||
+      (typeof value === "string" && value.trim() === "") ||
+      (Array.isArray(value) && value.length === 0);
+    if (!empty) {
+      dynamicDefaultSeeded.current = true;
+      return;
+    }
+    const resolved = resolveDynamicDefault(question.dynamicDefault, pipeValues, String(question.type));
+    if (resolved !== undefined && resolved !== "") {
+      dynamicDefaultSeeded.current = true;
+      onAnswer(question.id, question.variableName, resolved);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [question.dynamicDefault, pipeValues, value]);
 
   return (
     <View style={{

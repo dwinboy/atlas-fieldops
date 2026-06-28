@@ -200,6 +200,10 @@ export type FormField = {
   sectionId: string;
   /** Pre-filled answer when the officer first opens the question (they can change it). */
   defaultValue?: unknown;
+  /** Dynamic pre-fill evaluated when the question first opens and is still empty (editable after).
+   * Expression syntax like the calculation engine: `today()`, `${other_question}` (copy a prior
+   * answer), or a computed value such as `concat(${first}, ' ', ${last})`. Overrides defaultValue. */
+  dynamicDefault?: string;
   options?: string[];
   /** Optional per-option stored answer codes (index-aligned with `options`). When an entry is set it
    * overrides the auto-derived value; blank/absent entries fall back to the slugified label. */
