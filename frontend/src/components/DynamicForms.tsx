@@ -78,6 +78,7 @@ import {
   createDefaultFormControls,
   normalizeFormControls,
   workflowPresets,
+  type FormControlsTab,
 } from "@/components/forms/formControls";
 import {
   fieldAppearanceWithMetadata,
@@ -110,6 +111,9 @@ import { EntityControlsPanel } from "@/components/forms/EntityControlsPanel";
 import { VersionsControlsPanel } from "@/components/forms/VersionsControlsPanel";
 import { DataSettingsPanel } from "@/components/forms/DataSettingsPanel";
 import { GovernanceControlsPanel } from "@/components/forms/GovernanceControlsPanel";
+import { OverviewControlsPanel } from "@/components/forms/OverviewControlsPanel";
+import { PermissionsControlsPanel } from "@/components/forms/PermissionsControlsPanel";
+import { WorkflowControlsPanel } from "@/components/forms/WorkflowControlsPanel";
 import { GovernanceSettingsPanel } from "@/components/forms/GovernanceSettingsPanel";
 import { QualityControlsPanel } from "@/components/forms/QualityControlsPanel";
 import { LogicSettingsPanel } from "@/components/forms/LogicSettingsPanel";
@@ -279,16 +283,6 @@ type DistributionChannel =
   | "web_link"
   | "public_link"
   | "xlsform";
-type FormControlsTab =
-  | "overview"
-  | "entity"
-  | "reference"
-  | "permissions"
-  | "workflow"
-  | "quality"
-  | "governance"
-  | "audit"
-  | "versions";
 
 type ReviewAction =
   | "approve"
@@ -4420,99 +4414,7 @@ export function DynamicForms({
 
         <div className="flex-1 overflow-y-auto p-5 product-scrollbar">
           {formControlsTab === "overview" ? (
-            <div className="space-y-4">
-              <div className="grid gap-3 md:grid-cols-4">
-                {[
-                  [
-                    "Reference lists",
-                    selectedFormControls.reference_bindings.length,
-                    "Controlled values attached",
-                  ],
-                  [
-                    "Access rules",
-                    selectedFormControls.permission_rules.length,
-                    "Roles, users, or teams",
-                  ],
-                  [
-                    "Workflow stages",
-                    selectedFormControls.workflow_stages.length,
-                    selectedFormControls.governance.approval_workflow,
-                  ],
-                  [
-                    "Quality checks",
-                    selectedFormControls.data_quality_rules.filter(
-                      (rule) => rule.enabled,
-                    ).length,
-                    "Active controls",
-                  ],
-                ].map(([label, value, helper]) => (
-                  <div
-                    className="rounded-lg border bg-background p-3"
-                    key={label}
-                  >
-                    <p className="text-xs text-muted-foreground">{label}</p>
-                    <p className="mt-2 text-2xl font-semibold">{value}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {helper}
-                    </p>
-                  </div>
-                ))}
-              </div>
-              <div className="grid gap-3 lg:grid-cols-3">
-                <button
-                  className="rounded-lg border bg-emerald-500/5 p-4 text-left transition hover:border-primary/40 hover:bg-primary/5"
-                  onClick={() => setFormControlsTab("reference")}
-                  type="button"
-                >
-                  <Database
-                    aria-hidden="true"
-                    className="text-emerald-700 dark:text-emerald-300"
-                  />
-                  <p className="mt-3 text-sm font-semibold">
-                    Bind official lists
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    Attach districts, schools, facilities, communities,
-                    entities, donor codes, or custom master data to form
-                    questions.
-                  </p>
-                </button>
-                <button
-                  className="rounded-lg border bg-sky-500/5 p-4 text-left transition hover:border-primary/40 hover:bg-primary/5"
-                  onClick={() => setFormControlsTab("workflow")}
-                  type="button"
-                >
-                  <Workflow
-                    aria-hidden="true"
-                    className="text-sky-700 dark:text-sky-300"
-                  />
-                  <p className="mt-3 text-sm font-semibold">
-                    Choose the review path
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    Use simple approval, supervisor review, data manager review,
-                    or correction workflows before records become approved data.
-                  </p>
-                </button>
-                <button
-                  className="rounded-lg border bg-amber-500/5 p-4 text-left transition hover:border-primary/40 hover:bg-primary/5"
-                  onClick={() => setFormControlsTab("quality")}
-                  type="button"
-                >
-                  <Check
-                    aria-hidden="true"
-                    className="text-amber-700 dark:text-amber-300"
-                  />
-                  <p className="mt-3 text-sm font-semibold">
-                    Protect data quality
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    Set blocking rules for required fields, GPS, duplicate
-                    records, consent, duration, and logical consistency.
-                  </p>
-                </button>
-              </div>
-            </div>
+          <OverviewControlsPanel controls={selectedFormControls} onTabChange={setFormControlsTab} />
           ) : null}
 
           {formControlsTab === "entity" ? (
@@ -4769,201 +4671,11 @@ export function DynamicForms({
           ) : null}
 
           {formControlsTab === "permissions" ? (
-            <div className="space-y-4">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold">
-                    Per-form access control
-                  </h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Permissions inherit from the project, then M&E Managers can
-                    narrow access for this form.
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    onClick={() =>
-                      updateSelectedFormControls((controls) => ({
-                        ...controls,
-                        permission_rules:
-                          createDefaultFormControls(selectedForm)
-                            .permission_rules,
-                      }))
-                    }
-                    size="sm"
-                    type="button"
-                    variant="secondary"
-                  >
-                    Standard roles
-                  </Button>
-                  <Button
-                    onClick={() =>
-                      updateSelectedFormControls((controls) => ({
-                        ...controls,
-                        permission_rules: [
-                          ...controls.permission_rules,
-                          {
-                            subject_type: "role",
-                            subject_name: "External Reviewer",
-                            permissions: ["view_form", "view_submissions"],
-                            location_scope: "project",
-                            can_approve_own_submission: false,
-                            read_only: true,
-                          },
-                        ],
-                      }))
-                    }
-                    size="sm"
-                    type="button"
-                    variant="primary"
-                  >
-                    Add reviewer
-                  </Button>
-                </div>
-              </div>
-              <div className="grid gap-3 lg:grid-cols-3">
-                {selectedFormControls.permission_rules.map((rule) => (
-                  <div
-                    className="rounded-lg border bg-background p-4"
-                    key={`${rule.subject_type}-${rule.subject_name}`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold">
-                          {rule.subject_name}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {rule.subject_type} · {rule.location_scope}
-                        </p>
-                      </div>
-                      <Badge tone={rule.read_only ? "neutral" : "accent"}>
-                        {rule.read_only ? "Read only" : "Active"}
-                      </Badge>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      {rule.permissions.map((permission) => (
-                        <span
-                          className="rounded-md border bg-panel px-2 py-1 text-[11px] text-muted-foreground"
-                          key={permission}
-                        >
-                          {permission.replaceAll("_", " ")}
-                        </span>
-                      ))}
-                    </div>
-                    <label className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-                      <input
-                        checked={rule.can_approve_own_submission}
-                        onChange={(event) =>
-                          updateSelectedFormControls((controls) => ({
-                            ...controls,
-                            permission_rules: controls.permission_rules.map(
-                              (candidate) =>
-                                candidate.subject_name === rule.subject_name
-                                  ? {
-                                      ...candidate,
-                                      can_approve_own_submission:
-                                        event.target.checked,
-                                    }
-                                  : candidate,
-                            ),
-                          }))
-                        }
-                        type="checkbox"
-                      />
-                      Allow own submission approval
-                    </label>
-                  </div>
-                ))}
-              </div>
-            </div>
+          <PermissionsControlsPanel form={selectedForm} controls={selectedFormControls} onUpdateControls={updateSelectedFormControls} />
           ) : null}
 
           {formControlsTab === "workflow" ? (
-            <div className="space-y-4">
-              <div className="grid gap-2 md:grid-cols-3">
-                {(
-                  [
-                    ["simple", "Simple", "Submitted to approved or rejected"],
-                    [
-                      "standard",
-                      "Standard",
-                      "Supervisor and data manager review",
-                    ],
-                    [
-                      "correction",
-                      "Correction",
-                      "Return, resubmit, review, approve",
-                    ],
-                  ] satisfies [
-                    "simple" | "standard" | "correction",
-                    string,
-                    string,
-                  ][]
-                ).map(([preset, label, helper]) => (
-                  <button
-                    className={cn(
-                      "rounded-lg border bg-background p-3 text-left transition hover:border-primary/40 hover:bg-primary/5",
-                      selectedFormControls.governance.approval_workflow ===
-                        preset && "border-primary/50 bg-primary/10",
-                    )}
-                    key={preset}
-                    onClick={() => applyWorkflowPreset(preset)}
-                    type="button"
-                  >
-                    <span className="text-sm font-semibold">{label}</span>
-                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                      {helper}
-                    </span>
-                  </button>
-                ))}
-              </div>
-              <div className="rounded-lg border bg-background p-4">
-                <h3 className="text-sm font-semibold">Workflow stages</h3>
-                <div className="mt-4 space-y-3">
-                  {selectedFormControls.workflow_stages.map((stage, index) => (
-                    <div
-                      className="grid gap-3 rounded-lg border bg-panel p-3 md:grid-cols-[40px_minmax(0,1fr)_160px]"
-                      key={stage.id}
-                    >
-                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                        {index + 1}
-                      </span>
-                      <div>
-                        <p className="text-sm font-semibold">{stage.name}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {stage.reviewer_roles.join(", ")} ·{" "}
-                          {stage.reviewer_location_scope}
-                        </p>
-                      </div>
-                      <label className="text-xs font-medium">
-                        SLA hours
-                        <Input
-                          className="mt-1"
-                          min={1}
-                          onChange={(event) =>
-                            updateSelectedFormControls((controls) => ({
-                              ...controls,
-                              workflow_stages: controls.workflow_stages.map(
-                                (candidate) =>
-                                  candidate.id === stage.id
-                                    ? {
-                                        ...candidate,
-                                        sla_hours:
-                                          Number(event.target.value) || 1,
-                                      }
-                                    : candidate,
-                              ),
-                            }))
-                          }
-                          type="number"
-                          value={stage.sla_hours}
-                        />
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+          <WorkflowControlsPanel controls={selectedFormControls} onUpdateControls={updateSelectedFormControls} onApplyWorkflowPreset={applyWorkflowPreset} />
           ) : null}
 
           {formControlsTab === "quality" ? (

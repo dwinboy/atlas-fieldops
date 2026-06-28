@@ -354,11 +354,14 @@ export function normalizeFormControls(
   };
 }
 
-/**
- * The response type is the parent decision for a question — it determines which validation, logic,
- * indicator, reference, evidence, privacy, mobile, and governance settings are relevant. This renders
- * a prominent button showing the current type and opens a modal that classifies every response type
- * by category so the builder can pick the right one at a glance.
- */
-/** Whether a focus-editor settings tab is relevant to a question's response type. Keeps builders
- * from seeing settings that can't apply (e.g. Reference on currency, Evidence on text). */
+/** The form-level controls workspace tabs. */
+export type FormControlsTab =
+  | "overview"
+  | "entity"
+  | "reference"
+  | "permissions"
+  | "workflow"
+  | "quality"
+  | "governance"
+  | "audit"
+  | "versions";
