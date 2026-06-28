@@ -640,13 +640,24 @@ function recordSourceOptions(question: MobileQuestion, allResponses: Map<string,
     return optionsFromAnswer(allResponses.get(selection.fromQuestionId ?? ""), selection);
   }
   if (selection.source === "record" && selection.recordSource === "form") {
+    const displayColumn = selection.displayColumn ?? undefined;
+    const valueColumn = selection.valueColumn ?? undefined;
     return localDatabase.linkedRecords
       .list()
       .filter((record) => (selection.recordFormId ? record.formId === selection.recordFormId : true))
       .filter((record) => (selection.showOnlyVerified ? record.verified : true))
       .filter((record) => recordOldEnough(record, selection.minimumAgeDays))
       .filter((record) => matchesLinkedRecordFilters(record, selection, allResponses))
-      .map((record) => ({ id: record.id, label: record.label, value: record.id }));
+      .map((record) => {
+        // Honor the builder's chosen display/value fields; fall back to the record's label/reference.
+        const display =
+          (displayColumn && record.data?.[displayColumn] != null ? String(record.data[displayColumn]) : "") ||
+          record.label;
+        const value =
+          (valueColumn && record.data?.[valueColumn] != null ? String(record.data[valueColumn]) : "") ||
+          record.id;
+        return { id: record.id, label: display, value, data: record.data };
+      });
   }
   if (selection.source === "record") {
     return localDatabase.entities

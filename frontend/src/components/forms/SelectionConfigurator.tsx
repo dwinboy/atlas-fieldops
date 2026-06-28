@@ -659,6 +659,53 @@ export function SelectionConfigurator({
               )}
             </div>
           ) : null}
+          {selection.recordSource === "form" && sourceFormFields.length ? (
+            <div className="grid gap-3 lg:col-span-2 lg:grid-cols-2">
+              <label className="text-sm font-semibold">
+                <span className="inline-flex items-center gap-1.5">
+                  Display field
+                  <HelpHint label="About the display field" title="Display field">
+                    Which answer from the source form the officer sees when searching and picking a
+                    record. Leave on “Auto” to use the record’s first answer.
+                  </HelpHint>
+                </span>
+                <Select
+                  className="mt-2"
+                  onChange={(event) => update({ displayColumn: event.target.value || undefined })}
+                  value={selection.displayColumn ?? ""}
+                >
+                  <option value="">Auto (first answer)</option>
+                  {sourceFormFields.map((sourceField) => (
+                    <option key={sourceField.variable} value={sourceField.variable}>
+                      {sourceField.label}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <label className="text-sm font-semibold">
+                <span className="inline-flex items-center gap-1.5">
+                  Value saved
+                  <HelpHint label="About the saved value" title="Value saved">
+                    What gets stored as this question’s answer when a record is picked. Choose a stable
+                    key (e.g. national ID, household ID) so exports and reports are meaningful. Default
+                    stores the source record’s reference.
+                  </HelpHint>
+                </span>
+                <Select
+                  className="mt-2"
+                  onChange={(event) => update({ valueColumn: event.target.value || undefined })}
+                  value={selection.valueColumn ?? ""}
+                >
+                  <option value="">Record reference (default)</option>
+                  {sourceFormFields.map((sourceField) => (
+                    <option key={sourceField.variable} value={sourceField.variable}>
+                      {sourceField.label}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            </div>
+          ) : null}
           {["multiselect", "checkbox"].includes(field.type) ? (
             <p className="rounded-md border border-primary/30 bg-primary/5 p-2 text-xs text-primary lg:col-span-2">
               This is a multi-select response type — officers can pick several records automatically.
