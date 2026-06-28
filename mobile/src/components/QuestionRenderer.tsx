@@ -685,6 +685,7 @@ function optionsFromAnswer(
 ): SimpleOption[] {
   if (answerValue === null || answerValue === undefined) return [];
   const displayColumn = selection?.displayColumn ?? undefined;
+  const valueColumn = selection?.valueColumn ?? undefined;
   const toOption = (raw: unknown, index: number): SimpleOption | null => {
     if (raw === null || raw === undefined) return null;
     if (typeof raw === "object" && !Array.isArray(raw)) {
@@ -692,7 +693,9 @@ function optionsFromAnswer(
       const display =
         (displayColumn && row[displayColumn] != null ? String(row[displayColumn]) : "") ||
         String(row.label ?? row.name ?? row.value ?? Object.values(row).find((v) => typeof v === "string" && v) ?? `Item ${index + 1}`);
-      const value = String(row.value ?? row.id ?? display);
+      const value =
+        (valueColumn && row[valueColumn] != null ? String(row[valueColumn]) : "") ||
+        String(row.value ?? row.id ?? display);
       return { id: `${value}-${index}`, label: display, value, data: row };
     }
     const text = String(raw).trim();

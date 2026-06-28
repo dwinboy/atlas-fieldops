@@ -280,6 +280,15 @@ export function SelectionConfigurator({
       ? sourceFormFields.map((sourceField) => sourceField.variable)
       : datasetColumns;
   const filterColumnsListId = `filter-cols-${field.id}`;
+  // When options come from another question, that question's repeat-group children become the
+  // selectable display/value fields (rows are objects keyed by child variable name).
+  const questionSourceColumns =
+    selection.source === "question" && selection.fromQuestionVariable
+      ? (siblings.find(
+          (sibling) => (sibling.variableName ?? sibling.id) === selection.fromQuestionVariable,
+        )?.children ?? []
+        ).map((child) => ({ variable: child.variableName ?? child.id, label: child.label }))
+      : [];
   const toggleLoadColumn = (variable: string) => {
     const current = new Set(selection.loadColumns ?? []);
     if (current.has(variable)) current.delete(variable);
@@ -813,13 +822,59 @@ export function SelectionConfigurator({
               Officers choose from the answers given to that question (e.g. the farms added in a repeat group).
             </span>
           </label>
-          <ColumnField
-            columns={[]}
-            label="Display column (for grouped answers)"
-            onChange={(value) => update({ displayColumn: value || undefined })}
-            placeholder="e.g. farm_name (optional)"
-            value={selection.displayColumn ?? ""}
-          />
+          {questionSourceColumns.length ? (
+            <>
+              <label className="text-sm font-semibold">
+                <span className="inline-flex items-center gap-1.5">
+                  Display field
+                  <HelpHint label="About the display field" title="Display field">
+                    For grouped answers (e.g. repeat-group rows), which child answer the officer sees.
+                    Leave on “Auto” to use the row’s own label.
+                  </HelpHint>
+                </span>
+                <Select
+                  className="mt-2"
+                  onChange={(event) => update({ displayColumn: event.target.value || undefined })}
+                  value={selection.displayColumn ?? ""}
+                >
+                  <option value="">Auto</option>
+                  {questionSourceColumns.map((column) => (
+                    <option key={column.variable} value={column.variable}>
+                      {column.label}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <label className="text-sm font-semibold">
+                <span className="inline-flex items-center gap-1.5">
+                  Value saved
+                  <HelpHint label="About the saved value" title="Value saved">
+                    Which child answer is stored when a row is picked. Default stores the row’s value.
+                  </HelpHint>
+                </span>
+                <Select
+                  className="mt-2"
+                  onChange={(event) => update({ valueColumn: event.target.value || undefined })}
+                  value={selection.valueColumn ?? ""}
+                >
+                  <option value="">Row value (default)</option>
+                  {questionSourceColumns.map((column) => (
+                    <option key={column.variable} value={column.variable}>
+                      {column.label}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            </>
+          ) : (
+            <ColumnField
+              columns={[]}
+              label="Display column (for grouped answers)"
+              onChange={(value) => update({ displayColumn: value || undefined })}
+              placeholder="e.g. farm_name (optional)"
+              value={selection.displayColumn ?? ""}
+            />
+          )}
           <label className="flex items-center gap-2 text-sm font-medium lg:col-span-2">
             <input
               checked={Boolean(selection.allowMultiple)}
