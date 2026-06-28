@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -1873,38 +1873,9 @@ class FormService:
         if form is None or form.organization_id != organization_id or form.deleted_at is not None:
             raise CollectionNotFoundError("Form not found")
 
-        from app.services.file_imports import parse_uploaded_dataset
-
-        _format, columns, rows = parse_uploaded_dataset(filename, content)
-        if not columns or not rows:
-            raise ValueError("The uploaded file has no columns or rows to import.")
-
-        value_col = value_column if value_column in columns else columns[0]
-        display_col = (
-            display_column
-            if display_column in columns
-            else (columns[1] if len(columns) > 1 else columns[0])
+        columns, rows, value_col, display_col, parent_col = self._parse_dataset_file(
+            filename, content, value_column, display_column, parent_column
         )
-        parent_col = parent_column if parent_column in columns else None
-
-        # The value column is the lookup key (DB-unique per dataset). Catch duplicate keys here so the
-        # builder gets a clear message instead of an opaque database constraint error on insert.
-        seen_keys: set[str] = set()
-        duplicate_keys: list[str] = []
-        for row in rows:
-            raw_value = row.get(value_col)
-            if raw_value in (None, ""):
-                continue
-            key = str(raw_value)
-            if key in seen_keys and key not in duplicate_keys:
-                duplicate_keys.append(key)
-            seen_keys.add(key)
-        if duplicate_keys:
-            preview = ", ".join(duplicate_keys[:5]) + ("…" if len(duplicate_keys) > 5 else "")
-            raise ValueError(
-                f"The value column “{value_col}” has duplicate values ({preview}). "
-                "Pick a column with unique values, or remove the duplicate rows before uploading."
-            )
 
         base_slug = re.sub(r"[^a-z0-9]+", "-", f"{form.slug}-{filename.rsplit('.', 1)[0]}".lower()).strip("-")
         slug = await self._unique_reference_slug(organization_id, base_slug or "form-dataset")
@@ -1924,25 +1895,7 @@ class FormService:
         )
         self.session.add(reference_list)
         await self.session.flush()
-
-        for index, row in enumerate(rows):
-            code = str(row.get(value_col) if row.get(value_col) not in (None, "") else index + 1)
-            label = str(row.get(display_col) if row.get(display_col) not in (None, "") else code)
-            parent_value = row.get(parent_col) if parent_col else None
-            self.session.add(
-                PlatformReferenceValue(
-                    reference_list_id=reference_list.id,
-                    code=code,
-                    label=label,
-                    sort_order=index,
-                    is_active=True,
-                    metadata_json={
-                        "data": row,
-                        "parentCode": str(parent_value) if parent_value not in (None, "") else None,
-                    },
-                    created_by_user_id=actor_user_id,
-                )
-            )
+        self._populate_dataset_values(reference_list.id, rows, value_col, display_col, parent_col, actor_user_id)
 
         await self.audit.append(
             organization_id=organization_id,
@@ -1958,12 +1911,185 @@ class FormService:
             "name": filename,
             "columns": columns,
             "row_count": len(rows),
+            "version": 1,
             "value_column": value_col,
             "display_column": display_col,
             "parent_column": parent_col,
             # First few rows so the builder can confirm the upload matches their intent.
             "sample": rows[:5],
         }
+
+    def _parse_dataset_file(
+        self,
+        filename: str,
+        content: bytes,
+        value_column: str | None,
+        display_column: str | None,
+        parent_column: str | None,
+    ) -> tuple[list[str], list[dict[str, Any]], str, str, str | None]:
+        """Parse a CSV/Excel/JSON dataset and resolve its value/display/parent columns, rejecting a
+        value column with duplicate keys (the per-dataset lookup key must be unique)."""
+        from app.services.file_imports import parse_uploaded_dataset
+
+        _format, columns, rows = parse_uploaded_dataset(filename, content)
+        if not columns or not rows:
+            raise ValueError("The uploaded file has no columns or rows to import.")
+
+        value_col = value_column if value_column in columns else columns[0]
+        display_col = (
+            display_column
+            if display_column in columns
+            else (columns[1] if len(columns) > 1 else columns[0])
+        )
+        parent_col = parent_column if parent_column in columns else None
+
+        seen_keys: set[str] = set()
+        duplicate_keys: list[str] = []
+        for row in rows:
+            raw_value = row.get(value_col)
+            if raw_value in (None, ""):
+                continue
+            key = str(raw_value)
+            if key in seen_keys and key not in duplicate_keys:
+                duplicate_keys.append(key)
+            seen_keys.add(key)
+        if duplicate_keys:
+            preview = ", ".join(duplicate_keys[:5]) + ("…" if len(duplicate_keys) > 5 else "")
+            raise ValueError(
+                f"The value column “{value_col}” has duplicate values ({preview}). "
+                "Pick a column with unique values, or remove the duplicate rows before uploading."
+            )
+        return columns, rows, value_col, display_col, parent_col
+
+    def _populate_dataset_values(
+        self,
+        reference_list_id: UUID,
+        rows: list[dict[str, Any]],
+        value_col: str,
+        display_col: str,
+        parent_col: str | None,
+        actor_user_id: UUID,
+    ) -> None:
+        """Add one reference value per row, keeping the full row in metadata `data` and an optional
+        `parentCode` for cascading lookups."""
+        for index, row in enumerate(rows):
+            code = str(row.get(value_col) if row.get(value_col) not in (None, "") else index + 1)
+            label = str(row.get(display_col) if row.get(display_col) not in (None, "") else code)
+            parent_value = row.get(parent_col) if parent_col else None
+            self.session.add(
+                PlatformReferenceValue(
+                    reference_list_id=reference_list_id,
+                    code=code,
+                    label=label,
+                    sort_order=index,
+                    is_active=True,
+                    metadata_json={
+                        "data": row,
+                        "parentCode": str(parent_value) if parent_value not in (None, "") else None,
+                    },
+                    created_by_user_id=actor_user_id,
+                )
+            )
+
+    async def _get_form_dataset(self, organization_id: UUID, slug: str) -> PlatformReferenceList | None:
+        """Fetch an org-owned form dataset by slug (not global reference lists, which have their own
+        admin path)."""
+        return (
+            await self.session.execute(
+                select(PlatformReferenceList).where(
+                    PlatformReferenceList.organization_id == organization_id,
+                    PlatformReferenceList.slug == slug,
+                    PlatformReferenceList.scope == "form",
+                    PlatformReferenceList.deleted_at.is_(None),
+                )
+            )
+        ).scalar_one_or_none()
+
+    async def replace_form_dataset(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        slug: str,
+        filename: str,
+        content: bytes,
+        value_column: str | None = None,
+        display_column: str | None = None,
+        parent_column: str | None = None,
+    ) -> dict[str, Any]:
+        """Refresh a dataset's rows in place (same slug) and bump its version, so questions already
+        bound to it keep working while picking up the new data."""
+        reference_list = await self._get_form_dataset(organization_id, slug)
+        if reference_list is None:
+            raise CollectionNotFoundError("Dataset not found")
+
+        columns, rows, value_col, display_col, parent_col = self._parse_dataset_file(
+            filename, content, value_column, display_column, parent_column
+        )
+        # Hard-delete old rows first: the (reference_list_id, code) unique constraint applies even to
+        # soft-deleted rows, so they must be removed before re-inserting.
+        await self.session.execute(
+            delete(PlatformReferenceValue).where(PlatformReferenceValue.reference_list_id == reference_list.id)
+        )
+        reference_list.columns_json = columns
+        reference_list.version = (reference_list.version or 1) + 1
+        await self.session.flush()
+        self._populate_dataset_values(reference_list.id, rows, value_col, display_col, parent_col, actor_user_id)
+
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="form.dataset_replaced",
+            resource_type="form",
+            resource_id=str(reference_list.form_id) if reference_list.form_id else slug,
+            metadata={"slug": slug, "version": reference_list.version, "rows": len(rows)},
+        )
+        return {
+            "id": slug,
+            "slug": slug,
+            "name": reference_list.name,
+            "columns": columns,
+            "row_count": len(rows),
+            "version": reference_list.version,
+            "value_column": value_col,
+            "display_column": display_col,
+            "parent_column": parent_col,
+            "sample": rows[:5],
+        }
+
+    async def rename_form_dataset(
+        self, *, organization_id: UUID, actor_user_id: UUID, slug: str, name: str
+    ) -> dict[str, Any]:
+        reference_list = await self._get_form_dataset(organization_id, slug)
+        if reference_list is None:
+            raise CollectionNotFoundError("Dataset not found")
+        cleaned = name.strip()
+        if not cleaned:
+            raise ValueError("Dataset name cannot be empty.")
+        reference_list.name = cleaned
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="form.dataset_renamed",
+            resource_type="form",
+            resource_id=str(reference_list.form_id) if reference_list.form_id else slug,
+            metadata={"slug": slug, "name": cleaned},
+        )
+        return {"id": slug, "slug": slug, "name": cleaned}
+
+    async def delete_form_dataset(self, *, organization_id: UUID, actor_user_id: UUID, slug: str) -> None:
+        reference_list = await self._get_form_dataset(organization_id, slug)
+        if reference_list is None:
+            raise CollectionNotFoundError("Dataset not found")
+        reference_list.deleted_at = datetime.now(UTC)
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="form.dataset_deleted",
+            resource_type="form",
+            resource_id=str(reference_list.form_id) if reference_list.form_id else slug,
+            metadata={"slug": slug},
+        )
 
     async def list_form_datasets(self, *, organization_id: UUID, form_id: UUID) -> list[dict[str, Any]]:
         """Datasets a builder can bind to, so no one types a slug by hand. Returns this form's own

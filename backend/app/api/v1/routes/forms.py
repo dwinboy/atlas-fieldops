@@ -3,6 +3,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.dependencies import require_permission
@@ -171,6 +172,90 @@ async def upload_form_dataset(
     except Exception:
         await session.rollback()
         raise
+
+
+class FormDatasetRenameRequest(BaseModel):
+    name: str
+
+
+@router.put("/{form_id}/datasets/{slug}", summary="Replace a form dataset's rows in place (same slug, bumped version)")
+async def replace_form_dataset(
+    form_id: UUID,
+    slug: str,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.FORM_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    file: Annotated[UploadFile, File(description="CSV, Excel, or JSON dataset")],
+    value_column: Annotated[str | None, Form()] = None,
+    display_column: Annotated[str | None, Form()] = None,
+    parent_column: Annotated[str | None, Form()] = None,
+) -> dict[str, object]:
+    content = await file.read()
+    try:
+        result = await FormService(session).replace_form_dataset(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            slug=slug,
+            filename=file.filename or "dataset.csv",
+            content=content,
+            value_column=value_column,
+            display_column=display_column,
+            parent_column=parent_column,
+        )
+        await session.commit()
+        return result
+    except CollectionNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.patch("/{form_id}/datasets/{slug}", summary="Rename a form dataset")
+async def rename_form_dataset(
+    form_id: UUID,
+    slug: str,
+    payload: FormDatasetRenameRequest,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.FORM_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict[str, object]:
+    try:
+        result = await FormService(session).rename_form_dataset(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            slug=slug,
+            name=payload.name,
+        )
+        await session.commit()
+        return result
+    except CollectionNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.delete("/{form_id}/datasets/{slug}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a form dataset")
+async def delete_form_dataset(
+    form_id: UUID,
+    slug: str,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.FORM_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> None:
+    try:
+        await FormService(session).delete_form_dataset(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            slug=slug,
+        )
+        await session.commit()
+    except CollectionNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.patch("/{form_id}", response_model=DataFormRead, summary="Update a dynamic form and publish a new version when needed")

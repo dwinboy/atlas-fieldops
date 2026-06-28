@@ -11,7 +11,14 @@ import { SelectionConfigurator } from "@/components/forms/SelectionConfigurator"
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
-import { uploadFormDataset, type DataFormRead, type FormDatasetSummary } from "@/lib/api";
+import {
+  deleteFormDataset,
+  renameFormDataset,
+  replaceFormDataset,
+  uploadFormDataset,
+  type DataFormRead,
+  type FormDatasetSummary,
+} from "@/lib/api";
 import { updateField, type DynamicForm, type FormField } from "@/lib/forms";
 
 /** Selectable-answers & reference-data settings tab: the unified selection configurator plus the
@@ -68,6 +75,31 @@ export function ReferenceSettingsPanel({
                   const summary = await uploadFormDataset(token, form.id, file);
                   void onRefetchDatasets();
                   return summary;
+                }
+              : undefined
+          }
+          onRenameDataset={
+            token && !isPreview
+              ? async (slug, name) => {
+                  await renameFormDataset(token, form.id, slug, name);
+                  void onRefetchDatasets();
+                }
+              : undefined
+          }
+          onReplaceDataset={
+            token && !isPreview
+              ? async (slug, file) => {
+                  const summary = await replaceFormDataset(token, form.id, slug, file);
+                  void onRefetchDatasets();
+                  return summary;
+                }
+              : undefined
+          }
+          onDeleteDataset={
+            token && !isPreview
+              ? async (slug) => {
+                  await deleteFormDataset(token, form.id, slug);
+                  void onRefetchDatasets();
                 }
               : undefined
           }

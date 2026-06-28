@@ -72,6 +72,50 @@ async def test_form_dataset_upload_creates_cascading_reference_list() -> None:
 
 
 @pytest.mark.asyncio
+async def test_form_dataset_replace_rename_delete() -> None:
+    factory = await _session()
+    async with factory() as session:
+        org_id = uuid4()
+        user_id = uuid4()
+        form_id = uuid4()
+        session.add(Organization(id=org_id, name="DS Org", slug="ds-org-mgmt"))
+        session.add(User(id=user_id, email="o@dsmgmt.org", full_name="O", password_hash="x"))
+        session.add(DataForm(id=form_id, organization_id=org_id, created_by_user_id=user_id, name="Mgmt", slug="mgmt", controls_json={}))
+        await session.flush()
+        service = FormService(session)
+
+        created = await service.upload_form_dataset(
+            organization_id=org_id, form_id=form_id, actor_user_id=user_id,
+            filename="villages.csv", content=b"name,code\nA,A1\nB,B1\n", value_column="code", display_column="name",
+        )
+        slug = created["slug"]
+        assert created["version"] == 1 and created["row_count"] == 2
+
+        # Replace in place: same slug (bindings survive), bumped version, refreshed rows.
+        replaced = await service.replace_form_dataset(
+            organization_id=org_id, actor_user_id=user_id, slug=slug,
+            filename="villages.csv", content=b"name,code\nA,A1\nB,B1\nC,C1\n", value_column="code", display_column="name",
+        )
+        await session.flush()
+        assert replaced["slug"] == slug and replaced["version"] == 2 and replaced["row_count"] == 3
+        # The refreshed rows replaced the old ones (no leftover duplicates).
+        datasets = await service.list_form_datasets(organization_id=org_id, form_id=form_id)
+        assert next(d for d in datasets if d["slug"] == slug)["row_count"] == 3
+
+        # Rename.
+        await service.rename_form_dataset(organization_id=org_id, actor_user_id=user_id, slug=slug, name="Villages master")
+        await session.flush()
+        datasets = await service.list_form_datasets(organization_id=org_id, form_id=form_id)
+        assert next(d for d in datasets if d["slug"] == slug)["name"] == "Villages master"
+
+        # Delete: it disappears from the picker.
+        await service.delete_form_dataset(organization_id=org_id, actor_user_id=user_id, slug=slug)
+        await session.flush()
+        datasets = await service.list_form_datasets(organization_id=org_id, form_id=form_id)
+        assert all(d["slug"] != slug for d in datasets)
+
+
+@pytest.mark.asyncio
 async def test_upload_form_dataset_rejects_duplicate_value_column() -> None:
     factory = await _session()
     async with factory() as session:

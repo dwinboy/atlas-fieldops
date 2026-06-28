@@ -162,6 +162,9 @@ export function SelectionConfigurator({
   resolveFormFields,
   onChange,
   onUploadDataset,
+  onRenameDataset,
+  onReplaceDataset,
+  onDeleteDataset,
 }: {
   field: FormField;
   siblings: FormField[];
@@ -170,9 +173,14 @@ export function SelectionConfigurator({
   resolveFormFields?: (formId: string) => { variable: string; label: string }[];
   onChange: (selection: FormField["selection"]) => void;
   onUploadDataset?: (file: File) => Promise<FormDatasetSummary>;
+  onRenameDataset?: (slug: string, name: string) => Promise<void>;
+  onReplaceDataset?: (slug: string, file: File) => Promise<FormDatasetSummary>;
+  onDeleteDataset?: (slug: string) => Promise<void>;
 }) {
   const selection = field.selection ?? { source: "static" as const };
   const [uploadState, setUploadState] = useState<{ busy: boolean; message: string }>({ busy: false, message: "" });
+  const [manageState, setManageState] = useState<{ busy: boolean; message: string }>({ busy: false, message: "" });
+  const [renameDraft, setRenameDraft] = useState("");
   const update = (patch: Partial<NonNullable<FormField["selection"]>>) =>
     onChange({ ...selection, ...patch });
   const autofill = selection.autofill ?? [];
@@ -345,12 +353,14 @@ export function SelectionConfigurator({
             </div>
 
             {dataMode === "reuse" ? (
+              <>
               <label className="mt-3 block text-sm font-semibold">
                 Choose a dataset
                 <Select
                   className="mt-2"
                   onChange={(event) => {
                     const picked = availableDatasets.find((dataset) => dataset.slug === event.target.value);
+                    setManageState({ busy: false, message: "" });
                     update({
                       datasetId: event.target.value || undefined,
                       displayColumn: picked?.columns[0] ?? selection.displayColumn,
@@ -375,6 +385,95 @@ export function SelectionConfigurator({
                   </span>
                 ) : null}
               </label>
+              {selectedDataset &&
+              selectedDataset.scope === "form" &&
+              (onRenameDataset || onReplaceDataset || onDeleteDataset) ? (
+                <div className="mt-2 space-y-2 rounded-md border bg-background p-2.5">
+                  <p className="text-xs font-semibold text-muted-foreground">
+                    Manage “{selectedDataset.name}”
+                  </p>
+                  {manageState.message ? (
+                    <p className="text-xs text-muted-foreground">{manageState.message}</p>
+                  ) : null}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {onRenameDataset ? (
+                      <>
+                        <Input
+                          className="h-8 max-w-[200px] text-xs"
+                          onChange={(event) => setRenameDraft(event.target.value)}
+                          placeholder="New name"
+                          value={renameDraft}
+                        />
+                        <Button
+                          disabled={manageState.busy || !renameDraft.trim()}
+                          onClick={async () => {
+                            setManageState({ busy: true, message: "Renaming…" });
+                            try {
+                              await onRenameDataset(selectedDataset.slug, renameDraft.trim());
+                              setRenameDraft("");
+                              setManageState({ busy: false, message: "Renamed." });
+                            } catch (error) {
+                              setManageState({ busy: false, message: error instanceof Error ? error.message : "Rename failed." });
+                            }
+                          }}
+                          size="sm"
+                          type="button"
+                          variant="secondary"
+                        >
+                          Rename
+                        </Button>
+                      </>
+                    ) : null}
+                    {onReplaceDataset ? (
+                      <label className="inline-flex cursor-pointer items-center rounded-md border bg-panel px-2.5 py-1.5 text-xs font-semibold hover:border-primary">
+                        Replace data
+                        <input
+                          accept=".csv,.xlsx,.xls,.json"
+                          className="hidden"
+                          onChange={async (event) => {
+                            const file = event.target.files?.[0];
+                            event.target.value = "";
+                            if (!file) return;
+                            setManageState({ busy: true, message: `Replacing with ${file.name}…` });
+                            try {
+                              const summary = await onReplaceDataset(selectedDataset.slug, file);
+                              setManageState({
+                                busy: false,
+                                message: `Updated to ${summary.row_count ?? "?"} rows${summary.version ? ` (v${summary.version})` : ""}. Bound questions keep working.`,
+                              });
+                            } catch (error) {
+                              setManageState({ busy: false, message: error instanceof Error ? error.message : "Replace failed." });
+                            }
+                          }}
+                          type="file"
+                        />
+                      </label>
+                    ) : null}
+                    {onDeleteDataset ? (
+                      <Button
+                        disabled={manageState.busy}
+                        onClick={async () => {
+                          if (!window.confirm(`Delete “${selectedDataset.name}”? Questions bound to it will lose their data source.`)) return;
+                          setManageState({ busy: true, message: "Deleting…" });
+                          try {
+                            await onDeleteDataset(selectedDataset.slug);
+                            update({ datasetId: undefined });
+                            setManageState({ busy: false, message: "Deleted." });
+                          } catch (error) {
+                            setManageState({ busy: false, message: error instanceof Error ? error.message : "Delete failed." });
+                          }
+                        }}
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        Delete
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+              </>
             ) : (
               <div className="mt-3 rounded-md border border-dashed bg-background p-3">
                 <p className="text-sm font-semibold">Upload a spreadsheet (CSV, Excel, or JSON)</p>

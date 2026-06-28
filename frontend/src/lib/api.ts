@@ -3291,6 +3291,7 @@ export type FormDatasetSummary = {
   name: string;
   columns: string[];
   row_count?: number;
+  version?: number;
   value_column?: string;
   display_column?: string;
   parent_column?: string | null;
@@ -3326,6 +3327,48 @@ export async function uploadFormDataset(
 
 export async function listFormDatasets(token: string, formId: string): Promise<FormDatasetSummary[]> {
   return request<FormDatasetSummary[]>(`/forms/${formId}/datasets`, { token });
+}
+
+/** Replaces a dataset's rows in place (same slug, bumped version) so bound questions keep working. */
+export async function replaceFormDataset(
+  token: string,
+  formId: string,
+  slug: string,
+  file: File,
+  options?: { valueColumn?: string; displayColumn?: string; parentColumn?: string },
+): Promise<FormDatasetSummary> {
+  const body = new FormData();
+  body.set("file", file);
+  if (options?.valueColumn) body.set("value_column", options.valueColumn);
+  if (options?.displayColumn) body.set("display_column", options.displayColumn);
+  if (options?.parentColumn) body.set("parent_column", options.parentColumn);
+  const response = await fetch(`${getApiBaseUrl()}/forms/${formId}/datasets/${slug}`, {
+    method: "PUT",
+    headers: { authorization: `Bearer ${token}`, accept: "application/json" },
+    body,
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new ApiError(detail || response.statusText, response.status);
+  }
+  return response.json() as Promise<FormDatasetSummary>;
+}
+
+export async function renameFormDataset(
+  token: string,
+  formId: string,
+  slug: string,
+  name: string,
+): Promise<FormDatasetSummary> {
+  return request<FormDatasetSummary>(`/forms/${formId}/datasets/${slug}`, {
+    token,
+    method: "PATCH",
+    bodyJson: { name },
+  });
+}
+
+export async function deleteFormDataset(token: string, formId: string, slug: string): Promise<void> {
+  await request<void>(`/forms/${formId}/datasets/${slug}`, { token, method: "DELETE" });
 }
 
 export async function addUserRoleAssignment(token: string, userId: string, payload: UserRoleAssignmentCreate): Promise<UserRead> {
