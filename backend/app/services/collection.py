@@ -1947,8 +1947,9 @@ class FormService:
         }
 
     async def list_form_datasets(self, *, organization_id: UUID, form_id: UUID) -> list[dict[str, Any]]:
-        """Datasets a builder can bind to: this form's uploaded datasets first, then the org's
-        global reference lists — all selectable so no one types a slug by hand."""
+        """Datasets a builder can bind to, so no one types a slug by hand. Returns this form's own
+        datasets first, then datasets uploaded on other forms in the org (reusable across forms),
+        then shared/global reference lists — each with its row count for confident selection."""
         result = await self.session.execute(
             select(PlatformReferenceList)
             .where(
@@ -1959,12 +1960,44 @@ class FormService:
             )
             .order_by(PlatformReferenceList.name)
         )
+        lists = list(result.scalars())
+        if not lists:
+            return []
+
+        # Row counts for every list in one query (avoids N+1).
+        counts_result = await self.session.execute(
+            select(
+                PlatformReferenceValue.reference_list_id,
+                func.count(PlatformReferenceValue.id),
+            )
+            .where(
+                PlatformReferenceValue.reference_list_id.in_([item.id for item in lists]),
+                PlatformReferenceValue.deleted_at.is_(None),
+            )
+            .group_by(PlatformReferenceValue.reference_list_id)
+        )
+        row_counts = {row[0]: row[1] for row in counts_result.all()}
+
+        # Names of the other forms whose datasets we surface, resolved in one query.
+        other_form_ids = {
+            item.form_id for item in lists if item.scope == "form" and item.form_id and item.form_id != form_id
+        }
+        form_names: dict[UUID, str] = {}
+        if other_form_ids:
+            names_result = await self.session.execute(
+                select(DataForm.id, DataForm.name).where(DataForm.id.in_(other_form_ids))
+            )
+            form_names = {row[0]: row[1] for row in names_result.all()}
+
         datasets: list[dict[str, Any]] = []
-        for item in result.scalars():
-            is_form = item.scope == "form" and item.form_id == form_id
-            # Skip datasets that belong to a different form.
-            if item.scope == "form" and not is_form:
-                continue
+        for item in lists:
+            if item.scope == "form" and item.form_id == form_id:
+                kind, group = "Form dataset", 0
+            elif item.scope == "form" and item.form_id:
+                # Reusable dataset that was uploaded on another form.
+                kind, group = f"From: {form_names.get(item.form_id, 'another form')}", 1
+            else:
+                kind, group = "Shared reference list", 2
             datasets.append(
                 {
                     "id": item.slug,
@@ -1972,11 +2005,13 @@ class FormService:
                     "name": item.name,
                     "columns": item.columns_json or [],
                     "scope": item.scope,
-                    "kind": "Form dataset" if is_form else "Shared reference list",
+                    "kind": kind,
+                    "row_count": int(row_counts.get(item.id, 0)),
+                    "_group": group,
                 }
             )
-        # This form's own datasets first, then shared reference lists.
-        datasets.sort(key=lambda dataset: (dataset["kind"] != "Form dataset", dataset["name"].lower()))
+        # This form's datasets first, then other forms' reusable datasets, then shared lists.
+        datasets.sort(key=lambda dataset: (dataset.pop("_group"), dataset["name"].lower()))
         return datasets
 
     async def _unique_reference_slug(self, organization_id: UUID, base: str) -> str:

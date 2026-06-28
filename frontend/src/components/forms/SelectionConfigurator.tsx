@@ -363,7 +363,9 @@ export function SelectionConfigurator({
                   <option value="">Select a dataset…</option>
                   {availableDatasets.map((dataset) => (
                     <option key={dataset.slug} value={dataset.slug}>
-                      {dataset.name} {dataset.kind ? `· ${dataset.kind}` : ""}
+                      {dataset.name}
+                      {dataset.kind ? ` · ${dataset.kind}` : ""}
+                      {dataset.row_count !== undefined ? ` · ${dataset.row_count} rows` : ""}
                     </option>
                   ))}
                 </Select>

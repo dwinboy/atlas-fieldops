@@ -72,6 +72,45 @@ async def test_form_dataset_upload_creates_cascading_reference_list() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_form_datasets_reuses_other_forms_and_reports_row_counts() -> None:
+    factory = await _session()
+    async with factory() as session:
+        org_id = uuid4()
+        user_id = uuid4()
+        form_a = uuid4()
+        form_b = uuid4()
+        session.add(Organization(id=org_id, name="DS Org", slug="ds-org2"))
+        session.add(User(id=user_id, email="o@ds2.org", full_name="O", password_hash="x"))
+        session.add(DataForm(id=form_a, organization_id=org_id, created_by_user_id=user_id, name="Villages Source", slug="villages-source", controls_json={}))
+        session.add(DataForm(id=form_b, organization_id=org_id, created_by_user_id=user_id, name="Visit", slug="visit", controls_json={}))
+        await session.flush()
+
+        service = FormService(session)
+        await service.upload_form_dataset(
+            organization_id=org_id, form_id=form_a, actor_user_id=user_id,
+            filename="villages.csv", content=b"name,code\nKumasi,KMA\nTema,TMA\nAccra,ACC\n",
+            value_column="code", display_column="name",
+        )
+        await service.upload_form_dataset(
+            organization_id=org_id, form_id=form_b, actor_user_id=user_id,
+            filename="crops.csv", content=b"crop,code\nMaize,MZ\n", value_column="code", display_column="crop",
+        )
+        await session.flush()
+
+        datasets = await service.list_form_datasets(organization_id=org_id, form_id=form_b)
+        by_name = {d["name"]: d for d in datasets}
+
+        # Form B's own dataset comes first and is labelled as this form's.
+        assert datasets[0]["name"] == "crops.csv"
+        assert by_name["crops.csv"]["kind"] == "Form dataset"
+        assert by_name["crops.csv"]["row_count"] == 1
+
+        # Form A's dataset is now reusable from Form B, labelled with its source form.
+        assert by_name["villages.csv"]["kind"] == "From: Villages Source"
+        assert by_name["villages.csv"]["row_count"] == 3
+
+
+@pytest.mark.asyncio
 async def test_linked_records_index_exposes_other_form_submissions() -> None:
     factory = await _session()
     async with factory() as session:
