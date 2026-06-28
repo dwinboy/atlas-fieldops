@@ -254,18 +254,42 @@ function localizeOptions(question: MobileQuestion, options: SimpleOption[], acti
 
 /** Single/multi choice list that adds a filter box for long option lists so field officers can
  * search reference data (districts, facilities, categories, …) instead of scrolling. */
+/** Deterministic per-question shuffle (stable across renders) used when a choice question is set to
+ * randomize its options — removes the author-order bias without flickering on every keystroke. */
+function seededShuffle(items: SimpleOption[], seed: string): SimpleOption[] {
+  let state = 2166136261;
+  for (let i = 0; i < seed.length; i++) state = Math.imul(state ^ seed.charCodeAt(i), 16777619);
+  state = state >>> 0 || 1;
+  const rand = () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state / 2 ** 32;
+  };
+  const result = items.slice();
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+function orderedOptions(question: MobileQuestion, options: SimpleOption[]): SimpleOption[] {
+  return question.metadataTags?.includes("randomize-options") ? seededShuffle(options, question.id) : options;
+}
+
 function SearchableOptionList({
   options,
   value,
   onChange,
   multi,
   allowOther = false,
+  exclusiveValues = [],
 }: {
   options: SimpleOption[];
   value: unknown;
   onChange: (next: unknown) => void;
   multi: boolean;
   allowOther?: boolean;
+  exclusiveValues?: string[];
 }) {
   const [query, setQuery] = useState("");
   const knownValues = useMemo(() => new Set(options.map((option) => option.value)), [options]);
@@ -290,8 +314,19 @@ function SearchableOptionList({
   function toggle(option: SimpleOption) {
     if (multi) {
       const next = new Set(selectedValues);
-      if (next.has(option.value)) next.delete(option.value);
-      else next.add(option.value);
+      if (next.has(option.value)) {
+        next.delete(option.value);
+        onChange(Array.from(next));
+        return;
+      }
+      // Picking an exclusive option ("None of the above") clears every other answer; picking a
+      // normal option clears any exclusive picks — the data never mixes "none" with selections.
+      if (exclusiveValues.includes(option.value)) {
+        onChange([option.value]);
+        return;
+      }
+      for (const exclusive of exclusiveValues) next.delete(exclusive);
+      next.add(option.value);
       onChange(Array.from(next));
     } else {
       setOtherOpen(false);
@@ -1216,7 +1251,7 @@ function renderInput(
         </View>
       );
     }
-    return <SearchableOptionList allowOther={questionAllowsOther(question)} multi={false} onChange={answer} options={cascadeOptions} value={value} />;
+    return <SearchableOptionList allowOther={questionAllowsOther(question)} multi={false} onChange={answer} options={orderedOptions(question, cascadeOptions)} value={value} />;
   }
 
   // ── Multi select ──────────────────────────────────────────────────────────
@@ -1238,7 +1273,16 @@ function renderInput(
         </View>
       );
     }
-    return <SearchableOptionList allowOther={questionAllowsOther(question)} multi onChange={answer} options={cascadeOptions} value={value} />;
+    return (
+      <SearchableOptionList
+        allowOther={questionAllowsOther(question)}
+        exclusiveValues={question.exclusiveOptions}
+        multi
+        onChange={answer}
+        options={orderedOptions(question, cascadeOptions)}
+        value={value}
+      />
+    );
   }
 
   // ── Date / DateTime ───────────────────────────────────────────────────────

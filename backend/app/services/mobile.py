@@ -825,6 +825,7 @@ def _build_question_field(
         "readOnly": read_only,
         "defaultValue": _mobile_default_value(field, variable_to_id, reference_by_question),
         "dynamicDefault": (str(field["dynamicDefault"]) if field.get("dynamicDefault") else None),
+        "exclusiveOptions": [str(v) for v in field.get("exclusiveOptionValues") or []],
         "options": _field_options(list(field.get("options") or [])),
         "validationRules": _validation_rules(field),
         "logicRules": _logic_rules(field, variable_to_id),

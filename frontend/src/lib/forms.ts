@@ -208,6 +208,9 @@ export type FormField = {
   /** Optional per-option stored answer codes (index-aligned with `options`). When an entry is set it
    * overrides the auto-derived value; blank/absent entries fall back to the slugified label. */
   optionValues?: string[];
+  /** Multi-select option *values* that are exclusive ("None of the above" / "Prefer not to say"):
+   * picking one clears the rest, and picking any other clears these. */
+  exclusiveOptionValues?: string[];
   validation?: {
     /** When true, this question's value rules surface as warnings (officer can proceed) instead of blocking. */
     warnOnly?: boolean;
@@ -1107,7 +1110,7 @@ function uniqueExportName(base: string, usedNames: Set<string>): string {
   return candidate;
 }
 
-function exportedOptions(
+export function exportedOptions(
   options: string[] | undefined,
   optionValues?: string[],
 ): Array<{ label: string; value: string }> {

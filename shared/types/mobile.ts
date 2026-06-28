@@ -365,6 +365,8 @@ export type MobileQuestion = {
   /** Formula evaluated to pre-fill the answer when the question first opens and is still empty
    * (editable afterwards): `today()`, `${other_question}`, or a computed expression. */
   dynamicDefault?: string | null;
+  /** Multi-select option values that are exclusive: picking one clears the rest (and vice versa). */
+  exclusiveOptions?: string[];
   options: MobileQuestionOption[];
   validationRules: MobileValidationRule[];
   logicRules: MobileLogicRule[];

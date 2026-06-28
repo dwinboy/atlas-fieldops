@@ -13,7 +13,14 @@ import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
 import { type DataFormRead, type FormDatasetSummary } from "@/lib/api";
-import { fieldSupportsSelection, updateField, type DynamicForm, type FormField } from "@/lib/forms";
+import {
+  exportedOptions,
+  fieldSupportsSelection,
+  fieldTypeHasCapability,
+  updateField,
+  type DynamicForm,
+  type FormField,
+} from "@/lib/forms";
 
 /** Response-configuration tab: per-type answer options/units, subform setup, and data-source pointer. */
 export function ResponseSettingsPanel({
@@ -167,6 +174,56 @@ export function ResponseSettingsPanel({
                                         : "Press Enter to add the next response. Paste multiple lines to create many options at once. These values are used by web and mobile collection."}
                                     </span>
                                   </label>
+                                  {fieldTypeHasCapability(field.type, "multiSelect") &&
+                                  (field.options?.length ?? 0) > 0 ? (
+                                    <div className="mt-4 rounded-md border bg-background p-3">
+                                      <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
+                                        Exclusive options
+                                        <HelpHint label="About exclusive options" title="Exclusive options">
+                                          Mark answers like “None of the above” or “Prefer not to
+                                          say”. When the officer picks an exclusive option it clears
+                                          the others, and picking any other answer clears it — so the
+                                          data never mixes “none” with real selections.
+                                        </HelpHint>
+                                      </span>
+                                      <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                                        {exportedOptions(field.options ?? [], field.optionValues).map(
+                                          (option) => {
+                                            const exclusive =
+                                              field.exclusiveOptionValues?.includes(option.value) ??
+                                              false;
+                                            return (
+                                              <label
+                                                className="flex items-center gap-2 text-sm"
+                                                key={option.value}
+                                              >
+                                                <input
+                                                  checked={exclusive}
+                                                  className="h-4 w-4"
+                                                  onChange={(event) => {
+                                                    const current =
+                                                      field.exclusiveOptionValues ?? [];
+                                                    const next = event.target.checked
+                                                      ? [...current, option.value]
+                                                      : current.filter((v) => v !== option.value);
+                                                    onUpdateForm(
+                                                      updateField(form, field.id, {
+                                                        exclusiveOptionValues: next.length
+                                                          ? next
+                                                          : undefined,
+                                                      }),
+                                                    );
+                                                  }}
+                                                  type="checkbox"
+                                                />
+                                                {option.label}
+                                              </label>
+                                            );
+                                          },
+                                        )}
+                                      </div>
+                                    </div>
+                                  ) : null}
                                 </>
                               ) : (
                                 <div className="mt-4 rounded-md border bg-background p-3 text-xs text-muted-foreground">
