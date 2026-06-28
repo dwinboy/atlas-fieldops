@@ -428,6 +428,36 @@ def test_logic_operators_compile_to_mobile() -> None:
     assert parse("${notes} is not empty")["operator"] == "IsNotEmpty"
 
 
+def test_section_relevance_compiles_to_mobile() -> None:
+    from app.services.mobile import _schema_sections
+
+    schema = {
+        "sections": [
+            {
+                "id": "intro",
+                "title": "Intro",
+                "fields": [{"id": "q_has", "variable_name": "has_children", "type": "yes_no", "label": "Children?"}],
+            },
+            {
+                "id": "kids",
+                "title": "Children details",
+                "visibleWhen": "${has_children} = 'Yes'",
+                "fields": [{"id": "q_count", "variable_name": "child_count", "type": "number", "label": "How many?"}],
+            },
+        ]
+    }
+    sections = _schema_sections(schema)
+    intro, kids = sections[0], sections[1]
+    # A section with no condition is always shown (visibleWhen is None).
+    assert intro["visibleWhen"] is None
+    # The conditional section compiles its relevance against the source question id.
+    assert kids["visibleWhen"] == {
+        "sourceQuestionId": "q_has",
+        "operator": "Equals",
+        "value": "Yes",
+    }
+
+
 def test_warn_only_validation_emits_tag() -> None:
     from app.services.mobile import _build_question_field
 

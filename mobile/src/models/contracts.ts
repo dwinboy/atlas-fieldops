@@ -33,6 +33,7 @@ export type {
   MobileCrashReport,
   MobileIntegritySignal,
   MobileLogicRule,
+  MobileVisibilityRule,
   MobileLinkedRecord,
   MobileLocation,
   MobileNotification,

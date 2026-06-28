@@ -1,6 +1,6 @@
 import { isCascadeBlocked, resolveQuestionOptions } from "@/forms/optionResolver";
 import type { MobileFormVersion, MobileQuestion, MobileReferenceList, MobileSubmission, MobileValidationRule } from "@/models/contracts";
-import { evaluateQuestionLogicStates, LogicEngine } from "@/forms/logicEngine";
+import { evaluateQuestionLogicStates, evaluateVisibility, LogicEngine } from "@/forms/logicEngine";
 
 export type FormValidationIssue = {
   questionId: string;
@@ -16,6 +16,11 @@ export class FormValidationService {
     const logicState = new LogicEngine().evaluate(formVersion, draft);
     const issues: FormValidationIssue[] = [];
     for (const section of formVersion.sections) {
+      // A section hidden by section-level relevance contributes no validation — its required
+      // questions cannot block submission while the whole section is out of scope.
+      if (!evaluateVisibility(section.visibleWhen, responses)) {
+        continue;
+      }
       for (const question of section.questions) {
         const state = logicState[question.id];
         if (state?.visible === false || question.type === "Hidden") {

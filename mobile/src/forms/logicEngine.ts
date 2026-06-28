@@ -1,5 +1,14 @@
 import { evaluateExpressionValue } from "@/forms/expressionEngine";
-import type { MobileFormVersion, MobileLogicRule, MobileQuestion, MobileSubmission } from "@/models/contracts";
+import type {
+  MobileFormVersion,
+  MobileLogicRule,
+  MobileQuestion,
+  MobileSubmission,
+  MobileVisibilityRule,
+} from "@/models/contracts";
+
+/** The condition portion shared by logic rules and section relevance. */
+type ConditionRule = Pick<MobileLogicRule, "sourceQuestionId" | "operator" | "value" | "conditions" | "match">;
 
 export type QuestionLogicState = {
   visible: boolean;
@@ -64,7 +73,7 @@ function splitList(ruleValue: unknown): string[] {
 
 /** Evaluates a rule's condition(s). Multi-condition rules combine by `match` (all = AND, any = OR);
  * single-condition rules use the top-level source/operator/value. */
-function rulePasses(rule: MobileLogicRule, responses: Map<string, unknown>): boolean {
+function rulePasses(rule: ConditionRule, responses: Map<string, unknown>): boolean {
   if (rule.conditions && rule.conditions.length > 0) {
     const results = rule.conditions.map((condition) =>
       compareValue(responses.get(condition.sourceQuestionId), condition.operator, condition.value),
@@ -86,6 +95,15 @@ function isEmptyValue(value: unknown): boolean {
     return entries.length === 0 || entries.every((entry) => isEmptyValue(entry));
   }
   return false;
+}
+
+/** Whether a section is shown given the current answers (keyed by question id). No rule = always shown. */
+export function evaluateVisibility(
+  rule: MobileVisibilityRule | null | undefined,
+  responses: Map<string, unknown>,
+): boolean {
+  if (!rule) return true;
+  return rulePasses(rule, responses);
 }
 
 export class LogicEngine {

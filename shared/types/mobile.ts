@@ -328,6 +328,16 @@ export type MobileLogicCondition = {
   value: string | number | boolean | null;
 };
 
+/** Section-level relevance: the whole section shows only when this condition passes. Same condition
+ * shape as a logic rule, minus the action/target (it never targets a single question). */
+export type MobileVisibilityRule = {
+  sourceQuestionId: string;
+  operator: MobileLogicOperator;
+  value: string | number | boolean | null;
+  conditions?: MobileLogicCondition[];
+  match?: "all" | "any";
+};
+
 export type MobileLogicRule = {
   id: string;
   action: "ShowIf" | "HideIf" | "SkipTo" | "RequiredIf" | "Calculate";
@@ -445,6 +455,8 @@ export type MobileFormSection = {
   description: string | null;
   order: number;
   questions: MobileQuestion[];
+  /** When set, the section (and all its questions) only shows when this condition passes. */
+  visibleWhen?: MobileVisibilityRule | null;
 };
 
 export type FrequencyRule =

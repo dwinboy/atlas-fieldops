@@ -25,7 +25,7 @@ import { useAppContext } from "@/context/AppContext";
 import { describeEntityHierarchy, describeFormEntityWorkflow } from "@/entities/entityCategoryUtils";
 import { DataCollectionSessionService } from "@/forms/dataCollectionSession";
 import { FormValidationService } from "@/forms/formValidationService";
-import { LogicEngine } from "@/forms/logicEngine";
+import { LogicEngine, evaluateVisibility } from "@/forms/logicEngine";
 import type { FormValidationIssue } from "@/forms/formValidationService";
 import { FieldIntegrityService } from "@/services/fieldIntegrityService";
 import { localDatabase } from "@/storage/localDatabase";
@@ -68,12 +68,27 @@ export default function FormFillScreen() {
     [draft, formVersion, refreshKey],
   );
 
+  // Questions inside a section that is currently hidden by section-level relevance — their answers
+  // are not required and must not block submission.
+  const hiddenSectionQuestionIds = useMemo(() => {
+    const responses = new Map<string, unknown>((draft?.responses ?? []).map((r) => [r.questionId, r.value]));
+    const ids = new Set<string>();
+    for (const section of formVersion?.sections ?? []) {
+      if (!evaluateVisibility(section.visibleWhen, responses)) {
+        for (const question of section.questions ?? []) ids.add(question.id);
+      }
+    }
+    return ids;
+  }, [draft, formVersion, refreshKey]);
+
   const allIssues: FormValidationIssue[] = useMemo(
     () =>
       draft && formVersion && (submitAttempted || reviewMode)
-        ? [...validationService.validate(formVersion, draft, localDatabase.referenceLists.list()), ...dataCollection.evaluateRiskIssues(draft, formVersion)]
+        ? [...validationService.validate(formVersion, draft, localDatabase.referenceLists.list()), ...dataCollection.evaluateRiskIssues(draft, formVersion)].filter(
+            (issue) => !hiddenSectionQuestionIds.has(issue.questionId),
+          )
         : [],
-    [draft, formVersion, submitAttempted, reviewMode, refreshKey],
+    [draft, formVersion, submitAttempted, reviewMode, refreshKey, hiddenSectionQuestionIds],
   );
 
   const progress = useMemo(
@@ -81,10 +96,13 @@ export default function FormFillScreen() {
     [draft, formVersion, refreshKey],
   );
 
-  const sections: MobileFormSection[] = useMemo(
-    () => (formVersion?.sections ?? []).slice().sort((a, b) => a.order - b.order),
-    [formVersion],
-  );
+  const sections: MobileFormSection[] = useMemo(() => {
+    const responses = new Map<string, unknown>((draft?.responses ?? []).map((r) => [r.questionId, r.value]));
+    return (formVersion?.sections ?? [])
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .filter((section) => evaluateVisibility(section.visibleWhen, responses));
+  }, [formVersion, draft, refreshKey]);
 
   // Languages a field officer can switch between — derived from the questions' translations.
   const availableLanguages = useMemo<string[]>(() => {

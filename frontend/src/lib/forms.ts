@@ -363,6 +363,9 @@ export type FormSection = {
   title: string;
   description?: string;
   pageId?: string;
+  /** Logic expression (same syntax as question logic) that shows this whole section only when it
+   * passes — e.g. `${has_children} = 'Yes'`. Empty/undefined means the section is always shown. */
+  visibleWhen?: string;
 };
 
 export type FormVersionHistory = {
@@ -1212,6 +1215,22 @@ export function addSection(form: DynamicForm, section: FormSection): DynamicForm
     ...normalized,
     sections: [...normalized.sections, section],
     updatedAt: new Date().toISOString()
+  };
+}
+
+/** Applies a partial patch to one section (title, description, relevance, …). */
+export function updateSection(
+  form: DynamicForm,
+  sectionId: string,
+  patch: Partial<FormSection>,
+): DynamicForm {
+  const normalized = normalizeForm(form);
+  return {
+    ...normalized,
+    sections: normalized.sections.map((section) =>
+      section.id === sectionId ? { ...section, ...patch } : section,
+    ),
+    updatedAt: new Date().toISOString(),
   };
 }
 

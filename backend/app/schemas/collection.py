@@ -263,6 +263,10 @@ class FormField(BaseModel):
 
 
 class FormSection(BaseModel):
+    # `extra: allow` preserves builder-authored keys such as `visibleWhen` (section relevance) and
+    # `pageId` through persistence, the same way FormField keeps its camelCase config.
+    model_config = {"extra": "allow"}
+
     id: str = Field(min_length=1, max_length=120)
     title: str = Field(min_length=1, max_length=240)
     description: str | None = Field(default=None, max_length=1000)

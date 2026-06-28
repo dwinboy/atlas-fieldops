@@ -640,29 +640,54 @@ def _parse_logic_condition(clause: str, variable_to_id: dict[str, str]) -> dict[
     }
 
 
+def _compile_logic_conditions(
+    expression: str | None, variable_to_id: dict[str, str]
+) -> dict[str, Any] | None:
+    """Compiles a logic expression into a structured condition the mobile engine evaluates.
+
+    Supports multi-condition expressions joined by "and"/"or" (case-insensitive), e.g.
+    "${gender} = 'Female' and ${age} >= 18". A single clause stays a simple condition; multiple
+    clauses add `conditions`/`match`. The top-level source/operator/value mirror the first clause for
+    backward compatibility. Returns None when nothing parseable is found. Shared by question logic
+    rules and section-level relevance so both use identical semantics."""
+    text = str(expression or "")
+    if not text.strip():
+        return None
+    match = "all"
+    lowered = text.lower()
+    if " or " in lowered:
+        match = "any"
+        clauses = re.split(r"\s+or\s+", text, flags=re.IGNORECASE)
+    elif " and " in lowered:
+        clauses = re.split(r"\s+and\s+", text, flags=re.IGNORECASE)
+    else:
+        clauses = [text]
+    conditions = [
+        condition
+        for clause in clauses
+        if (condition := _parse_logic_condition(clause, variable_to_id)) is not None
+    ]
+    if not conditions:
+        return None
+    first = conditions[0]
+    compiled: dict[str, Any] = {
+        "sourceQuestionId": first["sourceQuestionId"],
+        "operator": first["operator"],
+        "value": first["value"],
+    }
+    if len(conditions) > 1:
+        compiled["conditions"] = conditions
+        compiled["match"] = match
+    return compiled
+
+
 def _logic_rules(field: dict[str, Any], variable_to_id: dict[str, str]) -> list[dict[str, Any]]:
     rules: list[dict[str, Any]] = []
     for index, rule in enumerate(field.get("logic") or []):
         if not isinstance(rule, dict):
             continue
-        expression = str(rule.get("expression") or "")
-        # Support multi-condition rules joined by "and"/"or" (case-insensitive), e.g.
-        # "${gender} = 'Female' and ${age} > 18". A single clause stays a simple rule.
-        match = "all"
-        lowered = expression.lower()
-        if " or " in lowered:
-            match = "any"
-            clauses = re.split(r"\s+or\s+", expression, flags=re.IGNORECASE)
-        elif " and " in lowered:
-            clauses = re.split(r"\s+and\s+", expression, flags=re.IGNORECASE)
-        else:
-            clauses = [expression]
-        conditions = [
-            condition
-            for clause in clauses
-            if (condition := _parse_logic_condition(clause, variable_to_id)) is not None
-        ]
-        if not conditions:
+        compiled = _compile_logic_conditions(rule.get("expression"), variable_to_id)
+        if compiled is None:
             continue
         kind = str(rule.get("kind") or "show")
         action = {
@@ -675,18 +700,17 @@ def _logic_rules(field: dict[str, Any], variable_to_id: dict[str, str]) -> list[
         }.get(kind)
         if not action:
             continue
-        first = conditions[0]
         compiled_rule = {
             "id": str(rule.get("id") or f"{field.get('id')}-logic-{index + 1}"),
             "action": action,
-            "sourceQuestionId": first["sourceQuestionId"],
-            "operator": first["operator"],
-            "value": first["value"],
+            "sourceQuestionId": compiled["sourceQuestionId"],
+            "operator": compiled["operator"],
+            "value": compiled["value"],
             "targetQuestionId": rule.get("targetId") or field.get("id"),
         }
-        if len(conditions) > 1:
-            compiled_rule["conditions"] = conditions
-            compiled_rule["match"] = match
+        if "conditions" in compiled:
+            compiled_rule["conditions"] = compiled["conditions"]
+            compiled_rule["match"] = compiled["match"]
         rules.append(compiled_rule)
     calculation = field.get("calculation")
     calculation_expression = (
@@ -875,6 +899,8 @@ def _schema_sections(schema_json: dict[str, Any], controls_json: dict[str, Any] 
                 "description": section.get("description"),
                 "order": section_index + 1,
                 "questions": questions,
+                # Section-level relevance: the whole section shows only when this condition passes.
+                "visibleWhen": _compile_logic_conditions(section.get("visibleWhen"), variable_to_id),
             }
         )
     return sections

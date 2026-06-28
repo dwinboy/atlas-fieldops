@@ -214,6 +214,7 @@ import {
   toXlsFormWorkbook,
   typeChangePatchForField,
   updateField,
+  updateSection,
   buildLogicConditionExpression,
   LOGIC_CONDITION_OPERATORS,
   type DynamicForm,
@@ -6886,6 +6887,36 @@ export function DynamicForms({
                                   </Button>
                                 </div>
                               </div>
+                              {!collapsedSectionIds[section.id] ? (
+                                <div className="border-t bg-panel/40 px-4 py-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-muted-foreground">
+                                      Show section when
+                                      <HelpHint
+                                        label="About section logic"
+                                        title="Show a whole section conditionally"
+                                      >
+                                        Leave blank to always show it. Otherwise enter a condition
+                                        like <code>{"${has_children} = 'Yes'"}</code> — the entire
+                                        section (and its required questions) only appears when the
+                                        condition is true. Same syntax as question logic.
+                                      </HelpHint>
+                                    </span>
+                                    <Input
+                                      className="h-7 flex-1 font-mono text-xs"
+                                      onChange={(event) =>
+                                        updateSelectedForm(
+                                          updateSection(selectedForm, section.id, {
+                                            visibleWhen: event.target.value,
+                                          }),
+                                        )
+                                      }
+                                      placeholder="Always shown"
+                                      value={section.visibleWhen ?? ""}
+                                    />
+                                  </div>
+                                </div>
+                              ) : null}
                               {collapsedSectionIds[section.id] ? (
                                 <div className="px-4 py-3 text-xs text-muted-foreground">
                                   Section collapsed · {sectionFields.length}{" "}
