@@ -428,6 +428,32 @@ def test_logic_operators_compile_to_mobile() -> None:
     assert parse("${notes} is not empty")["operator"] == "IsNotEmpty"
 
 
+def test_repeat_rows_from_question_compile() -> None:
+    from app.services.mobile import _build_question_field
+
+    q = _build_question_field(
+        {
+            "id": "rg",
+            "type": "repeat_group",
+            "label": "Crop details",
+            "children": [{"id": "c1", "variable_name": "crop_name", "type": "text", "label": "Crop"}],
+            "selection": {
+                "source": "question",
+                "fromQuestionVariable": "crops",
+                "seedChildVariable": "crop_name",
+            },
+        },
+        field_id="rg",
+        section_id="s",
+        order=1,
+        variable_to_id={"crops": "q-crops"},
+    )
+    assert q["type"] == "RepeatGroup"
+    assert q["selection"]["source"] == "question"
+    assert q["selection"]["fromQuestionId"] == "q-crops"
+    assert q["selection"]["seedChildVariable"] == "crop_name"
+
+
 def test_section_relevance_compiles_to_mobile() -> None:
     from app.services.mobile import _schema_sections
 

@@ -383,6 +383,110 @@ export function ResponseSettingsPanel({
                                   </div>
                                 </div>
                               ) : null}
+                              {field.type === "repeat_group" ? (
+                                <div className="mt-4 space-y-4">
+                                  <label className="block text-sm font-semibold">
+                                    <span className="inline-flex items-center gap-1.5">
+                                      Rows come from
+                                      <HelpHint label="About repeat rows source" title="Where the rows come from">
+                                        Add rows manually, or create one row automatically for each
+                                        answer to another question (e.g. each crop the farmer picked),
+                                        each row of a dataset, or each record from another form — so
+                                        the officer fills in details for exactly the right items.
+                                      </HelpHint>
+                                    </span>
+                                    <Select
+                                      className="mt-2"
+                                      onChange={(event) => setMatrixRowSource(event.target.value)}
+                                      value={matrixRowSource}
+                                    >
+                                      <option value="static">Officer adds rows manually</option>
+                                      <option value="question">One row per another question’s answer</option>
+                                      <option value="dataset">One row per dataset entry</option>
+                                      <option value="record">One row per record from another form</option>
+                                    </Select>
+                                  </label>
+                                  {matrixRowSource === "question" ? (
+                                    <label className="block text-sm font-semibold">
+                                      Source question
+                                      <Select
+                                        className="mt-2"
+                                        onChange={(event) => updateMatrixSelection({ fromQuestionVariable: event.target.value || undefined })}
+                                        value={field.selection?.fromQuestionVariable ?? ""}
+                                      >
+                                        <option value="">Choose a question…</option>
+                                        {form.fields
+                                          .filter((candidate) => candidate.id !== field.id && candidate.variableName)
+                                          .map((candidate) => (
+                                            <option key={candidate.id} value={candidate.variableName}>
+                                              {candidate.label}
+                                            </option>
+                                          ))}
+                                      </Select>
+                                    </label>
+                                  ) : matrixRowSource === "dataset" ? (
+                                    <label className="block text-sm font-semibold">
+                                      Dataset
+                                      <Select
+                                        className="mt-2"
+                                        onChange={(event) => updateMatrixSelection({ datasetId: event.target.value || undefined })}
+                                        value={field.selection?.datasetId ?? ""}
+                                      >
+                                        <option value="">{datasets.length ? "Choose a dataset…" : "No datasets uploaded yet"}</option>
+                                        {datasets.map((dataset) => (
+                                          <option key={dataset.slug} value={dataset.slug}>
+                                            {dataset.name}
+                                          </option>
+                                        ))}
+                                      </Select>
+                                    </label>
+                                  ) : matrixRowSource === "record" ? (
+                                    <label className="block text-sm font-semibold">
+                                      Source form
+                                      <Select
+                                        className="mt-2"
+                                        onChange={(event) => updateMatrixSelection({ recordFormId: event.target.value || undefined })}
+                                        value={field.selection?.recordFormId ?? ""}
+                                      >
+                                        <option value="">{otherForms.length ? "Choose a form…" : "No other forms yet"}</option>
+                                        {otherForms
+                                          .filter((candidate) => candidate.id !== form.id)
+                                          .map((candidate) => (
+                                            <option key={candidate.id} value={candidate.id}>
+                                              {candidate.name}
+                                            </option>
+                                          ))}
+                                      </Select>
+                                    </label>
+                                  ) : null}
+                                  {matrixRowSource !== "static" && (field.children?.length ?? 0) > 0 ? (
+                                    <label className="block text-sm font-semibold">
+                                      <span className="inline-flex items-center gap-1.5">
+                                        Pre-fill which question with each item?
+                                        <HelpHint label="About the pre-filled question" title="Pre-filled question">
+                                          The chosen repeat question is filled in automatically with
+                                          each source item (e.g. the crop name), and the officer
+                                          completes the rest of that row.
+                                        </HelpHint>
+                                      </span>
+                                      <Select
+                                        className="mt-2"
+                                        onChange={(event) => updateMatrixSelection({ seedChildVariable: event.target.value || undefined })}
+                                        value={field.selection?.seedChildVariable ?? ""}
+                                      >
+                                        <option value="">First question (default)</option>
+                                        {(field.children ?? [])
+                                          .filter((child) => child.variableName)
+                                          .map((child) => (
+                                            <option key={child.id} value={child.variableName}>
+                                              {child.label}
+                                            </option>
+                                          ))}
+                                      </Select>
+                                    </label>
+                                  ) : null}
+                                </div>
+                              ) : null}
                               {["number", "decimal", "currency", "rating", "nps", "slider", "percentage", "counter", "measurement"].includes(field.type) ? (
                                 <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                                   <label className="text-sm font-semibold">

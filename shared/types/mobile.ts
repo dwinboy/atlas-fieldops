@@ -591,6 +591,8 @@ export type MobileSelectionConfig = {
   minimumAgeDays?: number;
   /** For `source: "question"` — the in-form question whose answers become options. */
   fromQuestionId?: string | null;
+  /** For source-driven repeat groups — the child field pre-filled with each source item. */
+  seedChildVariable?: string | null;
 };
 
 export type MobileReferenceList = LocalRecord & {

@@ -310,6 +310,8 @@ export type FormField = {
     minimumAgeDays?: number;
     /** For `source: "question"` — options come from this in-form question's answers. */
     fromQuestionVariable?: string;
+    /** For a source-driven repeat group — the child field pre-filled with each source item. */
+    seedChildVariable?: string;
   };
   beneficiary?: {
     profileField?: string;

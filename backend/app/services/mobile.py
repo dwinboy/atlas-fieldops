@@ -224,6 +224,8 @@ def _mobile_selection(field: dict[str, Any], variable_to_id: dict[str, str]) -> 
         "showOnlyVerified": bool(selection.get("showOnlyVerified", False)),
         "minimumAgeDays": int(minimum_age) if isinstance(minimum_age, (int, float, str)) and str(minimum_age).strip().isdigit() else None,
         "fromQuestionId": resolve(selection.get("fromQuestionVariable")),
+        # For source-driven repeat groups: which child field is pre-filled with each source item.
+        "seedChildVariable": selection.get("seedChildVariable") or None,
     }
 
 

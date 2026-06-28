@@ -1394,6 +1394,18 @@ function renderInput(
 
   // ── Repeat group ─────────────────────────────────────────────────────────
   if (type === "RepeatGroup") {
+    // Rows pulled from a dataset / another question / linked records — one row per source item.
+    if (question.selection && question.selection.source !== "static") {
+      return (
+        <SourceDrivenRepeatGroup
+          allResponses={allResponses}
+          answer={answer}
+          question={question}
+          referenceLists={referenceLists}
+          value={value}
+        />
+      );
+    }
     if (question.repeatSettings?.countFromVariable) {
       return (
         <CountDrivenRepeatGroup
@@ -1748,6 +1760,67 @@ function CountDrivenRepeatGroup({
   );
 }
 
+/** Internal key on a seeded repeat row linking it to its source option, so rows can be reconciled
+ * (added/removed) when the source list changes without losing officer edits on the kept rows. */
+const REPEAT_SOURCE_KEY = "__sourceValue";
+
+function SourceDrivenRepeatGroup({
+  question,
+  value,
+  answer,
+  referenceLists,
+  allResponses,
+}: {
+  question: MobileQuestion;
+  value: unknown;
+  answer: (v: unknown) => void;
+  referenceLists: MobileReferenceList[];
+  allResponses: Map<string, unknown>;
+}) {
+  const options = selectionSourceOptions(question, allResponses, referenceLists) ?? [];
+  // Which child field is pre-filled with each source item (defaults to the first child).
+  const fields = repeatFields(question);
+  const seedVariable = question.selection?.seedChildVariable ?? null;
+  const seedField = (seedVariable && fields.find((f) => f.variableName === seedVariable)) || fields[0] || null;
+  const sourceKey = options.map((option) => option.value).join(" ");
+
+  useEffect(() => {
+    if (options.length === 0) return;
+    const rows = asRecordArray(value);
+    const existingBySource = new Map(rows.map((row) => [String(row[REPEAT_SOURCE_KEY] ?? ""), row]));
+    let changed = rows.length !== options.length;
+    const nextRows = options.map((option) => {
+      const existing = existingBySource.get(option.value);
+      if (existing) return existing;
+      changed = true;
+      const blank: Record<string, unknown> = Object.fromEntries(
+        fields.map((field) => [field.id, blankRepeatValue(field)]),
+      );
+      blank[REPEAT_SOURCE_KEY] = option.value;
+      if (seedField) blank[seedField.id] = option.label;
+      return applyRepeatRowDerivedState(fields, blank, referenceLists);
+    });
+    // Also detect reordering/removals (kept rows whose source dropped out of the list).
+    if (!changed) {
+      changed = rows.some((row, index) => row[REPEAT_SOURCE_KEY] !== nextRows[index]?.[REPEAT_SOURCE_KEY]);
+    }
+    if (changed) answer(nextRows);
+    // Re-sync only when the resolved source list changes — not on every row edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceKey]);
+
+  return (
+    <View style={{ gap: 8 }}>
+      {options.length === 0 ? (
+        <Text style={{ color: "#8aa79b", fontSize: 12 }}>
+          Answer the source question (or choose records) above to create the rows to fill here.
+        </Text>
+      ) : null}
+      {renderRepeatGroup(question, value, answer, referenceLists)}
+    </View>
+  );
+}
+
 function renderRepeatGroup(
   question: MobileQuestion,
   value: unknown,
@@ -1852,7 +1925,10 @@ function applyLabelOverrides(options: SimpleOption[], labels?: string[]): Simple
 
 /** Resolves matrix/grid rows from a data source when the builder set one (dataset / linked records /
  * another question), or returns null to fall back to the typed-in rows. */
-function matrixDynamicRows(
+/** Resolves the live option list for a question whose rows/items come from a source (a dataset,
+ * another question's answers, or linked records). Returns null for the manual ("static") source.
+ * Shared by matrix rows and source-driven repeat groups. */
+function selectionSourceOptions(
   question: MobileQuestion,
   allResponses: Map<string, unknown>,
   referenceLists: MobileReferenceList[],
@@ -1877,7 +1953,7 @@ function renderMatrix(
   const translation = activeLanguage && question.translations ? question.translations[activeLanguage] : undefined;
   // Rows can be pulled live from another question, a dataset, or linked records (the builder stores
   // that as the question's `selection`); otherwise use the typed-in rows.
-  const dynamicRows = matrixDynamicRows(question, allResponses ?? new Map(), referenceLists ?? []);
+  const dynamicRows = selectionSourceOptions(question, allResponses ?? new Map(), referenceLists ?? []);
   const rows = dynamicRows ?? applyLabelOverrides(base.rows, translation?.matrixRows);
   const columns = applyLabelOverrides(base.columns, translation?.matrixColumns);
   const multi = base.multi;
