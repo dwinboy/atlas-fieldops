@@ -274,6 +274,12 @@ export function SelectionConfigurator({
     selection.source === "record" && selection.recordSource === "form" && selection.recordFormId && resolveFormFields
       ? resolveFormFields(selection.recordFormId)
       : [];
+  // Column suggestions for filter inputs: dataset columns, or the source form's fields for records.
+  const filterColumnSuggestions =
+    selection.source === "record" && selection.recordSource === "form"
+      ? sourceFormFields.map((sourceField) => sourceField.variable)
+      : datasetColumns;
+  const filterColumnsListId = `filter-cols-${field.id}`;
   const toggleLoadColumn = (variable: string) => {
     const current = new Set(selection.loadColumns ?? []);
     if (current.has(variable)) current.delete(variable);
@@ -878,6 +884,13 @@ export function SelectionConfigurator({
             (the basis for parent-child relational lookups).
           </p>
           <div className="mt-3 space-y-2">
+            {filterColumnSuggestions.length ? (
+              <datalist id={filterColumnsListId}>
+                {filterColumnSuggestions.map((column) => (
+                  <option key={column} value={column} />
+                ))}
+              </datalist>
+            ) : null}
             {filters.length === 0 ? (
               <p className="text-xs text-muted-foreground">No filters — all records are shown.</p>
             ) : null}
@@ -886,6 +899,7 @@ export function SelectionConfigurator({
               return (
                 <div className="grid items-center gap-2 lg:grid-cols-[1fr_auto_1fr_auto]" key={index}>
                   <Input
+                    list={filterColumnSuggestions.length ? filterColumnsListId : undefined}
                     onChange={(event) => updateFilter(index, { column: event.target.value })}
                     placeholder="column (e.g. parent, region)"
                     value={filter.column}

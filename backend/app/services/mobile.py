@@ -61,6 +61,10 @@ from app.schemas.mobile import (
 from app.services.collection import CollectionNotFoundError, SubmissionService
 from app.services.geometry import find_overlaps, overlap_ratio, polygon_from_geojson, union_geometries
 
+# Newest linked records synced offline per referenced source form (capped per-form so one busy form
+# can't crowd another out of the offline index).
+LINKED_RECORDS_PER_FORM = 2000
+
 _ATTACHMENT_MEDIA_TYPES = {
     "Photo": "photo",
     "Audio": "audio",
@@ -1746,41 +1750,44 @@ class MobileService:
         if not form_uuids:
             return []
 
-        result = await self.session.execute(
-            select(Submission)
-            .where(
-                Submission.organization_id == organization_id,
-                Submission.form_id.in_(form_uuids),
-                Submission.deleted_at.is_(None),
-            )
-            .order_by(Submission.sync_received_at.desc())
-            .limit(2000)
-        )
+        # Cap per referenced form (not globally) so a busy form can't starve another form's records
+        # out of the offline index — each referenced form contributes its own newest records.
         records: list[MobileLinkedRecordRead] = []
-        for submission in result.scalars():
-            responses = (submission.payload_json or {}).get("_mobile_responses")
-            data: dict[str, Any] = {}
-            label = ""
-            if isinstance(responses, list):
-                for response in responses:
-                    if not isinstance(response, dict):
-                        continue
-                    variable = str(response.get("variableName") or response.get("questionId") or "")
-                    value = response.get("value")
-                    if variable:
-                        data[variable] = value
-                    if not label and isinstance(value, str) and value.strip():
-                        label = value.strip()
-            records.append(
-                MobileLinkedRecordRead(
-                    id=submission.client_submission_id,
-                    form_id=str(submission.form_id),
-                    label=label or submission.client_submission_id,
-                    data=data,
-                    verified=submission.status in {"approved", "verified", "accepted"},
-                    created_at=submission.sync_received_at,
+        for form_uuid in form_uuids:
+            result = await self.session.execute(
+                select(Submission)
+                .where(
+                    Submission.organization_id == organization_id,
+                    Submission.form_id == form_uuid,
+                    Submission.deleted_at.is_(None),
                 )
+                .order_by(Submission.sync_received_at.desc())
+                .limit(LINKED_RECORDS_PER_FORM)
             )
+            for submission in result.scalars():
+                responses = (submission.payload_json or {}).get("_mobile_responses")
+                data: dict[str, Any] = {}
+                label = ""
+                if isinstance(responses, list):
+                    for response in responses:
+                        if not isinstance(response, dict):
+                            continue
+                        variable = str(response.get("variableName") or response.get("questionId") or "")
+                        value = response.get("value")
+                        if variable:
+                            data[variable] = value
+                        if not label and isinstance(value, str) and value.strip():
+                            label = value.strip()
+                records.append(
+                    MobileLinkedRecordRead(
+                        id=submission.client_submission_id,
+                        form_id=str(submission.form_id),
+                        label=label or submission.client_submission_id,
+                        data=data,
+                        verified=submission.status in {"approved", "verified", "accepted"},
+                        created_at=submission.sync_received_at,
+                    )
+                )
         return records
 
     async def returned_submissions(self, principal: CurrentPrincipal) -> list[MobileSubmissionRead]:
