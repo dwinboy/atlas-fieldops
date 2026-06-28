@@ -19,6 +19,7 @@ import { SignatureCapture, type SignatureResult } from "@/components/SignatureCa
 import { DateTimeField } from "@/components/ui";
 import type { FormValidationIssue } from "@/forms/formValidationService";
 import { evaluateQuestionLogicStates } from "@/forms/logicEngine";
+import { pipeText } from "@/forms/pipeText";
 import { evaluateFilter, isCascadeBlocked, resolveQuestionOptions, type SimpleOption } from "@/forms/optionResolver";
 import { localDatabase } from "@/storage/localDatabase";
 import type { GPSResult } from "@/hooks/useGPS";
@@ -54,6 +55,8 @@ type QuestionRendererProps = {
   referenceLists?: MobileReferenceList[];
   /** Active language name; when it matches a question translation, the label/hint are localized. */
   activeLanguage?: string;
+  /** Current answers keyed by variable name, for piping `${variable}` tokens into the label/hint. */
+  variableValues?: Map<string, unknown>;
 };
 
 /** Resolves a question's label and help text for the active language, falling back to the base text. */
@@ -77,10 +80,16 @@ export function QuestionRenderer({
   allResponses,
   referenceLists,
   activeLanguage,
+  variableValues,
 }: QuestionRendererProps) {
   if (!visible || question.type === "Hidden") return null;
 
-  const localized = localizedQuestionText(question, activeLanguage);
+  const baseText = localizedQuestionText(question, activeLanguage);
+  const pipeValues = variableValues ?? new Map<string, unknown>();
+  const localized = {
+    label: pipeText(baseText.label, pipeValues),
+    helpText: pipeText(baseText.helpText, pipeValues) || null,
+  };
 
   const hasError = issues.some((i) => i.questionId === question.id && i.severity === "Error");
   const hasWarning = issues.some((i) => i.questionId === question.id && i.severity === "Warning");
@@ -1716,6 +1725,11 @@ function renderRepeatGroup(
           {(() => {
             const rowResponses = new Map(Object.entries(row));
             const rowLogic = evaluateQuestionLogicStates(fields, rowResponses);
+            // Row answers keyed by variable name, so a child label can pipe in a sibling answer
+            // within the same row (e.g. "How old is ${member_name}?").
+            const rowVariableValues = new Map<string, unknown>(
+              fields.map((field) => [field.variableName, row[field.id] ?? row[field.variableName]]),
+            );
             const visibleFields = fields.filter((field) => field.type !== "Hidden" && rowLogic[field.id]?.visible !== false);
             return (
               <>
@@ -1732,7 +1746,7 @@ function renderRepeatGroup(
           {visibleFields.map((field) => (
             <View key={field.id} style={{ gap: 4 }}>
               <Text style={{ color: "#49635a", fontSize: 12, fontWeight: "700" }}>
-                {field.label}{rowLogic[field.id]?.required ? " *" : ""}
+                {pipeText(field.label, rowVariableValues)}{rowLogic[field.id]?.required ? " *" : ""}
               </Text>
               {renderRepeatFieldInput(
                 field,

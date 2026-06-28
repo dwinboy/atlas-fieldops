@@ -154,6 +154,12 @@ export default function FormFillScreen() {
     [formVersion],
   );
 
+  // Answers keyed by variable name so question labels/hints can pipe in `${variable}` tokens.
+  const variableValues = useMemo(
+    () => new Map<string, unknown>(allQuestions.map((q) => [q.variableName, allResponses.get(q.id)])),
+    [allQuestions, allResponses],
+  );
+
   useEffect(() => {
     if (!draftId || !draft) return;
     let didUpdate = false;
@@ -597,6 +603,7 @@ export default function FormFillScreen() {
                 allResponses={allResponses}
                 referenceLists={referenceLists}
                 activeLanguage={activeLanguage}
+                variableValues={variableValues}
               />
             );
           })

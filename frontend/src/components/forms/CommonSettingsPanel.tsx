@@ -60,7 +60,14 @@ export function CommonSettingsPanel({
                               </div>
                               <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_1fr]">
                                 <label className="block text-sm font-semibold">
-                                  Question label
+                                  <span className="inline-flex items-center gap-1">
+                                    Question label
+                                    <HelpHint label="About piping answers" title="Pipe in earlier answers">
+                                      Insert an earlier answer into this question by typing its variable in{" "}
+                                      <code>{"${ }"}</code> — e.g. <code>{"How old is ${respondent_name}?"}</code>.
+                                      Inside a repeat group it shows that row’s own answer. Works in the label and hint.
+                                    </HelpHint>
+                                  </span>
                                   <Input
                                     className="mt-2"
                                     onChange={(event) => {
