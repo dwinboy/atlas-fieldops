@@ -106,6 +106,7 @@ import { BeneficiarySettingsPanel } from "@/components/forms/BeneficiarySettings
 import { GovernanceSettingsPanel } from "@/components/forms/GovernanceSettingsPanel";
 import { IndicatorSettingsPanel } from "@/components/forms/IndicatorSettingsPanel";
 import { PrivacySettingsPanel } from "@/components/forms/PrivacySettingsPanel";
+import { ReferenceSettingsPanel } from "@/components/forms/ReferenceSettingsPanel";
 import { focusTabApplies, type FocusSettingsTab } from "@/components/forms/focusSettingsTabs";
 import {
   defaultAssignmentPlan,
@@ -9548,139 +9549,17 @@ export function DynamicForms({
                           ) : null}
 
                           {focusSettingsTab === "reference" && fieldSupportsSelection(selectedField.type) ? (
-                            <section className="mt-4 rounded-lg border bg-panel p-4">
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-2">
-                                  <Database aria-hidden="true" className="text-primary" size={16} />
-                                  <h3 className="text-sm font-semibold">Selectable answers &amp; reference data</h3>
-                                </div>
-                                <HelpHint label="About selectable answers" title="Selectable answers">
-                                  Choose where this question’s answers come from — a fixed list, a shared
-                                  dataset (with columns, filters, and cascading), or live records from
-                                  entities or another form. This drives how the field officer searches and picks.
-                                </HelpHint>
-                              </div>
-                              <div className="mt-4">
-                                <SelectionConfigurator
-                                  availableDatasets={datasetsQuery.data ?? []}
-                                  field={selectedField}
-                                  forms={(backendFormsQuery.data ?? [])
-                                    .filter((form) => form.id !== selectedForm.id)
-                                    .map((form) => ({ id: form.id, name: form.name }))}
-                                  onChange={(selection) =>
-                                    updateSelectedForm(
-                                      updateField(selectedForm, selectedField.id, { selection }),
-                                    )
-                                  }
-                                  onUploadDataset={
-                                    token && !isPreview
-                                      ? async (file) => {
-                                          const summary = await uploadFormDataset(token, selectedForm.id, file);
-                                          void datasetsQuery.refetch();
-                                          return summary;
-                                        }
-                                      : undefined
-                                  }
-                                  resolveFormFields={(formId) => {
-                                    const sourceForm = (backendFormsQuery.data ?? []).find((item) => item.id === formId);
-                                    if (!sourceForm) return [];
-                                    return persistedFormToLocal(sourceForm).fields.map((sourceField) => ({
-                                      variable: sourceField.variableName ?? sourceField.id,
-                                      label: sourceField.label,
-                                    }));
-                                  }}
-                                  siblings={selectedForm.fields.filter((item) => item.id !== selectedField.id)}
-                                />
-                              </div>
-                              <details className="mt-4 rounded-md border bg-background p-3">
-                                <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">
-                                  Advanced reference-list bindings (legacy)
-                                </summary>
-                              <div className="mt-3 flex items-center justify-end gap-2">
-                                <Button onClick={() => addReferenceBinding(selectedField)} size="sm" type="button" variant="secondary">
-                                  Bind list
-                                </Button>
-                              </div>
-                              <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                                <label className="text-sm font-semibold">
-                                  Reference list name
-                                  <Input
-                                    className="mt-2"
-                                    onChange={(event) =>
-                                      updateSelectedForm(
-                                        updateField(selectedForm, selectedField.id, {
-                                          appearance: fieldAppearanceWithMetadata(selectedField, "reference-list", event.target.value),
-                                        }),
-                                      )
-                                    }
-                                    placeholder="districts, villages, crops, facilities"
-                                    value={fieldMetadataValue(selectedField, "reference-list")}
-                                  />
-                                </label>
-                                <label className="text-sm font-semibold">
-                                  Cascading parent question
-                                  <Select
-                                    className="mt-2"
-                                    onChange={(event) =>
-                                      updateSelectedForm(
-                                        updateField(selectedForm, selectedField.id, {
-                                          appearance: fieldAppearanceWithMetadata(selectedField, "reference-parent", event.target.value),
-                                        }),
-                                      )
-                                    }
-                                    value={fieldMetadataValue(selectedField, "reference-parent")}
-                                  >
-                                    <option value="">No parent</option>
-                                    {selectedForm.fields.filter((field) => field.id !== selectedField.id).map((field) => (
-                                      <option key={field.id} value={field.variableName ?? field.id}>
-                                        {field.label}
-                                      </option>
-                                    ))}
-                                  </Select>
-                                </label>
-                                <label className="text-sm font-semibold">
-                                  New value policy
-                                  <Select
-                                    className="mt-2"
-                                    onChange={(event) =>
-                                      updateSelectedForm(
-                                        updateField(selectedForm, selectedField.id, {
-                                          appearance: fieldAppearanceWithMetadata(selectedField, "new-reference-policy", event.target.value),
-                                        }),
-                                      )
-                                    }
-                                    value={fieldMetadataValue(selectedField, "new-reference-policy")}
-                                  >
-                                    <option value="">Do not allow new values</option>
-                                    <option value="allow_other">Allow Other</option>
-                                    <option value="allow_with_review">Allow Other, require review</option>
-                                    <option value="block_unknown">Block unknown value</option>
-                                  </Select>
-                                </label>
-                                {[
-                                  ["reference-offline", "Download list for offline mobile"],
-                                  ["searchable-reference", "Searchable list on mobile"],
-                                  ["reference-version-lock", "Lock list version after publishing"],
-                                ].map(([tag, label]) => (
-                                  <label className="flex items-center gap-2 text-sm font-semibold" key={tag}>
-                                    <input
-                                      checked={hasFieldTag(selectedField, tag)}
-                                      className="h-4 w-4"
-                                      onChange={(event) =>
-                                        updateSelectedForm(
-                                          updateField(selectedForm, selectedField.id, {
-                                            appearance: fieldAppearanceWithTag(selectedField, tag, event.target.checked),
-                                          }),
-                                        )
-                                      }
-                                      type="checkbox"
-                                    />
-                                    {label}
-                                  </label>
-                                ))}
-                              </div>
-                              </details>
-                            </section>
+                            <ReferenceSettingsPanel
+                              field={selectedField}
+                              form={selectedForm}
+                              onUpdateForm={updateSelectedForm}
+                              datasets={datasetsQuery.data ?? []}
+                              otherForms={backendFormsQuery.data ?? []}
+                              token={token}
+                              isPreview={isPreview}
+                              onRefetchDatasets={() => void datasetsQuery.refetch()}
+                              onAddReferenceBinding={addReferenceBinding}
+                            />
                           ) : null}
 
                           {focusSettingsTab === "evidence" && fieldSupportsEvidence(selectedField.type) ? (
