@@ -4413,3 +4413,312 @@ def test_form_schema_preserves_builder_field_config() -> None:
     field = FormSchema(**raw).model_dump(mode="json")["sections"][0]["fields"][0]
     for key in ("logic", "selection", "subform", "lookup", "gps"):
         assert key in field, f"{key} was dropped on save"
+
+
+@pytest.mark.asyncio
+async def test_data_collection_flow_with_datasets_records_and_matrix_source() -> None:
+    """End-to-end business flow exercising the builder features together:
+
+    A field officer collects a "Crop visit" using (1) a static dropdown with custom answer
+    codes, (2) a farmer picked from another form's records (linked records), (3) crops chosen
+    from an uploaded dataset, and (4) a matrix whose rows come from the crops question. We
+    assert the builder's setup reaches the device via sync_package, and that the submission
+    captures every answer.
+    """
+    from app.models.collection import OfficerAssignment
+    from app.services.collection import FormService
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        org_id = uuid4()
+        field_user_id = uuid4()
+        manager_user_id = uuid4()
+        project_id = uuid4()
+        survey_id = uuid4()
+        registry_form_id = uuid4()
+        registry_version_id = uuid4()
+        visit_form_id = uuid4()
+        officer_id = uuid4()
+        now = datetime.now(UTC)
+
+        session.add_all(
+            [
+                Organization(id=org_id, name="Agri Org", slug="agri-org"),
+                User(id=field_user_id, email="officer@agri.org", full_name="Field Officer", password_hash="x"),
+                User(id=manager_user_id, email="manager@agri.org", full_name="Manager", password_hash="x"),
+                FieldOfficerProfile(id=officer_id, organization_id=org_id, user_id=field_user_id, is_active=True),
+                Project(id=project_id, organization_id=org_id, name="Crop Program", slug="crop-program", status="active"),
+                Survey(
+                    id=survey_id,
+                    organization_id=org_id,
+                    project_id=project_id,
+                    created_by_user_id=manager_user_id,
+                    owner_user_id=manager_user_id,
+                    title="Crop Program",
+                    code="CROP",
+                    survey_type="monitoring",
+                    status="active",
+                ),
+                # Source form for linked records: a farmer registry.
+                DataForm(
+                    id=registry_form_id,
+                    organization_id=org_id,
+                    project_id=project_id,
+                    survey_id=survey_id,
+                    created_by_user_id=manager_user_id,
+                    name="Farmer Registry",
+                    slug="farmer-registry",
+                    status="published",
+                    current_version=1,
+                ),
+                DataFormVersion(
+                    id=registry_version_id,
+                    organization_id=org_id,
+                    form_id=registry_form_id,
+                    version=1,
+                    schema_json={
+                        "sections": [
+                            {
+                                "id": "identity",
+                                "title": "Identity",
+                                "fields": [
+                                    {"id": "r_name", "variable_name": "farmer_name", "type": "text", "label": "Farmer Name", "required": True},
+                                    {"id": "r_nid", "variable_name": "national_id", "type": "text", "label": "National ID"},
+                                ],
+                            }
+                        ]
+                    },
+                    offline_compatible=True,
+                    published_at=now,
+                ),
+                # The visit form is created now so a dataset can be uploaded against it; its
+                # version (referencing the dataset slug) is added afterwards.
+                DataForm(
+                    id=visit_form_id,
+                    organization_id=org_id,
+                    project_id=project_id,
+                    survey_id=survey_id,
+                    created_by_user_id=manager_user_id,
+                    name="Crop Visit",
+                    slug="crop-visit",
+                    status="published",
+                    current_version=1,
+                ),
+            ]
+        )
+        await session.commit()
+
+        principal = CurrentPrincipal(
+            user_id=str(field_user_id),
+            organization_id=str(org_id),
+            email="officer@agri.org",
+            full_name="Field Officer",
+            organization_slug="agri-org",
+            organization_name="Agri Org",
+            roles=["field_officer"],
+            permissions=["submission.create", "sync.mobile"],
+            scope_type="own",
+        )
+
+        # 1) Builder uploads a crops dataset (name + code) against the visit form.
+        dataset = await FormService(session).upload_form_dataset(
+            organization_id=org_id,
+            form_id=visit_form_id,
+            actor_user_id=manager_user_id,
+            filename="crops.csv",
+            content=b"name,code\nMaize,maize\nRice,rice\nBeans,beans\n",
+            value_column="code",
+            display_column="name",
+        )
+        await session.commit()
+        crops_slug = dataset["slug"]
+        assert dataset["row_count"] == 3
+
+        # 2) Builder publishes the visit form combining all four features.
+        session.add(
+            DataFormVersion(
+                id=uuid4(),
+                organization_id=org_id,
+                form_id=visit_form_id,
+                version=1,
+                schema_json={
+                    "sections": [
+                        {
+                            "id": "visit",
+                            "title": "Visit",
+                            "fields": [
+                                # (1) Static dropdown with custom answer codes.
+                                {
+                                    "id": "q_region",
+                                    "variable_name": "region",
+                                    "type": "select",
+                                    "label": "Region",
+                                    "options": [
+                                        {"label": "Kano", "value": "KN"},
+                                        {"label": "Lagos", "value": "LG"},
+                                    ],
+                                },
+                                # (2) Farmer chosen from the registry form's records.
+                                {
+                                    "id": "q_farmer",
+                                    "variable_name": "farmer",
+                                    "type": "lookup",
+                                    "label": "Farmer",
+                                    "selection": {
+                                        "source": "record",
+                                        "recordSource": "form",
+                                        "recordFormId": str(registry_form_id),
+                                        "displayColumn": "farmer_name",
+                                        "valueColumn": "national_id",
+                                    },
+                                },
+                                # (3) Crops grown, from the uploaded dataset.
+                                {
+                                    "id": "q_crops",
+                                    "variable_name": "crops",
+                                    "type": "multiselect",
+                                    "label": "Crops grown",
+                                    "selection": {
+                                        "source": "dataset",
+                                        "datasetId": crops_slug,
+                                        "displayColumn": "name",
+                                        "valueColumn": "code",
+                                        "allowMultiple": True,
+                                    },
+                                },
+                                # (4) Matrix whose rows come from the crops question.
+                                {
+                                    "id": "q_rating",
+                                    "variable_name": "rating",
+                                    "type": "matrix_single",
+                                    "label": "Rate each crop",
+                                    "matrix": {"rows": [], "columns": ["Poor", "Good"]},
+                                    "selection": {"source": "question", "fromQuestionVariable": "crops"},
+                                },
+                            ],
+                        }
+                    ]
+                },
+                offline_compatible=True,
+                published_at=now,
+            )
+        )
+        # Officer is assigned to the visit form so it syncs to the device.
+        session.add(
+            OfficerAssignment(
+                organization_id=org_id,
+                officer_id=officer_id,
+                project_id=project_id,
+                form_id=visit_form_id,
+                is_active=True,
+            )
+        )
+        await session.commit()
+
+        # 3) An existing farmer was registered earlier (becomes a linked record).
+        await MobileService(session).upload_submission(
+            principal=principal,
+            payload=MobileSubmissionUpload(
+                local_id="registry-0001",
+                project_id=str(project_id),
+                form_id=str(registry_form_id),
+                form_version_id=str(registry_version_id),
+                responses=[
+                    {"questionId": "r_name", "variableName": "farmer_name", "value": "Amina Yusuf", "updatedAt": now},
+                    {"questionId": "r_nid", "variableName": "national_id", "value": "NID-1001", "updatedAt": now},
+                ],
+                location={"latitude": 12.0, "longitude": 8.5, "accuracy": 5, "timestamp": now},
+                device_id="android-test",
+                app_version="1.0.0-test",
+                created_at=now,
+                submitted_at=now,
+            ),
+        )
+        await session.commit()
+
+        # ---- The device pulls everything the builder configured. ----
+        package = await MobileService(session).sync_package(principal)
+
+        visit_version = next(v for v in package.form_versions if v.form_id == str(visit_form_id))
+        questions = {q["id"]: q for q in visit_version.sections[0]["questions"]}
+
+        # (1) Custom answer codes survive to the device.
+        region_options = {opt["label"]: opt["value"] for opt in questions["q_region"]["options"]}
+        assert region_options == {"Kano": "KN", "Lagos": "LG"}
+
+        # (2) Record source carries display/value columns and the target form.
+        farmer_sel = questions["q_farmer"]["selection"]
+        assert farmer_sel["source"] == "record"
+        assert farmer_sel["recordFormId"] == str(registry_form_id)
+        assert farmer_sel["displayColumn"] == "farmer_name"
+        assert farmer_sel["valueColumn"] == "national_id"
+
+        # (3) Dataset selection points at the uploaded list, which is in the package.
+        crops_sel = questions["q_crops"]["selection"]
+        assert crops_sel["source"] == "dataset"
+        assert crops_sel["datasetId"] == crops_slug
+        crops_list = next(rl for rl in package.reference_lists if rl.id == crops_slug)
+        assert {v["code"] for v in crops_list.values} == {"maize", "rice", "beans"}
+
+        # (4) Matrix rows resolve to the crops question id.
+        rating_sel = questions["q_rating"]["selection"]
+        assert rating_sel["source"] == "question"
+        assert rating_sel["fromQuestionId"] == "q_crops"
+
+        # The registered farmer is available offline as a linked record with its columns.
+        farmer_record = next(r for r in package.linked_records if r.form_id == str(registry_form_id))
+        assert farmer_record.data["national_id"] == "NID-1001"
+        assert farmer_record.data["farmer_name"] == "Amina Yusuf"
+
+        # ---- The officer collects a visit; the submission must capture every answer. ----
+        visit_version_id = visit_version.id
+        await MobileService(session).upload_submission(
+            principal=principal,
+            payload=MobileSubmissionUpload(
+                local_id="visit-0001",
+                project_id=str(project_id),
+                form_id=str(visit_form_id),
+                form_version_id=visit_version_id,
+                responses=[
+                    {"questionId": "q_region", "variableName": "region", "value": "KN", "updatedAt": now},
+                    {"questionId": "q_farmer", "variableName": "farmer", "value": "NID-1001", "updatedAt": now},
+                    {"questionId": "q_crops", "variableName": "crops", "value": ["maize", "rice"], "updatedAt": now},
+                    {
+                        "questionId": "q_rating",
+                        "variableName": "rating",
+                        "value": {"maize": "Good", "rice": "Poor"},
+                        "updatedAt": now,
+                    },
+                ],
+                location={"latitude": 12.0, "longitude": 8.5, "accuracy": 5, "timestamp": now},
+                device_id="android-test",
+                app_version="1.0.0-test",
+                created_at=now,
+                submitted_at=now,
+            ),
+        )
+        await session.commit()
+
+        submissions = await SubmissionService(session).list_submissions(
+            organization_id=org_id,
+            status=None,
+            actor_user_id=field_user_id,
+            scope_type="own",
+        )
+        visit = next(s for s in submissions if s.source_submission_id == "visit-0001")
+        payload = visit.payload_json
+        # Every answer landed under both the variable name and the question id.
+        assert payload["region"] == "KN"
+        assert payload["farmer"] == "NID-1001"
+        assert payload["crops"] == ["maize", "rice"]
+        assert payload["rating"] == {"maize": "Good", "rice": "Poor"}
+        assert payload["q_crops"] == ["maize", "rice"]
+        assert {r["questionId"] for r in payload["_mobile_responses"]} == {
+            "q_region",
+            "q_farmer",
+            "q_crops",
+            "q_rating",
+        }
