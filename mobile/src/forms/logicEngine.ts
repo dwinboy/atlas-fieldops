@@ -1,4 +1,4 @@
-import { evaluateExpression } from "@/forms/expressionEngine";
+import { evaluateExpressionValue } from "@/forms/expressionEngine";
 import type { MobileFormVersion, MobileLogicRule, MobileQuestion, MobileSubmission } from "@/models/contracts";
 
 export type QuestionLogicState = {
@@ -134,7 +134,7 @@ function applyQuestionRules(
     if (rule.action === "Calculate") {
       // Calculate rules recompute unconditionally — `operator`/`sourceQuestionId`
       // are placeholders from rule generation, not a visibility condition.
-      target.calculatedValue = evaluateExpression(String(rule.value ?? ""), variableValues);
+      target.calculatedValue = evaluateExpressionValue(String(rule.value ?? ""), variableValues);
       continue;
     }
     const passes = rulePasses(rule, responses);

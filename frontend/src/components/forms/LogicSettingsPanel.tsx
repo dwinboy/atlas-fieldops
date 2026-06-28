@@ -299,6 +299,45 @@ export function LogicSettingsPanel({
                                     </button>
                                   ))}
                                 </div>
+                                <div className="mt-3">
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-xs font-semibold">
+                                      Calculation examples
+                                    </p>
+                                    <HelpHint label="About calculations" title="Calculations">
+                                      Auto-compute a value from other answers. Functions:{" "}
+                                      <code>sum, count, avg, min, max, round, abs, if, coalesce, concat, today, age, datediff</code>.
+                                      Pick an example to insert it as a “Calculate value” rule, then edit the variables.
+                                    </HelpHint>
+                                  </div>
+                                  <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                                    {(
+                                      [
+                                        ["Age from DOB", "age(${date_of_birth})"],
+                                        ["Conditional score", "if(${score} >= 50, 'Pass', 'Fail')"],
+                                        ["Total of items", "sum(${item_a}, ${item_b})"],
+                                        ["Round to 1 dp", "round(${amount}, 1)"],
+                                        ["Full name", "concat(${first_name}, ' ', ${last_name})"],
+                                        ["Days since visit", "datediff(today(), ${last_visit})"],
+                                      ] as [string, string][]
+                                    ).map(([label, expression]) => (
+                                      <button
+                                        className="rounded-md border border-dashed bg-panel px-2.5 py-2 text-left text-xs transition hover:border-primary/40 hover:bg-primary/10"
+                                        key={label}
+                                        onClick={() => {
+                                          setAdvancedLogicKind("calculation");
+                                          setAdvancedLogicExpression(expression);
+                                        }}
+                                        type="button"
+                                      >
+                                        <span className="block font-semibold">{label}</span>
+                                        <span className="mt-1 block truncate font-mono text-muted-foreground">
+                                          {expression}
+                                        </span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
                               </div>
                               {field.logic?.length ? (
                                 <div className="mt-3 space-y-2">
