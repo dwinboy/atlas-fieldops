@@ -1,3 +1,5 @@
+// Mirrors mobile/src/forms/expressionEngine.ts so the in-builder simulator computes calculations
+// exactly as the mobile app does. Keep the two in sync when changing the formula grammar.
 type EvalResult = number | number[] | string | boolean;
 
 type OpValue =

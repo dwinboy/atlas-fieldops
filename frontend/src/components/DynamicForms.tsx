@@ -74,6 +74,7 @@ import {
 } from "@/components/forms/ChoiceOptionsEditor";
 import { CrossFieldRuleBuilder } from "@/components/forms/CrossFieldRuleBuilder";
 import { FieldInputPreview } from "@/components/forms/FieldInputPreview";
+import { FormPreviewTester } from "@/components/forms/FormPreviewTester";
 import {
   createDefaultFormControls,
   normalizeFormControls,
@@ -334,6 +335,7 @@ export function DynamicForms({
   const [builderFocusPanel, setBuilderFocusPanel] =
     useState<BuilderFocusPanel>("build");
   const [builderFocusMode, setBuilderFocusMode] = useState(true);
+  const [showPreviewTester, setShowPreviewTester] = useState(false);
   const [collapsedLibraryGroups, setCollapsedLibraryGroups] = useState<
     Record<string, boolean>
   >({
@@ -6208,6 +6210,16 @@ export function DynamicForms({
                           Types
                         </Button>
                         <Button
+                          disabled={!selectedForm}
+                          onClick={() => setShowPreviewTester(true)}
+                          size="sm"
+                          type="button"
+                          variant="secondary"
+                        >
+                          <Eye aria-hidden="true" />
+                          Preview &amp; test
+                        </Button>
+                        <Button
                           onClick={() => openBuilderAssistant("section")}
                           size="sm"
                           type="button"
@@ -6354,17 +6366,29 @@ export function DynamicForms({
                               {activePageFields.length} on this page
                             </p>
                           </div>
-                          {!questionFirstMode ? (
+                          <div className="flex items-center gap-1">
                             <Button
-                              aria-label="Show advanced builder tools"
-                              onClick={() => setBuilderFocusMode(false)}
-                              size="icon"
+                              disabled={!selectedForm}
+                              onClick={() => setShowPreviewTester(true)}
+                              size="sm"
                               type="button"
-                              variant="ghost"
+                              variant="secondary"
                             >
-                              <PanelsTopLeft aria-hidden="true" />
+                              <Eye aria-hidden="true" />
+                              Test
                             </Button>
-                          ) : null}
+                            {!questionFirstMode ? (
+                              <Button
+                                aria-label="Show advanced builder tools"
+                                onClick={() => setBuilderFocusMode(false)}
+                                size="icon"
+                                type="button"
+                                variant="ghost"
+                              >
+                                <PanelsTopLeft aria-hidden="true" />
+                              </Button>
+                            ) : null}
+                          </div>
                         </div>
                         <div
                           className={cn(
@@ -8455,6 +8479,12 @@ export function DynamicForms({
           ) : null}
         </div>
       )}
+      {showPreviewTester && selectedForm ? (
+        <FormPreviewTester
+          form={selectedForm}
+          onClose={() => setShowPreviewTester(false)}
+        />
+      ) : null}
     </section>
   );
 }
