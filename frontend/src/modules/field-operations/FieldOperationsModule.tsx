@@ -29,6 +29,7 @@ import { AccessDenied, isPermissionError } from "@/components/ui/access-denied";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { KpiShard } from "@/components/ui/kpi-shard";
 import { Button } from "@/components/ui/button";
+import { EmptyMini } from "@/components/ui/empty-mini";
 import { ActionMenu, type ActionMenuItem } from "@/components/ui/dropdown-menu";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
@@ -837,9 +838,11 @@ function OperationalActivityDetail({
             ))}
           </div>
         ) : (
-          <p className="mt-3 rounded-lg border border-dashed bg-panel p-3 text-xs text-muted-foreground">
-            No evidence has been attached yet. For deliveries, trainings, meetings, and incidents, ask the field officer to attach a photo, signature, or file evidence from the mobile app.
-          </p>
+          <EmptyMini
+            className="mt-3"
+            icon={FileText}
+            label="No evidence has been attached yet. For deliveries, trainings, meetings, and incidents, ask the field officer to attach a photo, signature, or file evidence from the mobile app."
+          />
         )}
       </div>
     </section>
@@ -3647,9 +3650,11 @@ Password:          ${lastInviteCredentials.password}`}
                   </div>
                 </div>
               ) : (
-                <p className="mt-4 rounded-lg border border-dashed bg-panel p-3 text-xs text-muted-foreground">
-                  {activityReportQuery.isLoading ? "Generating report..." : "Report data is not available yet."}
-                </p>
+                <EmptyMini
+                  className="mt-4"
+                  icon={FileText}
+                  label={activityReportQuery.isLoading ? "Generating report…" : "Report data is not available yet."}
+                />
               )}
             </div>
           </SectionPanel>
@@ -3713,9 +3718,10 @@ Password:          ${lastInviteCredentials.password}`}
                   </div>
                 ))
               ) : (
-                <p className="rounded-lg border border-dashed bg-background p-3 text-xs text-muted-foreground">
-                  No pending movement approvals or GPS exceptions right now.
-                </p>
+                <EmptyMini
+                  icon={MapPinned}
+                  label="No pending movement approvals or GPS exceptions right now."
+                />
               )}
             </div>
           </div>
@@ -4440,9 +4446,10 @@ Password:          ${lastInviteCredentials.password}`}
                     })}
                   </div>
                 ) : (
-                  <p className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                    No cases assigned to this assignment yet.
-                  </p>
+                  <EmptyMini
+                    icon={ClipboardList}
+                    label="No cases assigned to this assignment yet."
+                  />
                 )}
                 <Button
                   onClick={() => router.push("/beneficiaries")}

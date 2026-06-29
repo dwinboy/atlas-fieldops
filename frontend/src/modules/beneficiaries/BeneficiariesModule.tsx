@@ -24,6 +24,7 @@ import { DataTable, type TableColumn } from "@/components/DataTable";
 import { statusTone as canonicalStatusTone } from "@/lib/statusTones";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyMini } from "@/components/ui/empty-mini";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal, ModalBody, ModalFooter } from "@/components/ui/modal";
@@ -1284,11 +1285,10 @@ function EntitySidePanel({
   >("Overview");
   if (!entity) {
     return (
-      <aside className="rounded-xl border border-dashed bg-panel p-4 text-sm text-muted-foreground">
-        Import entities into a project or collect them through a
-        project-linked mobile registration form to see profile, records,
-        duplicate status, map readiness, and mobile sync context.
-      </aside>
+      <EmptyMini
+        icon={UsersRound}
+        label="Import entities into a project or collect them through a project-linked mobile registration form to see profile, records, duplicate status, map readiness, and mobile sync context."
+      />
     );
   }
 
@@ -1459,9 +1459,10 @@ function EntitySidePanel({
             </div>
           ))}
           {!duplicates.length ? (
-            <p className="rounded-lg border border-dashed bg-background p-3 text-sm text-muted-foreground">
-              No duplicate groups are waiting for review.
-            </p>
+            <EmptyMini
+              icon={GitBranch}
+              label="No duplicate groups are waiting for review."
+            />
           ) : null}
         </div>
       </div>
@@ -1831,9 +1832,7 @@ function HierarchyGroup({
           <p className="text-xs text-muted-foreground">Loading hierarchy…</p>
         ) : null}
         {!isLoading && !items.length ? (
-          <p className="rounded-lg border border-dashed bg-panel/40 p-3 text-sm text-muted-foreground">
-            {emptyLabel}
-          </p>
+          <EmptyMini label={emptyLabel} />
         ) : null}
         {items.map((item) => (
           <div className="flex items-start justify-between gap-3 rounded-lg border bg-panel/40 p-3" key={item.id}>
@@ -1894,9 +1893,11 @@ function BeneficiaryRecords({
 }) {
   if (!linkedSubmissions.length && !relatedSubmissions.length) {
     return (
-      <p className="mt-4 rounded-lg border border-dashed bg-background p-3 text-sm text-muted-foreground">
-        No approved or pending submissions are linked to this entity or its related records yet.
-      </p>
+      <EmptyMini
+        className="mt-4"
+        icon={ClipboardList}
+        label="No approved or pending submissions are linked to this entity or its related records yet."
+      />
     );
   }
 
@@ -2746,9 +2747,11 @@ export function ProjectBeneficiariesPanel({
             </p>
           </div>
         )) : (
-          <div className="rounded-xl border border-dashed bg-panel p-4 text-sm text-muted-foreground xl:col-span-3">
-            No entities are enrolled in this project yet. Import project entities or collect them with a project-linked mobile registration form.
-          </div>
+          <EmptyMini
+            className="xl:col-span-3"
+            icon={UsersRound}
+            label="No entities are enrolled in this project yet. Import project entities or collect them with a project-linked mobile registration form."
+          />
         )}
       </div>
       {!preview && projectEntitiesQuery.isFetching ? (
