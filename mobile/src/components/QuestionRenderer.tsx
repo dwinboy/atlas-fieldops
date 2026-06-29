@@ -58,7 +58,28 @@ type QuestionRendererProps = {
   activeLanguage?: string;
   /** Current answers keyed by variable name, for piping `${variable}` tokens into the label/hint. */
   variableValues?: Map<string, unknown>;
+  /** The entity (beneficiary) this submission is for + the current form id — power carry-forward. */
+  entityId?: string | null;
+  formId?: string;
 };
+
+/** Longitudinal carry-forward: the same entity's most recent prior value for the source question. */
+function carryForwardValue(question: MobileQuestion, entityId?: string | null, currentFormId?: string): unknown {
+  const carry = question.carryForward;
+  if (!carry || !entityId) return undefined;
+  const formId = carry.fromFormId ?? currentFormId ?? "";
+  const candidates = localDatabase.linkedRecords
+    .list()
+    .filter(
+      (record) =>
+        record.formId === formId &&
+        record.entityId === entityId &&
+        record.data &&
+        Object.prototype.hasOwnProperty.call(record.data, carry.fromVariable),
+    )
+    .sort((a, b) => String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? "")));
+  return candidates[0]?.data[carry.fromVariable];
+}
 
 /** Resolves a question's label and help text for the active language, falling back to the base text. */
 export function localizedQuestionText(
@@ -82,8 +103,12 @@ export function QuestionRenderer({
   referenceLists,
   activeLanguage,
   variableValues,
+  entityId,
+  formId,
 }: QuestionRendererProps) {
   if (!visible || question.type === "Hidden") return null;
+
+  const carriedValue = carryForwardValue(question, entityId, formId);
 
   const baseText = localizedQuestionText(question, activeLanguage);
   const pipeValues = variableValues ?? new Map<string, unknown>();
@@ -141,6 +166,21 @@ export function QuestionRenderer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [question.dynamicDefault, pipeValues, value]);
 
+  // Carry-forward: pre-fill once from the entity's most recent prior answer (still editable). A ref
+  // guards it so the officer can clear/change it freely afterwards.
+  const carryForwardSeeded = useRef(false);
+  useEffect(() => {
+    if (carryForwardSeeded.current || carriedValue === undefined) return;
+    const empty =
+      value === null ||
+      value === undefined ||
+      (typeof value === "string" && value.trim() === "") ||
+      (Array.isArray(value) && value.length === 0);
+    carryForwardSeeded.current = true;
+    if (empty) onAnswer(question.id, question.variableName, carriedValue);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carriedValue]);
+
   return (
     <View style={{
       backgroundColor: "white",
@@ -162,6 +202,11 @@ export function QuestionRenderer({
         </View>
         {localized.helpText ? (
           <Text style={{ color: "#49635a", fontSize: 13 }}>{localized.helpText}</Text>
+        ) : null}
+        {carriedValue !== undefined && carriedValue !== "" ? (
+          <Text style={{ color: "#1d6b54", fontSize: 12, fontWeight: "700" }}>
+            Last recorded: {Array.isArray(carriedValue) ? carriedValue.join(", ") : String(carriedValue)}
+          </Text>
         ) : null}
         <QuestionControlHints question={question} />
       </View>

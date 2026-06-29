@@ -397,6 +397,39 @@ def test_matrix_rows_from_source_compile() -> None:
     assert q["selection"]["fromQuestionId"] == "q-crops"
 
 
+def test_carry_forward_compiles_to_mobile() -> None:
+    from app.services.mobile import _build_question_field
+
+    # Same-form carry-forward (repeat visits): fromFormId is null.
+    same = _build_question_field(
+        {"id": "q1", "type": "number", "label": "Children", "carryForward": {"fromVariable": "children"}},
+        field_id="q1",
+        section_id="s",
+        order=1,
+    )
+    assert same["carryForward"] == {"fromFormId": None, "fromVariable": "children"}
+
+    # Cross-form carry-forward keeps the source form id.
+    other = _build_question_field(
+        {
+            "id": "q2",
+            "type": "number",
+            "label": "Baseline weight",
+            "carryForward": {"fromFormId": "form-abc", "fromVariable": "weight"},
+        },
+        field_id="q2",
+        section_id="s",
+        order=1,
+    )
+    assert other["carryForward"] == {"fromFormId": "form-abc", "fromVariable": "weight"}
+
+    # No carry-forward config → null (unchanged behaviour).
+    plain = _build_question_field(
+        {"id": "q3", "type": "text", "label": "Name"}, field_id="q3", section_id="s", order=1
+    )
+    assert plain["carryForward"] is None
+
+
 def test_logic_operators_compile_to_mobile() -> None:
     from app.services.mobile import _parse_logic_condition
 

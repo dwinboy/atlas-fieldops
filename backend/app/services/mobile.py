@@ -818,6 +818,22 @@ def _mobile_default_value(
     return metadata
 
 
+def _carry_forward(field: dict[str, Any]) -> dict[str, Any] | None:
+    """Compiles a question's longitudinal carry-forward config (pre-fill from the same entity's most
+    recent prior submission). `fromFormId` may be null to mean "this same form" (repeat visits)."""
+    carry = field.get("carryForward")
+    if not isinstance(carry, dict):
+        return None
+    from_variable = str(carry.get("fromVariable") or "").strip()
+    if not from_variable:
+        return None
+    from_form_id = carry.get("fromFormId")
+    return {
+        "fromFormId": str(from_form_id) if from_form_id else None,
+        "fromVariable": from_variable,
+    }
+
+
 def _build_question_field(
     field: dict[str, Any],
     *,
@@ -867,6 +883,7 @@ def _build_question_field(
         "readOnly": read_only,
         "defaultValue": _mobile_default_value(field, variable_to_id, reference_by_question),
         "dynamicDefault": (str(field["dynamicDefault"]) if field.get("dynamicDefault") else None),
+        "carryForward": _carry_forward(field),
         "exclusiveOptions": [str(v) for v in field.get("exclusiveOptionValues") or []],
         "options": _field_options(list(field.get("options") or [])),
         "validationRules": _validation_rules(field),
@@ -1827,6 +1844,11 @@ class MobileService:
                         and selection.get("recordFormId")
                     ):
                         target_form_ids.add(str(selection["recordFormId"]))
+                    # Carry-forward needs the source form's records too. A null fromFormId means
+                    # "this same form" (repeat visits), so fall back to the version's own form id.
+                    carry = question.get("carryForward")
+                    if isinstance(carry, dict) and carry.get("fromVariable"):
+                        target_form_ids.add(str(carry.get("fromFormId") or version.form_id))
         if not target_form_ids:
             return []
 
@@ -1875,6 +1897,7 @@ class MobileService:
                         data=data,
                         verified=submission.status in {"approved", "verified", "accepted"},
                         created_at=submission.sync_received_at,
+                        entity_id=str(submission.entity_id) if submission.entity_id else None,
                     )
                 )
         return records

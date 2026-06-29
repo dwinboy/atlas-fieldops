@@ -622,6 +622,8 @@ export default function FormFillScreen() {
                 referenceLists={referenceLists}
                 activeLanguage={activeLanguage}
                 variableValues={variableValues}
+                entityId={draft.entityId}
+                formId={formVersion?.formId}
               />
             );
           })

@@ -265,6 +265,56 @@ export function DataSettingsPanel({
                                   <span className="pb-1.5">Mask on export</span>
                                 </label>
                               </div>
+                              <div className="mt-4 rounded-md border bg-background p-3">
+                                <label className="flex items-center gap-2 text-sm font-semibold">
+                                  <input
+                                    checked={Boolean(field.carryForward)}
+                                    onChange={(event) =>
+                                      onUpdateForm(
+                                        updateField(form, field.id, {
+                                          carryForward: event.target.checked
+                                            ? { fromVariable: field.variableName ?? field.id }
+                                            : undefined,
+                                        }),
+                                      )
+                                    }
+                                    type="checkbox"
+                                  />
+                                  Carry forward from last visit
+                                  <HelpHint label="About carry-forward" title="Carry forward from last visit">
+                                    When this form is collected again for the same beneficiary, pre-fill
+                                    this answer from their most recent submission (still editable) and
+                                    show the previously recorded value. Ideal for baseline → follow-up
+                                    and routine monitoring, so officers confirm or update rather than
+                                    re-enter.
+                                  </HelpHint>
+                                </label>
+                                {field.carryForward ? (
+                                  <label className="mt-2 block text-xs font-medium text-muted-foreground">
+                                    Pre-fill from this question’s previous answer
+                                    <Select
+                                      className="mt-1"
+                                      onChange={(event) =>
+                                        onUpdateForm(
+                                          updateField(form, field.id, {
+                                            carryForward: { fromVariable: event.target.value },
+                                          }),
+                                        )
+                                      }
+                                      value={field.carryForward.fromVariable}
+                                    >
+                                      {form.fields
+                                        .filter((candidate) => candidate.variableName)
+                                        .map((candidate) => (
+                                          <option key={candidate.id} value={candidate.variableName}>
+                                            {candidate.label}
+                                            {candidate.id === field.id ? " (this question)" : ""}
+                                          </option>
+                                        ))}
+                                    </Select>
+                                  </label>
+                                ) : null}
+                              </div>
                             </section>
   );
 }

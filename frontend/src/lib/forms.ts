@@ -208,6 +208,10 @@ export type FormField = {
    * Expression syntax like the calculation engine: `today()`, `${other_question}` (copy a prior
    * answer), or a computed value such as `concat(${first}, ' ', ${last})`. Overrides defaultValue. */
   dynamicDefault?: string;
+  /** Longitudinal carry-forward: pre-fill this answer from the same entity's most recent prior
+   * submission. `fromFormId` omitted = this same form (repeat visits); `fromVariable` is the source
+   * question's variable. Shows "last recorded" and pre-fills (still editable). */
+  carryForward?: { fromFormId?: string; fromVariable: string };
   options?: string[];
   /** Optional per-option stored answer codes (index-aligned with `options`). When an entry is set it
    * overrides the auto-derived value; blank/absent entries fall back to the slugified label. */

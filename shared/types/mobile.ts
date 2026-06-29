@@ -365,6 +365,9 @@ export type MobileQuestion = {
   /** Formula evaluated to pre-fill the answer when the question first opens and is still empty
    * (editable afterwards): `today()`, `${other_question}`, or a computed expression. */
   dynamicDefault?: string | null;
+  /** Longitudinal carry-forward: pre-fill this answer from the same entity's most recent prior
+   * submission. `fromFormId` null means this same form (repeat visits); otherwise another form. */
+  carryForward?: { fromFormId: string | null; fromVariable: string } | null;
   /** Multi-select option values that are exclusive: picking one clears the rest (and vice versa). */
   exclusiveOptions?: string[];
   options: MobileQuestionOption[];
@@ -1003,8 +1006,10 @@ export type MobileLinkedRecord = LocalRecord & {
   data: Record<string, unknown>;
   /** Whether the source submission is verified/approved (for "show only verified"). */
   verified: boolean;
-  /** When the source submission was received (for "minimum age in days"). */
+  /** When the source submission was received (for "minimum age in days" and carry-forward recency). */
   createdAt: ISODateTime;
+  /** The entity this record was collected for — lets carry-forward find a beneficiary's own history. */
+  entityId?: string | null;
 };
 
 export type MobileSyncPackage = {

@@ -370,6 +370,8 @@ class MobileLinkedRecordRead(MobileSchema):
     data: dict[str, Any] = Field(default_factory=dict)
     verified: bool = False
     created_at: datetime | None = None
+    # The entity the source record was collected for — powers per-beneficiary carry-forward.
+    entity_id: str | None = None
 
 
 class MobileSyncPackageRead(MobileSchema):
