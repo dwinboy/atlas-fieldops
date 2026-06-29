@@ -30,8 +30,10 @@ import { useContextualBack } from "@/hooks/useContextualBack";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyMini } from "@/components/ui/empty-mini";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
+import { KpiShard } from "@/components/ui/kpi-shard";
 import { Modal } from "@/components/ui/modal";
 import {
   ApiError,
@@ -1893,25 +1895,28 @@ function ProjectsDashboard({
     .sort((left, right) => right.health_score - left.health_score)
     .slice(0, 4);
   return (
-    <div className="space-y-3">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+    <div className="space-y-6">
+      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
-          <button
-            className="rounded-xl border bg-panel p-3 text-left shadow-line transition hover:border-primary/35 hover:bg-muted/30"
+          <KpiShard
             key={card.label}
+            icon={card.icon}
+            label={card.label}
             onClick={card.onClick}
-            type="button"
-          >
-            <card.icon aria-hidden="true" className="text-primary" size={18} />
-            <p className="mt-4 text-2xl font-semibold">{card.value}</p>
-            <p className="text-xs text-muted-foreground">{card.label}</p>
-          </button>
+            value={card.value}
+          />
         ))}
       </div>
-      <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="rounded-xl border border-border-subtle bg-surface-container-lowest p-6 shadow-[0_1px_3px_0_rgba(0,0,0,0.05)]">
           <h2 className="font-semibold">Project Health Overview</h2>
           <div className="mt-4 space-y-3">
+            {rankedProjects.length === 0 ? (
+              <EmptyMini
+                icon={Layers3}
+                label="No projects yet. Create your first project to track its health, team, and progress here."
+              />
+            ) : null}
             {rankedProjects.map((project) => (
               <button
                 className="w-full rounded-xl border bg-background/50 p-3 text-left transition hover:bg-muted/50"
@@ -1940,7 +1945,7 @@ function ProjectsDashboard({
             ))}
           </div>
         </div>
-        <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+        <div className="rounded-xl border border-border-subtle bg-surface-container-lowest p-6 shadow-[0_1px_3px_0_rgba(0,0,0,0.05)]">
           <h2 className="font-semibold">Upcoming Deadlines & Risk Alerts</h2>
           <div className="mt-4 space-y-3">
             <Signal
@@ -1957,16 +1962,13 @@ function ProjectsDashboard({
               tone={summary.risk_alerts ? "warning" : "success"}
             />
           </div>
-          <p className="mt-4 rounded-xl bg-muted/40 p-3 text-sm text-muted-foreground">
-            Budget summary is future-ready. Financial controls should connect
-            here without duplicating Reports or Governance.
-          </p>
         </div>
       </div>
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-6 xl:grid-cols-3">
         <InsightCard
           icon={Globe2}
           title="Geographic Coverage"
+          emptyLabel="Coverage appears here once projects have a country or region set."
           lines={projects
             .slice(0, 4)
             .map(
@@ -1977,6 +1979,7 @@ function ProjectsDashboard({
         <InsightCard
           icon={CalendarClock}
           title="Recent Project Activity"
+          emptyLabel="Recent edits and updates to your projects will show up here."
           lines={projects
             .slice(0, 4)
             .map(
@@ -2714,9 +2717,7 @@ function RelatedTab({
           </div>
         ))}
         {!records.length ? (
-          <div className="rounded-xl border border-dashed bg-muted/30 p-5 text-sm text-muted-foreground">
-            No records are attached yet.
-          </div>
+          <EmptyMini icon={ClipboardList} label="No records are attached yet." />
         ) : null}
       </div>
     </div>
@@ -3246,9 +3247,10 @@ function EntityCategoryManager({
           </div>
         ))}
         {!categories.length && !isLoading ? (
-          <div className="rounded-lg border border-dashed bg-background/70 p-3 text-xs leading-5 text-muted-foreground">
-            No entity categories configured yet. Activate a sector preset or create a custom category before building entity-linked forms.
-          </div>
+          <EmptyMini
+            icon={UsersRound}
+            label="No entity categories configured yet. Activate a sector preset or create a custom category before building entity-linked forms."
+          />
         ) : null}
       </div>
       <div className="mt-3 grid gap-2">
@@ -3363,10 +3365,10 @@ function AuditTrail({ detail }: { detail: ProjectDetailRead }) {
           </div>
         ))}
         {!detail.audit_trail.length ? (
-          <div className="rounded-xl border border-dashed bg-muted/30 p-5 text-sm text-muted-foreground">
-            No project audit events yet. Governance keeps the immutable audit
-            trail.
-          </div>
+          <EmptyMini
+            icon={CalendarClock}
+            label="No project audit events yet. Governance keeps the immutable audit trail."
+          />
         ) : null}
       </div>
     </div>
@@ -3733,92 +3735,114 @@ function ProjectWizardStepContent({
           )}
         </div>
         <div className="grid gap-3 md:grid-cols-2">
-          <Input
-            placeholder="Project name"
-            value={draft.name}
-            onChange={(event) =>
-              onChange({
-                ...draft,
-                name: event.target.value,
-                project_code:
-                  draft.project_code || projectCodeFromName(event.target.value),
-              })
-            }
-          />
-          <Input
-            placeholder="Project code"
-            value={draft.project_code}
-            onChange={(event) =>
-              onChange({ ...draft, project_code: event.target.value.toUpperCase() })
-            }
-          />
+          <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+            <span>Project name</span>
+            <Input
+              placeholder="e.g. Northern Region Health Survey"
+              value={draft.name}
+              onChange={(event) =>
+                onChange({
+                  ...draft,
+                  name: event.target.value,
+                  project_code:
+                    draft.project_code || projectCodeFromName(event.target.value),
+                })
+              }
+            />
+          </label>
+          <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+            <span>Project code</span>
+            <Input
+              placeholder="e.g. NRHS-2026"
+              value={draft.project_code}
+              onChange={(event) =>
+                onChange({ ...draft, project_code: event.target.value.toUpperCase() })
+              }
+            />
+          </label>
         </div>
-        <Textarea
-          placeholder="Description"
-          value={draft.description ?? ""}
-          onChange={(event) =>
-            onChange({ ...draft, description: event.target.value })
-          }
-        />
+        <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+          <span>Description</span>
+          <Textarea
+            placeholder="What this project collects, who it serves, and the decisions it supports."
+            value={draft.description ?? ""}
+            onChange={(event) =>
+              onChange({ ...draft, description: event.target.value })
+            }
+          />
+        </label>
         <div className="grid gap-3 md:grid-cols-3">
-          <Select
-            value={draft.program_type ?? ""}
-            onChange={(event) =>
-              onChange({ ...draft, program_type: event.target.value })
-            }
-          >
-            <option value="">Project type</option>
-            {projectTypeChoices.map((choice) => (
-              <option key={choice.value} value={choice.value}>
-                {choice.label}
-              </option>
-            ))}
-          </Select>
-          <Select
-            value={draft.status ?? "draft"}
-            onChange={(event) =>
-              onChange({ ...draft, status: event.target.value })
-            }
-          >
-            {projectStatusOptions.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </Select>
-          <Input
-            placeholder="Project owner"
-            value={draft.owner ?? ""}
-            onChange={(event) => onChange({ ...draft, owner: event.target.value })}
-          />
-          <Input
-            aria-label="Start date"
-            type="date"
-            value={dateInputValue(draft.start_date)}
-            onInput={(event) =>
-              onChange({
-                ...draft,
-                start_date: event.currentTarget.value || null,
-              })
-            }
-            onChange={(event) =>
-              onChange({ ...draft, start_date: event.target.value || null })
-            }
-          />
-          <Input
-            aria-label="End date"
-            type="date"
-            value={dateInputValue(draft.end_date)}
-            onInput={(event) =>
-              onChange({
-                ...draft,
-                end_date: event.currentTarget.value || null,
-              })
-            }
-            onChange={(event) =>
-              onChange({ ...draft, end_date: event.target.value || null })
-            }
-          />
+          <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+            <span>Project type</span>
+            <Select
+              value={draft.program_type ?? ""}
+              onChange={(event) =>
+                onChange({ ...draft, program_type: event.target.value })
+              }
+            >
+              <option value="">Select project type</option>
+              {projectTypeChoices.map((choice) => (
+                <option key={choice.value} value={choice.value}>
+                  {choice.label}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+            <span>Status</span>
+            <Select
+              value={draft.status ?? "draft"}
+              onChange={(event) =>
+                onChange({ ...draft, status: event.target.value })
+              }
+            >
+              {projectStatusOptions.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+            <span>Project owner</span>
+            <Input
+              placeholder="e.g. Operations Manager"
+              value={draft.owner ?? ""}
+              onChange={(event) => onChange({ ...draft, owner: event.target.value })}
+            />
+          </label>
+          <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+            <span>Start date</span>
+            <Input
+              type="date"
+              value={dateInputValue(draft.start_date)}
+              onInput={(event) =>
+                onChange({
+                  ...draft,
+                  start_date: event.currentTarget.value || null,
+                })
+              }
+              onChange={(event) =>
+                onChange({ ...draft, start_date: event.target.value || null })
+              }
+            />
+          </label>
+          <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+            <span>End date</span>
+            <Input
+              type="date"
+              value={dateInputValue(draft.end_date)}
+              onInput={(event) =>
+                onChange({
+                  ...draft,
+                  end_date: event.currentTarget.value || null,
+                })
+              }
+              onChange={(event) =>
+                onChange({ ...draft, end_date: event.target.value || null })
+              }
+            />
+          </label>
         </div>
       </div>
   );
@@ -4627,75 +4651,95 @@ function ProjectFilters({
     Boolean(filters.dateFrom) ||
     Boolean(filters.dateTo);
   return (
-    <div className="grid gap-3 rounded-xl border bg-panel p-3 shadow-line grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
-      <Select
-        onChange={(event) => onChange({ status: event.target.value })}
-        value={filters.status}
-      >
-        <option value="">All statuses</option>
-        {statuses.map((status) => (
-          <option key={status} value={status}>
-            {status}
-          </option>
-        ))}
-      </Select>
-      <Select
-        onChange={(event) => onChange({ country: event.target.value })}
-        value={filters.country}
-      >
-        <option value="">All countries</option>
-        {countries.map((country) => (
-          <option key={country} value={country}>
-            {country}
-          </option>
-        ))}
-      </Select>
-      <Select
-        onChange={(event) => onChange({ region: event.target.value })}
-        value={filters.region}
-      >
-        <option value="">All regions</option>
-        {regions.map((region) => (
-          <option key={region} value={region}>
-            {region}
-          </option>
-        ))}
-      </Select>
-      <Select
-        onChange={(event) => onChange({ owner: event.target.value })}
-        value={filters.owner}
-      >
-        <option value="">All owners</option>
-        {owners.map((owner) => (
-          <option key={owner} value={owner}>
-            {owner}
-          </option>
-        ))}
-      </Select>
-      <div className="col-span-2 flex gap-2 md:col-span-1">
-        <Input
-          aria-label="Start date from"
-          onChange={(event) => onChange({ dateFrom: event.target.value })}
-          type="date"
-          value={filters.dateFrom}
-        />
-        <Input
-          aria-label="Start date to"
-          onChange={(event) => onChange({ dateTo: event.target.value })}
-          type="date"
-          value={filters.dateTo}
-        />
+    <div className="space-y-3 rounded-xl border border-border-subtle bg-surface-container-lowest p-4 shadow-[0_1px_3px_0_rgba(0,0,0,0.05)]">
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+        <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+          <span>Status</span>
+          <Select
+            onChange={(event) => onChange({ status: event.target.value })}
+            value={filters.status}
+          >
+            <option value="">All statuses</option>
+            {statuses.map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+          <span>Country</span>
+          <Select
+            onChange={(event) => onChange({ country: event.target.value })}
+            value={filters.country}
+          >
+            <option value="">All countries</option>
+            {countries.map((country) => (
+              <option key={country} value={country}>
+                {country}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+          <span>Region</span>
+          <Select
+            onChange={(event) => onChange({ region: event.target.value })}
+            value={filters.region}
+          >
+            <option value="">All regions</option>
+            {regions.map((region) => (
+              <option key={region} value={region}>
+                {region}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+          <span>Owner</span>
+          <Select
+            onChange={(event) => onChange({ owner: event.target.value })}
+            value={filters.owner}
+          >
+            <option value="">All owners</option>
+            {owners.map((owner) => (
+              <option key={owner} value={owner}>
+                {owner}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <div className="col-span-2 grid gap-1.5 text-xs font-medium text-muted-foreground md:col-span-3 xl:col-span-2">
+          <span>Start date range</span>
+          <div className="flex items-center gap-2">
+            <Input
+              aria-label="Start date from"
+              onChange={(event) => onChange({ dateFrom: event.target.value })}
+              type="date"
+              value={filters.dateFrom}
+            />
+            <span className="text-muted-foreground">–</span>
+            <Input
+              aria-label="Start date to"
+              onChange={(event) => onChange({ dateTo: event.target.value })}
+              type="date"
+              value={filters.dateTo}
+            />
+          </div>
+        </div>
       </div>
-      <Button
-        disabled={!hasActiveFilters}
-        onClick={() =>
-          onChange({ country: "", dateFrom: "", dateTo: "", owner: "", region: "", status: "" })
-        }
-        variant="ghost"
-      >
-        <SlidersHorizontal aria-hidden="true" />
-        Clear filters
-      </Button>
+      <div className="flex justify-end">
+        <Button
+          disabled={!hasActiveFilters}
+          onClick={() =>
+            onChange({ country: "", dateFrom: "", dateTo: "", owner: "", region: "", status: "" })
+          }
+          variant="ghost"
+        >
+          <SlidersHorizontal aria-hidden="true" />
+          Clear filters
+        </Button>
+      </div>
     </div>
   );
 }
@@ -4751,29 +4795,35 @@ function Signal({
 }
 
 function InsightCard({
+  emptyLabel,
   icon: Icon,
   lines,
   title,
 }: {
+  emptyLabel?: string;
   icon: typeof Globe2;
   lines: string[];
   title: string;
 }) {
   return (
-    <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+    <div className="rounded-xl border border-border-subtle bg-surface-container-lowest p-6 shadow-[0_1px_3px_0_rgba(0,0,0,0.05)]">
       <div className="flex items-center gap-2">
-        <Icon aria-hidden="true" className="text-primary" size={18} />
+        <Icon aria-hidden="true" className="text-primary" size={18} strokeWidth={1.5} />
         <h3 className="font-semibold">{title}</h3>
       </div>
       <div className="mt-4 space-y-2">
-        {lines.map((line) => (
-          <p
-            className="rounded-lg bg-muted/35 px-3 py-2 text-sm text-muted-foreground"
-            key={line}
-          >
-            {line}
-          </p>
-        ))}
+        {lines.length === 0 ? (
+          <EmptyMini icon={Icon} label={emptyLabel ?? "Nothing to show yet."} />
+        ) : (
+          lines.map((line) => (
+            <p
+              className="rounded-lg bg-muted/35 px-3 py-2 text-sm text-muted-foreground"
+              key={line}
+            >
+              {line}
+            </p>
+          ))
+        )}
       </div>
     </div>
   );
