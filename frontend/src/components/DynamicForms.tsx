@@ -6763,6 +6763,28 @@ export function DynamicForms({
                             onJump={(fieldId) => openFieldSettings(fieldId)}
                           />
 
+                          {selectedField.type === "repeat_group" &&
+                          !(selectedField.children ?? []).length ? (
+                            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm">
+                              <div>
+                                <p className="font-semibold text-foreground">
+                                  Add the questions inside this repeat group
+                                </p>
+                                <p className="text-muted-foreground">
+                                  Open the full repeat settings to add each repeated question, such as
+                                  member name, age, or household role.
+                                </p>
+                              </div>
+                              <Button
+                                onClick={() => openFieldSettings(selectedField.id)}
+                                type="button"
+                                variant="secondary"
+                              >
+                                Add repeat questions
+                              </Button>
+                            </div>
+                          ) : null}
+
                           {focusSettingsTab === "common" ? (
                             <CommonSettingsPanel
                               field={selectedField}
