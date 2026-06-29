@@ -35,6 +35,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
+import { KpiShard } from "@/components/ui/kpi-shard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/ui/status-dot";
 import {
@@ -1361,36 +1362,22 @@ export function Dashboard({ token, principal }: DashboardProps) {
                   <Skeleton className="mt-4 h-4 w-full" />
                 </div>
               ))
-            : commandMetrics.map((metric, index) => {
-                const Icon = commandMetricIcons[index] ?? Gauge;
-                const view = commandMetricViews[index] ?? "dashboard";
-
-                return (
-                  <button
-                    className="group flex flex-col rounded-xl border border-border-subtle bg-surface-container-lowest p-6 text-left transition hover:border-primary/40 hover:shadow-[0_8px_24px_-12px_rgba(0,82,50,0.25)]"
-                    key={metric.label}
-                    onClick={() =>
-                      openView({
-                        label: metric.label,
-                        result: `${metric.label}: ${metric.detail}`,
-                        view,
-                      })
-                    }
-                    type="button"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm font-medium text-on-surface-variant">{metric.label}</p>
-                      <Icon aria-hidden="true" className="shrink-0 text-primary" size={20} />
-                    </div>
-                    <p className="mt-3 text-3xl font-bold tabular-nums tracking-tight text-on-surface">
-                      {metric.value}
-                    </p>
-                    <p className="mt-2 line-clamp-2 text-xs leading-5 text-on-surface-variant">
-                      {metric.detail}
-                    </p>
-                  </button>
-                );
-              })}
+            : commandMetrics.map((metric, index) => (
+                <KpiShard
+                  key={metric.label}
+                  label={metric.label}
+                  value={metric.value}
+                  detail={metric.detail}
+                  icon={commandMetricIcons[index] ?? Gauge}
+                  onClick={() =>
+                    openView({
+                      label: metric.label,
+                      result: `${metric.label}: ${metric.detail}`,
+                      view: commandMetricViews[index] ?? "dashboard",
+                    })
+                  }
+                />
+              ))}
         </div>
 
         <section
