@@ -12,17 +12,28 @@ import {
 } from "@/lib/forms";
 import { simulateForm } from "@/lib/formSimulator";
 import { checkFormHealth } from "@/lib/formHealth";
+import { diffForms } from "@/lib/formDiff";
 
 /** In-builder "Preview & test" simulator. Builders enter trial answers and watch relevance, section
  * visibility, calculations, piping, and required-field checks update live — catching broken logic
  * before the form is published. Runs entirely in the browser with the mobile engine's semantics. */
-export function FormPreviewTester({ form, onClose }: { form: DynamicForm; onClose: () => void }) {
+export function FormPreviewTester({
+  form,
+  baselineForm,
+  onClose,
+}: {
+  form: DynamicForm;
+  baselineForm?: DynamicForm;
+  onClose: () => void;
+}) {
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
 
   const values = useMemo(() => new Map<string, unknown>(Object.entries(answers)), [answers]);
   const simulated = useMemo(() => simulateForm(form, values), [form, values]);
   const health = useMemo(() => checkFormHealth(form), [form]);
   const healthErrors = health.filter((issue) => issue.severity === "error");
+  const changes = useMemo(() => (baselineForm ? diffForms(baselineForm, form) : []), [baselineForm, form]);
+  const breakingChanges = changes.filter((change) => change.severity === "breaking");
 
   const keyOf = (field: FormField) => field.variableName ?? field.id;
   const setAnswer = (field: FormField, value: unknown) =>
@@ -170,6 +181,43 @@ export function FormPreviewTester({ form, onClose }: { form: DynamicForm; onClos
             </ul>
           ) : null}
         </div>
+
+        {changes.length > 0 ? (
+          <div className="border-b px-4 py-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle
+                aria-hidden="true"
+                className={breakingChanges.length ? "text-destructive" : "text-muted-foreground"}
+                size={16}
+              />
+              <p className="text-sm font-semibold">
+                Changes since you opened this form{" "}
+                {breakingChanges.length ? (
+                  <span className="font-normal text-destructive">
+                    — {breakingChanges.length} may affect already-collected data
+                  </span>
+                ) : (
+                  <span className="font-normal text-muted-foreground">— all safe</span>
+                )}
+              </p>
+            </div>
+            <ul className="mt-2 space-y-1">
+              {changes.map((change, index) => (
+                <li className="flex items-start gap-2 text-xs" key={index}>
+                  <Badge tone={change.severity === "breaking" ? "danger" : change.severity === "safe" ? "success" : "neutral"}>
+                    {change.severity}
+                  </Badge>
+                  <span className="text-muted-foreground">{change.message}</span>
+                </li>
+              ))}
+            </ul>
+            {breakingChanges.length ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Publishing these as a new version is recommended so existing records keep their original form.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="flex-1 space-y-5 overflow-y-auto p-4">
           {simulated.filter((section) => section.visible).length === 0 ? (

@@ -339,6 +339,8 @@ export function DynamicForms({
     useState<BuilderFocusPanel>("build");
   const [builderFocusMode, setBuilderFocusMode] = useState(true);
   const [showPreviewTester, setShowPreviewTester] = useState(false);
+  // Snapshot of the form as first opened in this session — the baseline for schema-change impact.
+  const baselineFormRef = useRef<{ id: string; form: DynamicForm } | null>(null);
   const [collapsedLibraryGroups, setCollapsedLibraryGroups] = useState<
     Record<string, boolean>
   >({
@@ -561,6 +563,12 @@ export function DynamicForms({
       allForms[0];
     return form ? normalizeForm(form) : undefined;
   }, [allForms, selectedFormId]);
+  // Capture the baseline once when a different form is opened, so "Preview & test" can show what
+  // changed this session and flag edits that would break already-collected data before publishing.
+  if (selectedForm && baselineFormRef.current?.id !== selectedForm.id) {
+    baselineFormRef.current = { id: selectedForm.id, form: structuredClone(selectedForm) };
+  }
+  const baselineForm = baselineFormRef.current?.form;
   const selectedBackendForm = useMemo(
     () =>
       (backendFormsQuery.data ?? []).find(
@@ -8532,6 +8540,7 @@ export function DynamicForms({
       {showPreviewTester && selectedForm ? (
         <FormPreviewTester
           form={selectedForm}
+          baselineForm={baselineForm}
           onClose={() => setShowPreviewTester(false)}
         />
       ) : null}
