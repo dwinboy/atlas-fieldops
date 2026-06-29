@@ -71,4 +71,34 @@ describe("simulateForm", () => {
     const hiddenIssues = noKids.filter((s) => s.visible).flatMap((s) => s.fields).filter((f) => f.issue);
     expect(hiddenIssues).toHaveLength(0);
   });
+
+  it("enforces numeric range and cross-field constraints", () => {
+    const f: DynamicForm = {
+      id: "f",
+      name: "F",
+      status: "draft",
+      version: 1,
+      activeVersion: 0,
+      sections: [{ id: "s1", title: "Main" }],
+      fields: [
+        { ...createField("number", "s1"), id: "a", variableName: "age", label: "Age", validation: { min: 0, max: 120 } },
+        { ...createField("number", "s1"), id: "b", variableName: "start", label: "Start" },
+        {
+          ...createField("number", "s1"),
+          id: "c",
+          variableName: "end",
+          label: "End",
+          validation: { expression: "${end} >= ${start}" },
+        },
+      ],
+      updatedAt: new Date().toISOString(),
+    };
+    const out = simulateForm(f, new Map<string, unknown>([["age", 200], ["start", 10], ["end", 5]]));
+    const fields = out.flatMap((s) => s.fields);
+    expect(fields.find((x) => x.field.id === "a")?.issue).toMatch(/at most 120/);
+    expect(fields.find((x) => x.field.id === "c")?.issue).toMatch(/validation rule/);
+    // Valid values clear the issues.
+    const ok = simulateForm(f, new Map<string, unknown>([["age", 40], ["start", 5], ["end", 10]]));
+    expect(ok.flatMap((s) => s.fields).filter((x) => x.issue)).toHaveLength(0);
+  });
 });
