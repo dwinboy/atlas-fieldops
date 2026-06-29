@@ -1349,16 +1349,16 @@ export function Dashboard({ token, principal }: DashboardProps) {
           </section>
         ) : null}
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-6 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
           {dashboardLoading
             ? Array.from({ length: 8 }).map((_, index) => (
                 <div
-                  className="rounded-2xl border bg-background/80 p-4"
+                  className="rounded-xl border border-border-subtle bg-surface-container-lowest p-6"
                   key={index}
                 >
                   <Skeleton className="h-4 w-2/3" />
-                  <Skeleton className="mt-3 h-8 w-1/2" />
-                  <Skeleton className="mt-3 h-10 w-full" />
+                  <Skeleton className="mt-4 h-9 w-1/2" />
+                  <Skeleton className="mt-4 h-4 w-full" />
                 </div>
               ))
             : commandMetrics.map((metric, index) => {
@@ -1367,7 +1367,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
 
                 return (
                   <button
-                    className="group rounded-2xl border bg-background/80 p-4 text-left shadow-line transition hover:-translate-y-0.5 hover:border-primary/35 hover:bg-primary/5 hover:shadow-elevated"
+                    className="group flex flex-col rounded-xl border border-border-subtle bg-surface-container-lowest p-6 text-left transition hover:border-primary/40 hover:shadow-[0_8px_24px_-12px_rgba(0,82,50,0.25)]"
                     key={metric.label}
                     onClick={() =>
                       openView({
@@ -1379,26 +1379,15 @@ export function Dashboard({ token, principal }: DashboardProps) {
                     type="button"
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                          {metric.label}
-                        </p>
-                        <p className="mt-2 text-2xl font-semibold tabular-nums tracking-tight">
-                          {metric.value}
-                        </p>
-                      </div>
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-panel text-primary transition group-hover:bg-primary group-hover:text-primary-foreground">
-                        <Icon aria-hidden="true" size={18} />
-                      </span>
+                      <p className="text-sm font-medium text-on-surface-variant">{metric.label}</p>
+                      <Icon aria-hidden="true" className="shrink-0 text-primary" size={20} />
                     </div>
-                    <div className="mt-4 flex items-center justify-between gap-3">
-                      <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
-                        {metric.detail}
-                      </p>
-                      <Badge className="shrink-0" tone={metric.tone}>
-                        Open
-                      </Badge>
-                    </div>
+                    <p className="mt-3 text-3xl font-bold tabular-nums tracking-tight text-on-surface">
+                      {metric.value}
+                    </p>
+                    <p className="mt-2 line-clamp-2 text-xs leading-5 text-on-surface-variant">
+                      {metric.detail}
+                    </p>
                   </button>
                 );
               })}
