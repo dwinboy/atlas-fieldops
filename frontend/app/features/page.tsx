@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 
 import {
-  ArchitectureGraphic,
   CTASection,
   DataUseGraphic,
   FeatureGrid,
@@ -11,6 +10,7 @@ import {
   SimplePageHero,
 } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
+import { GisMapGraphic, PlatformArchitectureStack } from "@/components/marketing/illustrations";
 import { pageFeatureIcons, platformFeatures } from "@/lib/marketing/content";
 import { marketingMetadata } from "@/lib/marketing/seo";
 
@@ -47,7 +47,26 @@ export default function FeaturesPage() {
             })}
           </div>
         </section>
-        <ArchitectureGraphic />
+        <section className="bg-white py-20">
+          <SectionIntro
+            eyebrow="Platform architecture"
+            title="A layered stack from secure API to live intelligence"
+            text="Security & API at the base, Projects & Forms in the middle, and Reports & Intelligence on top — submissions flow up through review into mapping and dashboards."
+          />
+          <div className="mx-auto mt-12 max-w-4xl px-4 sm:px-6 lg:px-8">
+            <PlatformArchitectureStack />
+          </div>
+        </section>
+        <section className="py-20">
+          <SectionIntro
+            eyebrow="GIS & mapping"
+            title="See coverage, boundaries, and field activity on one map"
+            text="Toggle farm boundaries, GPS points, village clusters, and satellite layers to turn spatial data into operational decisions."
+          />
+          <div className="mx-auto mt-12 max-w-4xl px-4 sm:px-6 lg:px-8">
+            <GisMapGraphic />
+          </div>
+        </section>
         <DataUseGraphic />
         <CTASection />
       </main>

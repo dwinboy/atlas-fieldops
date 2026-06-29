@@ -710,7 +710,7 @@ export type FeatureDetailContent = {
   related: { title: string; href: string }[];
 };
 
-export function FeatureDetailPage({ content }: { content: FeatureDetailContent }) {
+export function FeatureDetailPage({ content, illustration }: { content: FeatureDetailContent; illustration?: ReactNode }) {
   return (
     <main>
       <section className="relative overflow-hidden px-4 pb-10 pt-16 sm:px-6 lg:px-8">
@@ -734,6 +734,7 @@ export function FeatureDetailPage({ content }: { content: FeatureDetailContent }
             </Link>
           </div>
         </div>
+        {illustration ? <div className="mx-auto mt-12 max-w-4xl">{illustration}</div> : null}
       </section>
 
       <section className="px-4 py-16 sm:px-6 lg:px-8">

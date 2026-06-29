@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { CTASection, DataUseGraphic, OperatingFlowGraphic, SectionIntro, SimplePageHero } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
+import { HealthOutreachGraphic } from "@/components/marketing/illustrations";
 import { site, solutionPages } from "@/lib/marketing/content";
 import { breadcrumbSchema, faqSchema, JsonLd, marketingMetadata } from "@/lib/marketing/seo";
 
@@ -42,6 +43,11 @@ export default function SolutionDetailPage({ params }: { params: { slug: string 
             </span>
           </div>
         </SimplePageHero>
+        {solution.slug === "health" ? (
+          <div className="mx-auto mb-16 max-w-4xl px-4 sm:px-6 lg:px-8">
+            <HealthOutreachGraphic />
+          </div>
+        ) : null}
         <section className="mx-auto grid max-w-7xl gap-5 px-4 pb-20 sm:px-6 lg:grid-cols-3 lg:px-8">
           <article className="rounded-xl border border-black/10 bg-white p-6 shadow-sm">
             <h2 className="text-xl font-semibold">Challenges</h2>

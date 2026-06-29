@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { CTASection, DataUseGraphic, OperatingFlowGraphic, SimplePageHero } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
+import { AgricultureGraphic } from "@/components/marketing/illustrations";
 import { marketingMetadata } from "@/lib/marketing/seo";
 
 export const metadata: Metadata = marketingMetadata({
@@ -19,6 +20,9 @@ export default function AgricultureSolutionPage() {
           title="Agriculture data collection software for farmer programs"
           text="Register farmers, map farms, verify input distribution, monitor yields, track training, manage cooperatives, and report agriculture KPIs with offline mobile collection."
         />
+        <div className="mx-auto mb-16 max-w-4xl px-4 sm:px-6 lg:px-8">
+          <AgricultureGraphic />
+        </div>
         <section className="px-4 pb-20 sm:px-6 lg:px-8">
           <div className="mx-auto grid max-w-7xl gap-4 md:grid-cols-3">
             {[

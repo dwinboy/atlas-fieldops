@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { FeatureDetailPage } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
+import { OfflineSyncGraphic } from "@/components/marketing/illustrations";
 import { offlineDataCollectionContent } from "@/lib/marketing/feature-content";
 import { marketingMetadata } from "@/lib/marketing/seo";
 
@@ -15,7 +16,7 @@ export const metadata: Metadata = marketingMetadata({
 export default function Page() {
   return (
     <MarketingShell>
-      <FeatureDetailPage content={offlineDataCollectionContent} />
+      <FeatureDetailPage content={offlineDataCollectionContent} illustration={<OfflineSyncGraphic />} />
     </MarketingShell>
   );
 }

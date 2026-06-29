@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { CTASection, SimplePageHero } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
+import { SecurityCoreGraphic } from "@/components/marketing/illustrations";
 import { marketingMetadata } from "@/lib/marketing/seo";
 
 export const metadata: Metadata = marketingMetadata({
@@ -24,6 +25,9 @@ export default function SecurityPage() {
     <MarketingShell>
       <main>
         <SimplePageHero eyebrow="Security" title="Enterprise trust for sensitive field data" text="Atlas FieldOps is designed for organizations that need accountable data collection, governed access, auditability, and reliable operational controls." />
+        <div className="mx-auto mb-16 max-w-4xl px-4 sm:px-6 lg:px-8">
+          <SecurityCoreGraphic />
+        </div>
         <section className="mx-auto grid max-w-7xl gap-5 px-4 pb-20 sm:px-6 md:grid-cols-2 lg:grid-cols-3 lg:px-8">
           {controls.map(([title, text]) => (
             <article className="rounded-xl border border-black/10 bg-white p-6 shadow-sm" key={title}>
