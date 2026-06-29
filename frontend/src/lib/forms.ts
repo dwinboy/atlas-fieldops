@@ -228,6 +228,8 @@ export type FormField = {
     integerOnly?: boolean;
     uniqueResponse?: boolean;
     duplicateCheck?: boolean;
+    /** Repeat-group child: its value must be unique across the rows of this group (no duplicates). */
+    uniqueInGroup?: boolean;
     allowDontKnow?: boolean;
     allowRefused?: boolean;
     customMessage?: string;

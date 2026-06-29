@@ -821,6 +821,18 @@ def validate_submission_payload(*, schema: FormSchema, payload: dict[str, object
             if isinstance(rules.get("max"), int | float) and number > float(rules["max"]):
                 issues.append(_field_issue(field, f"{label} must be at most {rules['max']}."))
 
+        if field.type == "constant_sum" and isinstance(value, dict):
+            # Allocations must add up to the target total (defaults to 100).
+            raw_target = rules.get("sumTarget")
+            target = int(raw_target) if isinstance(raw_target, (int, float)) else 100
+            total = 0.0
+            for item in value.values():
+                parsed_item = _parse_number(item)
+                if parsed_item is not None:
+                    total += float(parsed_item)
+            if total != float(target):
+                issues.append(_field_issue(field, f"{label} amounts must add up to {target} (currently {int(total) if total.is_integer() else total})."))
+
         if field.type in {"date", "datetime"}:
             parsed = _parse_datetime(value)
             if parsed is None:

@@ -454,6 +454,61 @@ def test_repeat_rows_from_question_compile() -> None:
     assert q["selection"]["seedChildVariable"] == "crop_name"
 
 
+def test_cross_field_constraint_and_constant_sum_compile() -> None:
+    from app.services.mobile import _validation_rules
+
+    # A cross-field constraint authored as validation.expression must reach the app as a Custom rule.
+    constraint_rules = _validation_rules(
+        {"id": "end", "type": "date", "validation": {"expression": "${end} >= ${start}"}}
+    )
+    assert any(
+        r["ruleType"] == "Custom" and r["value"] == "constraint:${end} >= ${start}" for r in constraint_rules
+    )
+
+    # An advanced logic rule of kind "validation" is also compiled (previously it was dropped).
+    logic_rules = _validation_rules(
+        {"id": "q", "type": "number", "logic": [{"kind": "validation", "expression": "${q} > 0"}]}
+    )
+    assert any(r["value"] == "constraint:${q} > 0" for r in logic_rules)
+
+    # Constant-sum questions carry a sum-target rule (defaults to 100).
+    sum_rules = _validation_rules({"id": "alloc", "type": "constant_sum"})
+    assert any(r["value"] == "sumTarget:100" for r in sum_rules)
+
+    # A repeat child flagged unique-per-row carries a uniqueInGroup rule.
+    unique_rules = _validation_rules({"id": "name", "type": "text", "validation": {"uniqueInGroup": True}})
+    assert any(r["value"] == "uniqueInGroup:true" for r in unique_rules)
+
+
+def test_constant_sum_total_enforced_server_side() -> None:
+    from app.schemas.collection import FormSchema
+    from app.services.collection import validate_submission_payload
+
+    schema = FormSchema.model_validate(
+        {
+            "sections": [
+                {
+                    "id": "s",
+                    "title": "Spend",
+                    "fields": [
+                        {
+                            "id": "alloc",
+                            "variable_name": "alloc",
+                            "type": "constant_sum",
+                            "label": "Budget split",
+                            "options": [{"label": "Food", "value": "food"}, {"label": "Rent", "value": "rent"}],
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    bad = validate_submission_payload(schema=schema, payload={"alloc": {"food": 40, "rent": 40}}, location_accuracy=None)
+    assert any("add up to 100" in issue for issue in bad)
+    good = validate_submission_payload(schema=schema, payload={"alloc": {"food": 60, "rent": 40}}, location_accuracy=None)
+    assert not any("add up to 100" in issue for issue in good)
+
+
 def test_section_relevance_compiles_to_mobile() -> None:
     from app.services.mobile import _schema_sections
 

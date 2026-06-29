@@ -578,6 +578,46 @@ def _validation_rules(field: dict[str, Any]) -> list[dict[str, Any]]:
                 "severity": "Block",
             }
         )
+    # Cross-field constraints: a `${this} OP ${other}` expression that must hold true. These come from
+    # `validation.expression` and any `kind: "validation"` advanced logic rules — previously dropped,
+    # so the app now actually enforces them. The app resolves `${variable}` against current answers.
+    constraint_expressions: list[str] = []
+    if isinstance(validation, dict) and validation.get("expression"):
+        constraint_expressions.append(str(validation["expression"]))
+    for rule in field.get("logic") or []:
+        if isinstance(rule, dict) and str(rule.get("kind")) == "validation" and rule.get("expression"):
+            constraint_expressions.append(str(rule["expression"]))
+    for expression in constraint_expressions:
+        rules.append(
+            {
+                "ruleType": "Custom",
+                "value": f"constraint:{expression}",
+                "message": str(validation.get("customMessage") or blocked_help or "This answer does not satisfy the rule for this question."),
+                "severity": "Block",
+            }
+        )
+    # Repeat-group child whose value must be unique across the group's rows.
+    if isinstance(validation, dict) and bool(validation.get("uniqueInGroup")):
+        rules.append(
+            {
+                "ruleType": "Custom",
+                "value": "uniqueInGroup:true",
+                "message": blocked_help or "This answer must be different on every row.",
+                "severity": "Block",
+            }
+        )
+    # Constant-sum allocations must add up to the target total (defaults to 100).
+    if field_type == "constant_sum":
+        target = validation.get("sumTarget") if isinstance(validation, dict) else None
+        target_value = int(target) if isinstance(target, (int, float, str)) and str(target).strip().isdigit() else 100
+        rules.append(
+            {
+                "ruleType": "Custom",
+                "value": f"sumTarget:{target_value}",
+                "message": blocked_help or f"The amounts must add up to {target_value}.",
+                "severity": "Block",
+            }
+        )
     return rules
 
 

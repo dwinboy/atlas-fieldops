@@ -1,6 +1,16 @@
 import { isCascadeBlocked, resolveQuestionOptions } from "@/forms/optionResolver";
 import type { MobileFormVersion, MobileQuestion, MobileReferenceList, MobileSubmission, MobileValidationRule } from "@/models/contracts";
 import { evaluateQuestionLogicStates, evaluateVisibility, LogicEngine } from "@/forms/logicEngine";
+import { evaluateExpressionValue } from "@/forms/expressionEngine";
+
+/** Evaluates a cross-field constraint (`${this} >= ${other}`) using the calculation engine, which
+ * resolves every `${variable}` from the supplied answers. Logic words and/or map to &&/||. An
+ * unparseable expression passes (it is surfaced by the builder's health check instead). */
+function constraintHolds(expression: string, variableValues: Map<string, unknown>): boolean {
+  const normalized = expression.replace(/\band\b/gi, "&&").replace(/\bor\b/gi, "||");
+  const result = evaluateExpressionValue(normalized, variableValues);
+  return result === null ? true : Boolean(result);
+}
 
 export type FormValidationIssue = {
   questionId: string;
@@ -13,6 +23,9 @@ export type FormValidationIssue = {
 export class FormValidationService {
   validate(formVersion: MobileFormVersion, draft: MobileSubmission, referenceLists: MobileReferenceList[] = []): FormValidationIssue[] {
     const responses = new Map(draft.responses.map((response) => [response.questionId, response.value]));
+    // Answers keyed by variable name, so cross-field constraints (`${a} >= ${b}`) can resolve.
+    const allQuestions = formVersion.sections.flatMap((section) => section.questions);
+    const variableValues = new Map<string, unknown>(allQuestions.map((q) => [q.variableName, responses.get(q.id)]));
     const logicState = new LogicEngine().evaluate(formVersion, draft);
     const issues: FormValidationIssue[] = [];
     for (const section of formVersion.sections) {
@@ -85,7 +98,7 @@ export class FormValidationService {
             continue;
           }
         }
-        issues.push(...this.validateValue(question, value, { responses, referenceLists }));
+        issues.push(...this.validateValue(question, value, { responses, referenceLists, variableValues }));
       }
     }
     return issues;
@@ -164,7 +177,7 @@ export class FormValidationService {
   private validateValue(
     question: MobileQuestion,
     value: unknown,
-    context: { responses: Map<string, unknown>; referenceLists: MobileReferenceList[] },
+    context: { responses: Map<string, unknown>; referenceLists: MobileReferenceList[]; variableValues: Map<string, unknown> },
   ): FormValidationIssue[] {
     const issues: FormValidationIssue[] = [];
     // "Warn instead of block": the builder can make this question's value rules advisory — they
@@ -179,6 +192,29 @@ export class FormValidationService {
         severity: warnOnly && severity === "Error" ? "Warning" : severity,
       });
     };
+
+    // Cross-field constraints: `${this} OP ${other}` expressions that must hold true.
+    for (const rule of question.validationRules) {
+      if (rule.ruleType !== "Custom" || typeof rule.value !== "string") continue;
+      if (rule.value.startsWith("constraint:")) {
+        const expression = rule.value.slice("constraint:".length);
+        if (!constraintHolds(expression, context.variableValues)) {
+          addIssue(rule.message || "This answer does not satisfy the rule for this question.", "Error");
+        }
+      }
+      if (rule.value.startsWith("sumTarget:")) {
+        const target = Number(rule.value.slice("sumTarget:".length));
+        if (value && typeof value === "object" && !Array.isArray(value) && Number.isFinite(target)) {
+          const total = Object.values(value as Record<string, unknown>).reduce<number>(
+            (sum, item) => sum + (Number.isFinite(Number(item)) ? Number(item) : 0),
+            0,
+          );
+          if (total !== target) {
+            addIssue(rule.message || `The amounts must add up to ${target} (currently ${total}).`, "Error");
+          }
+        }
+      }
+    }
 
     if (["Number", "Decimal", "Currency"].includes(question.type)) {
       const numeric = typeof value === "number" ? value : Number(String(value).trim());
@@ -469,6 +505,8 @@ export class FormValidationService {
           for (const childIssue of this.validateValue(child, childValue, {
             responses: rowResponses,
             referenceLists: context.referenceLists,
+            // Within a repeat row, cross-field constraints resolve against that row's own answers.
+            variableValues: new Map(childQuestions.map((c) => [c.variableName, row[c.id] ?? row[c.variableName]])),
           })) {
             issues.push({
               ...childIssue,
@@ -479,6 +517,30 @@ export class FormValidationService {
           }
         }
       });
+      // Roster uniqueness: a child flagged "unique per row" must not repeat a value across the rows.
+      for (const child of childQuestions) {
+        const isUnique = child.validationRules.some(
+          (rule) => rule.ruleType === "Custom" && rule.value === "uniqueInGroup:true",
+        );
+        if (!isUnique) continue;
+        const seen = new Set<string>();
+        rows.forEach((rowValue, rowIndex) => {
+          const row = rowValue && typeof rowValue === "object" && !Array.isArray(rowValue) ? (rowValue as Record<string, unknown>) : {};
+          const raw = row[child.id] ?? row[child.variableName];
+          if (raw === null || raw === undefined || String(raw).trim() === "") return;
+          const key = String(raw).trim().toLowerCase();
+          if (seen.has(key)) {
+            issues.push({
+              questionId: question.id,
+              label: `${question.label} row ${rowIndex + 1} · ${child.label}`,
+              message: `${child.label} must be different on every row — "${String(raw)}" is repeated.`,
+              fixHint: "Change the duplicate so each row has a unique value.",
+              severity: "Error",
+            });
+          }
+          seen.add(key);
+        });
+      }
     }
 
     if (question.type === "Matrix") {

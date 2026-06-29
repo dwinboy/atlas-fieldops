@@ -86,6 +86,18 @@ export function RepeatChildrenEditor({
                   />
                   Required
                 </label>
+                <label className="flex items-center gap-1 text-xs text-muted-foreground" title="No two rows may share this value (e.g. unique member name)">
+                  <input
+                    checked={child.validation?.uniqueInGroup ?? false}
+                    onChange={(event) =>
+                      patchChild(child.id, {
+                        validation: { ...child.validation, uniqueInGroup: event.target.checked || undefined },
+                      })
+                    }
+                    type="checkbox"
+                  />
+                  Unique per row
+                </label>
                 <Button
                   aria-label={`Remove ${child.label}`}
                   onClick={() => onChange(children.filter((item) => item.id !== child.id))}
