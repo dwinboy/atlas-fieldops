@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { FlaskConical, RotateCcw, X } from "lucide-react";
+import { AlertTriangle, FlaskConical, RotateCcw, ShieldCheck, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import {
   type FormField,
 } from "@/lib/forms";
 import { simulateForm } from "@/lib/formSimulator";
+import { checkFormHealth } from "@/lib/formHealth";
 
 /** In-builder "Preview & test" simulator. Builders enter trial answers and watch relevance, section
  * visibility, calculations, piping, and required-field checks update live — catching broken logic
@@ -20,6 +21,8 @@ export function FormPreviewTester({ form, onClose }: { form: DynamicForm; onClos
 
   const values = useMemo(() => new Map<string, unknown>(Object.entries(answers)), [answers]);
   const simulated = useMemo(() => simulateForm(form, values), [form, values]);
+  const health = useMemo(() => checkFormHealth(form), [form]);
+  const healthErrors = health.filter((issue) => issue.severity === "error");
 
   const keyOf = (field: FormField) => field.variableName ?? field.id;
   const setAnswer = (field: FormField, value: unknown) =>
@@ -135,6 +138,37 @@ export function FormPreviewTester({ form, onClose }: { form: DynamicForm; onClos
             {issues.length ? `${issues.length} required answer${issues.length === 1 ? "" : "s"} missing` : "No blocking issues"}
           </Badge>
           <span className="text-muted-foreground">{visibleCount} question(s) shown right now</span>
+        </div>
+
+        <div className="border-b px-4 py-3">
+          <div className="flex items-center gap-2">
+            {health.length === 0 ? (
+              <ShieldCheck aria-hidden="true" className="text-emerald-600" size={16} />
+            ) : (
+              <AlertTriangle aria-hidden="true" className={healthErrors.length ? "text-destructive" : "text-amber-500"} size={16} />
+            )}
+            <p className="text-sm font-semibold">
+              Form health{" "}
+              {health.length === 0 ? (
+                <span className="font-normal text-muted-foreground">— no structural problems</span>
+              ) : (
+                <span className="font-normal text-muted-foreground">
+                  — {healthErrors.length} error{healthErrors.length === 1 ? "" : "s"}, {health.length - healthErrors.length} warning
+                  {health.length - healthErrors.length === 1 ? "" : "s"}
+                </span>
+              )}
+            </p>
+          </div>
+          {health.length > 0 ? (
+            <ul className="mt-2 space-y-1">
+              {health.map((issue, index) => (
+                <li className="flex items-start gap-2 text-xs" key={index}>
+                  <Badge tone={issue.severity === "error" ? "danger" : "warning"}>{issue.severity}</Badge>
+                  <span className="text-muted-foreground">{issue.message}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
 
         <div className="flex-1 space-y-5 overflow-y-auto p-4">
