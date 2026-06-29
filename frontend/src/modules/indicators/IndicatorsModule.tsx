@@ -28,6 +28,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { KpiShard } from "@/components/ui/kpi-shard";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
@@ -799,16 +800,15 @@ function IndicatorsDashboard({
 
   return (
     <div className="space-y-3">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-5">
         {cards.map((card) => (
-          <button className="rounded-xl border bg-panel p-3 text-left shadow-line transition hover:border-primary/35 hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary/30" key={card.label} onClick={() => onOpenSection(card.section)} type="button">
-            <div className="flex items-center justify-between gap-3">
-              <card.icon aria-hidden="true" className="text-primary" size={18} />
-              {card.tone ? <Badge tone={card.tone}>RBM</Badge> : null}
-            </div>
-            <p className="mt-4 text-2xl font-semibold">{card.value}</p>
-            <p className="text-xs text-muted-foreground">{card.label}</p>
-          </button>
+          <KpiShard
+            key={card.label}
+            icon={card.icon}
+            label={card.label}
+            value={card.value}
+            onClick={() => onOpenSection(card.section)}
+          />
         ))}
       </div>
 

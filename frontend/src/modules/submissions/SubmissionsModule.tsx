@@ -40,6 +40,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { KpiShard } from "@/components/ui/kpi-shard";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
@@ -1584,23 +1585,9 @@ function SubmissionsDashboard({
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {group.label}
             </p>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {group.cards.map((card) => (
-                <article
-                  className="rounded-xl border bg-panel p-3 shadow-line"
-                  key={card.label}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <card.icon
-                      aria-hidden="true"
-                      className="text-primary"
-                      size={18}
-                    />
-                    {card.tone ? <Badge tone={card.tone}>Live</Badge> : null}
-                  </div>
-                  <p className="mt-4 text-2xl font-semibold">{card.value}</p>
-                  <p className="text-xs text-muted-foreground">{card.label}</p>
-                </article>
+                <KpiShard key={card.label} icon={card.icon} label={card.label} value={card.value} />
               ))}
             </div>
           </div>
