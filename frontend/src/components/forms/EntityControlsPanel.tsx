@@ -1,5 +1,6 @@
 import { describeEntityCollectionWorkflow } from "@/components/forms/describeEntityCollectionWorkflow";
 import { Badge } from "@/components/ui/badge";
+import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
 import { type FormControlsSettings } from "@/lib/api";
 
@@ -17,8 +18,15 @@ export function EntityControlsPanel({
               <section className="rounded-lg border bg-background p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h3 className="text-sm font-semibold">
-                      Entity & duplicate controls
+                    <h3 className="inline-flex items-center gap-1.5 text-sm font-semibold">
+                      Entity &amp; duplicate controls
+                      <HelpHint label="About entity controls" title="Entity & duplicate controls">
+                        Decides whether each submission is tied to a tracked record (a “beneficiary
+                        /entity” such as a farmer, household, or facility). You choose what kind of
+                        record it is, how often it can be collected, and what happens when the system
+                        thinks two records are the same person — so you don’t end up with duplicates
+                        or unlinked data.
+                      </HelpHint>
                     </h3>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">
                       Set the exact collection rule for this form so field teams know whether they should register a new record, select an existing one, or work without entity linkage.
@@ -32,7 +40,16 @@ export function EntityControlsPanel({
                   {selectedEntityWorkflow.description}
                 </div>
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <label className="text-xs font-medium">
+                    <span className="inline-flex items-center gap-1.5">
+                      Entity type
+                      <HelpHint label="About entity type" title="Entity type">
+                        What kind of record submissions attach to (farmer, household, facility, …).
+                        This labels the record everywhere and groups data by that unit.
+                      </HelpHint>
+                    </span>
                   <Select
+                    className="mt-1"
                     value={
                       controls.entity_controls?.entity_type ??
                       "Farmer"
@@ -62,7 +79,18 @@ export function EntityControlsPanel({
                       <option key={type}>{type}</option>
                     ))}
                   </Select>
+                  </label>
+                  <label className="text-xs font-medium">
+                    <span className="inline-flex items-center gap-1.5">
+                      How often per entity
+                      <HelpHint label="About submission frequency" title="How often per entity">
+                        How many times this form may be collected for the same record — e.g. once
+                        ever (registration), once per project, or unlimited (routine monitoring).
+                        Extra attempts are blocked or flagged.
+                      </HelpHint>
+                    </span>
                   <Select
+                    className="mt-1"
                     value={
                       controls.entity_controls
                         ?.submission_frequency ?? "once_per_project"
@@ -88,7 +116,18 @@ export function EntityControlsPanel({
                     <option value="once_per_event">Once per event</option>
                     <option value="unlimited">Unlimited repeat submissions</option>
                   </Select>
+                  </label>
+                  <label className="text-xs font-medium">
+                    <span className="inline-flex items-center gap-1.5">
+                      When a likely duplicate is found
+                      <HelpHint label="About duplicate action" title="When a likely duplicate is found">
+                        What to do when a new record scores above the match threshold against an
+                        existing one: <strong>Block</strong> stops it, <strong>Warn</strong> lets the
+                        officer proceed, <strong>Review</strong> sends it to a supervisor to decide.
+                      </HelpHint>
+                    </span>
                   <Select
+                    className="mt-1"
                     value={
                       controls.entity_controls?.duplicate_action ??
                       "block"
@@ -110,7 +149,18 @@ export function EntityControlsPanel({
                     <option value="warn">Warn only</option>
                     <option value="review">Send to supervisor review</option>
                   </Select>
+                  </label>
+                  <label className="text-xs font-medium">
+                    <span className="inline-flex items-center gap-1.5">
+                      Duplicate match threshold
+                      <HelpHint label="About the match threshold" title="Duplicate match threshold">
+                        The match score (0–100) at or above which two records are treated as the same.
+                        Scores come from the rules on the right (ID, phone, name+DOB, GPS…). Higher =
+                        stricter (fewer flagged); lower = catches more possible duplicates.
+                      </HelpHint>
+                    </span>
                   <Input
+                    className="mt-1"
                     max={100}
                     min={0}
                     type="number"
@@ -128,6 +178,7 @@ export function EntityControlsPanel({
                       }))
                     }
                   />
+                  </label>
                 </div>
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
                   {[

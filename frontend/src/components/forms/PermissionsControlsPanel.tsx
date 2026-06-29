@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import { createDefaultFormControls } from "@/components/forms/formControls";
 import { type FormControlsSettings } from "@/lib/api";
 import { type DynamicForm } from "@/lib/forms";
@@ -18,8 +19,14 @@ export function PermissionsControlsPanel({
             <div className="space-y-4">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="text-sm font-semibold">
+                  <h3 className="inline-flex items-center gap-1.5 text-sm font-semibold">
                     Per-form access control
+                    <HelpHint label="About access control" title="Per-form access control">
+                      Who can see, fill, edit, or approve this form. Access starts from the project’s
+                      roles and you can narrow it here. <strong>Read only</strong> roles can view but
+                      not change. <strong>Location scope</strong> limits a role to their own area.
+                      “Add reviewer” grants view-only access to an outside reviewer.
+                    </HelpHint>
                   </h3>
                   <p className="mt-1 text-xs text-muted-foreground">
                     Permissions inherit from the project, then M&E Managers can
@@ -117,6 +124,11 @@ export function PermissionsControlsPanel({
                         type="checkbox"
                       />
                       Allow own submission approval
+                      <HelpHint label="About self-approval" title="Allow own submission approval">
+                        When off (recommended), a person can’t approve a record they submitted
+                        themselves — enforcing separation of duties. Turn on only for small teams
+                        where the same person collects and approves.
+                      </HelpHint>
                     </label>
                   </div>
                 ))}

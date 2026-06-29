@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { HelpHint } from "@/components/ui/help-hint";
 import { type FormControlsSettings } from "@/lib/api";
 import { type DynamicForm } from "@/lib/forms";
 
@@ -15,7 +16,15 @@ export function VersionsControlsPanel({
   return (
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
               <section className="rounded-lg border bg-background p-4">
-                <h3 className="text-sm font-semibold">Version rules</h3>
+                <h3 className="inline-flex items-center gap-1.5 text-sm font-semibold">
+                  Version rules
+                  <HelpHint label="About versioning" title="Version rules">
+                    Versioning protects already-collected data when you change a published form.
+                    <br />• <strong>Edit → new draft</strong>: published forms aren’t edited in place; your changes go into a new draft to publish later.
+                    <br />• <strong>Submissions stay linked to their version</strong>: each record remembers the exact form it was collected with, so old answers still make sense.
+                    <br />• <strong>Version-aware reference lists</strong>: datasets/option lists are snapshotted per version, so updating a list doesn’t rewrite past answers.
+                  </HelpHint>
+                </h3>
                 <div className="mt-3 grid gap-2">
                   {(
                     [

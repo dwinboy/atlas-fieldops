@@ -1,6 +1,7 @@
 import { Check, Database, Workflow } from "lucide-react";
 
 import { type FormControlsTab } from "@/components/forms/formControls";
+import { HelpHint } from "@/components/ui/help-hint";
 import { type FormControlsSettings } from "@/lib/api";
 
 /** Form-controls overview tab (summary + quick links to other control tabs). */
@@ -13,6 +14,15 @@ export function OverviewControlsPanel({
 }) {
   return (
             <div className="space-y-4">
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-sm font-semibold">Form controls</h3>
+                <HelpHint label="About form controls" title="Form controls">
+                  These settings govern the form as a whole — separate from individual questions.
+                  They control which official lists feed it, who can see and edit it, how submitted
+                  records are reviewed and approved, the data-quality rules that run, and the audit
+                  and versioning policy. The cards below summarise each area; click one to configure it.
+                </HelpHint>
+              </div>
               <div className="grid gap-3 md:grid-cols-4">
                 {[
                   [

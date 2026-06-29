@@ -1,3 +1,4 @@
+import { HelpHint } from "@/components/ui/help-hint";
 import { Input } from "@/components/ui/input";
 import { type FormControlsSettings } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -14,6 +15,15 @@ export function WorkflowControlsPanel({
 }) {
   return (
             <div className="space-y-4">
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-sm font-semibold">Review &amp; approval workflow</h3>
+                <HelpHint label="About the workflow" title="Review & approval workflow">
+                  Decides what happens to a submission after a field officer sends it. Pick a preset,
+                  then each <strong>stage</strong> lists who reviews and their <strong>SLA</strong>
+                  {" "}(the target hours to act before it’s flagged as overdue). “Correction” lets
+                  reviewers send a record back to the officer to fix and resubmit.
+                </HelpHint>
+              </div>
               <div className="grid gap-2 md:grid-cols-3">
                 {(
                   [

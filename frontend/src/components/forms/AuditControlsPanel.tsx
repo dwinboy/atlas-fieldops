@@ -1,6 +1,7 @@
 import { ShieldCheck } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { HelpHint } from "@/components/ui/help-hint";
 import { type FormControlsSettings } from "@/lib/api";
 
 /** Form-level audit-trail view (recent change events). */
@@ -13,8 +14,13 @@ export function AuditControlsPanel({
             <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
               <section className="rounded-lg border bg-background p-4">
                 <ShieldCheck aria-hidden="true" className="text-primary" />
-                <h3 className="mt-3 text-sm font-semibold">
+                <h3 className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold">
                   Immutable audit trail
+                  <HelpHint label="About the audit trail" title="Immutable audit trail">
+                    Every change to this form and its submissions is recorded and can never be edited
+                    or deleted. This is what lets you prove to auditors and donors exactly who changed
+                    what, and when. Exports of the log are limited to approved roles.
+                  </HelpHint>
                 </h3>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
                   Audit records cannot be deleted. High-risk events require a
@@ -43,7 +49,14 @@ export function AuditControlsPanel({
                     </span>
                   ))}
                 </div>
-                <h3 className="mt-5 text-sm font-semibold">Reason required</h3>
+                <h3 className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold">
+                  Reason required
+                  <HelpHint label="About reason-required events" title="Reason required">
+                    For these high-risk actions the person must type a short reason before the change
+                    is saved (e.g. deleting a record or overriding a value). The reason is stored in
+                    the audit trail.
+                  </HelpHint>
+                </h3>
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {controls.audit.reason_required_events.map(
                     (event) => (

@@ -1,3 +1,4 @@
+import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
 import { type FormControlsSettings } from "@/lib/api";
 
@@ -35,7 +36,13 @@ export function GovernanceControlsPanel({
                 </Select>
               </label>
               <label className="text-sm font-medium">
-                Minimum quality score
+                <span className="inline-flex items-center gap-1.5">
+                  Minimum quality score
+                  <HelpHint label="About minimum quality score" title="Minimum quality score">
+                    The lowest data-quality score (0–100) a submission must reach to be accepted as
+                    clean. Records below it are flagged for review. Leave at 0 to not enforce a score.
+                  </HelpHint>
+                </span>
                 <Input
                   className="mt-2"
                   max={100}
@@ -72,7 +79,13 @@ export function GovernanceControlsPanel({
                 />
               </label>
               <label className="text-sm font-medium">
-                Data retention days
+                <span className="inline-flex items-center gap-1.5">
+                  Data retention days
+                  <HelpHint label="About data retention" title="Data retention days">
+                    How long collected records are kept before they’re eligible for deletion/anonymisation
+                    — set this to match your donor agreement or data-protection policy.
+                  </HelpHint>
+                </span>
                 <Input
                   className="mt-2"
                   min={1}
@@ -90,7 +103,15 @@ export function GovernanceControlsPanel({
                 />
               </label>
               <div className="rounded-lg border bg-background p-4 lg:col-span-2">
-                <h3 className="text-sm font-semibold">Governance switches</h3>
+                <h3 className="inline-flex items-center gap-1.5 text-sm font-semibold">
+                  Governance switches
+                  <HelpHint label="About governance switches" title="Governance switches">
+                    Org-wide enforcement toggles applied to every submission of this form — e.g.
+                    always capture GPS/timestamp, require supervisor review, restrict who can export,
+                    mask sensitive fields, require PII tagging and consent, and lock or archive records
+                    automatically. Turn on the ones your program or donor requires.
+                  </HelpHint>
+                </h3>
                 <div className="mt-3 grid gap-2 md:grid-cols-2">
                   {(
                     [

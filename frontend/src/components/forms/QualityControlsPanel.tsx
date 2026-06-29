@@ -1,3 +1,4 @@
+import { HelpHint } from "@/components/ui/help-hint";
 import { Select } from "@/components/ui/input";
 import { type FormControlsSettings } from "@/lib/api";
 
@@ -11,6 +12,15 @@ export function QualityControlsPanel({
 }) {
   return (
             <div className="space-y-3">
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-sm font-semibold">Data quality checks</h3>
+                <HelpHint label="About data quality checks" title="Data quality checks">
+                  Form-wide checks that run on every submission (e.g. GPS accuracy, duplicate
+                  detection, outliers). Turn each on/off, set how serious it is (<strong>Severity</strong>),
+                  and decide whether failing it <strong>blocks submission</strong> or only warns the
+                  officer. Blocking = bad data can’t be sent; warning = it’s flagged for review.
+                </HelpHint>
+              </div>
               {controls.data_quality_rules.map((rule) => (
                 <div
                   className="grid gap-3 rounded-lg border bg-background p-4 md:grid-cols-[minmax(0,1fr)_160px_120px]"
