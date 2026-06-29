@@ -8,7 +8,6 @@ import {
   CTASection,
   DataUseGraphic,
   FeatureGrid,
-  HeroMockup,
   IndustryGrid,
   ModuleEcosystemGraphic,
   OperatingFlowGraphic,
@@ -18,6 +17,7 @@ import {
   TrustBand,
 } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
+import { HeroEcosystem } from "@/components/marketing/illustrations";
 import { site } from "@/lib/marketing/content";
 import { breadcrumbSchema, JsonLd, marketingMetadata } from "@/lib/marketing/seo";
 
@@ -76,7 +76,9 @@ export default function HomePage() {
               </Link>
             </div>
           </div>
-          <HeroMockup />
+          <div className="mx-auto mt-12 max-w-5xl">
+            <HeroEcosystem />
+          </div>
         </section>
         <TrustedBy />
         <section className="py-20">
