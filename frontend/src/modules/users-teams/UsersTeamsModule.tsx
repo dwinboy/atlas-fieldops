@@ -456,13 +456,17 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   const canManageUsers = hasAnyPermission(principal, ["users.create", "users.manage"]);
   const canManageRoles = hasAnyPermission(principal, ["roles.manage"]);
   const canManageTeams = hasAnyPermission(principal, ["officers.manage", "users.manage", "organization.hierarchy.manage"]);
+  // Session/audit logs require the audit.view permission. Only fetch them when the role allows it,
+  // otherwise the speculative request 403s and trips the global permission toast on a page the user
+  // is legitimately allowed to open.
+  const canViewAudit = hasAnyPermission(principal, ["audit.view"]);
 
   const usersQuery = useQuery({ queryKey: ["users-teams", "users", token], queryFn: () => listUsers(token ?? ""), enabled });
   const rolesQuery = useQuery({ queryKey: ["users-teams", "roles", token], queryFn: () => listRoles(token ?? ""), enabled });
   const teamsQuery = useQuery({ queryKey: ["users-teams", "teams", token], queryFn: () => listTeams(token ?? ""), enabled });
   const profilesQuery = useQuery({ queryKey: ["users-teams", "profiles", token], queryFn: () => listWorkforceProfiles(token ?? ""), enabled });
   const unitsQuery = useQuery({ queryKey: ["users-teams", "units", token], queryFn: () => listOrganizationUnits(token ?? ""), enabled });
-  const sessionsQuery = useQuery({ queryKey: ["users-teams", "sessions", token], queryFn: () => listSessionLogs(token ?? ""), enabled });
+  const sessionsQuery = useQuery({ queryKey: ["users-teams", "sessions", token], queryFn: () => listSessionLogs(token ?? ""), enabled: enabled && canViewAudit });
   const catalogQuery = useQuery({ queryKey: ["users-teams", "catalog", token], queryFn: () => getAccessCatalog(token ?? ""), enabled });
   const summaryQuery = useQuery({ queryKey: ["users-teams", "summary", token], queryFn: () => getUsersTeamsSummary(token ?? ""), enabled });
   const organizationSummaryQuery = useQuery({ queryKey: ["users-teams", "org-summary", token], queryFn: () => getOrganizationGovernanceSummary(token ?? ""), enabled });
