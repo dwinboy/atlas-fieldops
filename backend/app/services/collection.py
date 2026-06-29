@@ -34,6 +34,7 @@ from app.models.operations import (
     EntityAttribute,
     EntityAttributeValue,
     EntityCategory,
+    EntityRelationship,
     SessionLog,
     VisitRecord,
 )
@@ -4360,6 +4361,13 @@ class SubmissionService:
                 link_type="primary",
                 source="approved_submission_created_beneficiary",
             )
+            # Register roster rows (e.g. household members) as child entities linked to this parent.
+            await self._create_roster_entities(
+                organization_id=organization_id,
+                actor_user_id=actor_user_id,
+                submission=submission,
+                parent=beneficiary,
+            )
             beneficiary_processing: dict[str, object] = {
                 "status": "processed",
                 "action": "created",
@@ -4579,6 +4587,105 @@ class SubmissionService:
                 "profile_update_proposals": len(proposed_changes),
             },
         )
+
+    async def _create_roster_entities(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        submission: Submission,
+        parent: Beneficiary,
+    ) -> None:
+        """Registers each row of a roster repeat group (e.g. household members) as a child entity
+        linked to the submission's parent entity. A repeat group opts in by carrying a `repeatEntity`
+        config: { entityType, nameVariable?, relationship? }. Idempotent per submission."""
+        payload = submission.payload_json or {}
+        if not isinstance(payload, dict) or payload.get("_roster_entities"):
+            return
+        version = await self.forms.get_current_version(organization_id=organization_id, form_id=submission.form_id)
+        if version is None:
+            return
+        try:
+            schema = FormSchema.model_validate(version.schema_json)
+        except ValueError:
+            return
+
+        created_uids: list[str] = []
+        for section in schema.sections:
+            for field in section.fields:
+                if field.type not in {"repeat_group", "repeatable_group"}:
+                    continue
+                roster = (field.model_extra or {}).get("repeatEntity") if field.model_extra else None
+                if not isinstance(roster, dict):
+                    continue
+                entity_type = str(roster.get("entityType") or "").strip()
+                if not entity_type:
+                    continue
+                name_variable = str(roster.get("nameVariable") or "").strip()
+                relationship = str(roster.get("relationship") or "member_of").strip() or "member_of"
+                rows = payload.get(field.variable_name) or payload.get(field.id)
+                if not isinstance(rows, list):
+                    continue
+                for row in rows[:200]:
+                    if not isinstance(row, dict):
+                        continue
+                    name = self._roster_row_name(row, name_variable)
+                    child = Beneficiary(
+                        organization_id=organization_id,
+                        project_id=submission.project_id,
+                        beneficiary_uid=await self._next_beneficiary_uid(
+                            organization_id=organization_id,
+                            entity_type=entity_type,
+                            project_id=submission.project_id,
+                        ),
+                        beneficiary_type=entity_type,
+                        display_name=name or f"{entity_type} of {parent.display_name}",
+                        enrollment_status="active",
+                        profile_json={
+                            "source": "Roster row",
+                            "sourceSubmissionId": str(submission.id),
+                            "parentBeneficiaryId": str(parent.id),
+                            "parentBeneficiaryUid": parent.beneficiary_uid,
+                            "rosterRow": row,
+                        },
+                    )
+                    self.session.add(child)
+                    await self.session.flush()
+                    self.session.add(
+                        EntityRelationship(
+                            organization_id=organization_id,
+                            project_id=submission.project_id,
+                            parent_beneficiary_id=parent.id,
+                            child_beneficiary_id=child.id,
+                            relationship_type=relationship,
+                            metadata_json={"sourceSubmissionId": str(submission.id), "entityType": entity_type},
+                        )
+                    )
+                    created_uids.append(child.beneficiary_uid)
+
+        if created_uids:
+            submission.payload_json = {**payload, "_roster_entities": created_uids}
+            await self.session.flush()
+            await self.audit.append(
+                organization_id=organization_id,
+                actor_user_id=actor_user_id,
+                action="beneficiary.roster_registered",
+                resource_type="submission",
+                resource_id=str(submission.id),
+                metadata={"parent_beneficiary_uid": parent.beneficiary_uid, "members": len(created_uids)},
+            )
+
+    @staticmethod
+    def _roster_row_name(row: dict[str, object], name_variable: str) -> str:
+        """The display name for a roster row: the configured name field, else the first text value."""
+        if name_variable:
+            value = row.get(name_variable)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        for value in row.values():
+            if isinstance(value, str) and value.strip() and not value.startswith("__"):
+                return value.strip()
+        return ""
 
     async def _link_project_participants_from_submission(
         self,

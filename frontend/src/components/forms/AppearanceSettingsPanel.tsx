@@ -204,6 +204,100 @@ export function AppearanceSettingsPanel({
                                     />
                                     Allow nested groups
                                   </label>
+                                  <label className="flex items-center gap-2 pt-6 text-sm font-semibold lg:col-span-3">
+                                    <input
+                                      checked={Boolean(field.repeatEntity)}
+                                      className="h-4 w-4"
+                                      onChange={(event) =>
+                                        onUpdateForm(
+                                          updateField(form, field.id, {
+                                            repeatEntity: event.target.checked
+                                              ? { entityType: "Household Member", relationship: "member_of" }
+                                              : undefined,
+                                          }),
+                                        )
+                                      }
+                                      type="checkbox"
+                                    />
+                                    Register each row as an entity
+                                    <HelpHint label="About roster entities" title="Register each row as an entity">
+                                      Turns each repeat row into a tracked record (e.g. each household
+                                      member becomes a person entity) linked to this form’s main entity.
+                                      Created when the submission is approved, so members can be followed
+                                      up and counted on their own.
+                                    </HelpHint>
+                                  </label>
+                                  {field.repeatEntity ? (
+                                    <>
+                                      <label className="text-sm font-medium">
+                                        Entity type
+                                        <Input
+                                          className="mt-2"
+                                          onChange={(event) =>
+                                            onUpdateForm(
+                                              updateField(form, field.id, {
+                                                repeatEntity: { ...field.repeatEntity!, entityType: event.target.value },
+                                              }),
+                                            )
+                                          }
+                                          placeholder="e.g. Household Member"
+                                          value={field.repeatEntity.entityType}
+                                        />
+                                      </label>
+                                      <label className="text-sm font-medium">
+                                        <span className="inline-flex items-center gap-1.5">
+                                          Name each entity from
+                                          <HelpHint label="About the name field" title="Name each entity from">
+                                            Which question inside the repeat group provides each
+                                            entity’s name (e.g. the member’s name). Defaults to the
+                                            first text answer if left blank.
+                                          </HelpHint>
+                                        </span>
+                                        <Select
+                                          className="mt-2"
+                                          onChange={(event) =>
+                                            onUpdateForm(
+                                              updateField(form, field.id, {
+                                                repeatEntity: { ...field.repeatEntity!, nameVariable: event.target.value || undefined },
+                                              }),
+                                            )
+                                          }
+                                          value={field.repeatEntity.nameVariable ?? ""}
+                                        >
+                                          <option value="">First text answer</option>
+                                          {(field.children ?? [])
+                                            .filter((child) => child.variableName)
+                                            .map((child) => (
+                                              <option key={child.id} value={child.variableName}>
+                                                {child.label}
+                                              </option>
+                                            ))}
+                                        </Select>
+                                      </label>
+                                      <label className="text-sm font-medium">
+                                        <span className="inline-flex items-center gap-1.5">
+                                          Relationship to parent
+                                          <HelpHint label="About the relationship" title="Relationship to parent">
+                                            How each row relates to the main entity — stored on the link
+                                            (e.g. <code>member_of</code>, <code>child_of</code>,
+                                            <code>belongs_to</code>).
+                                          </HelpHint>
+                                        </span>
+                                        <Input
+                                          className="mt-2"
+                                          onChange={(event) =>
+                                            onUpdateForm(
+                                              updateField(form, field.id, {
+                                                repeatEntity: { ...field.repeatEntity!, relationship: event.target.value },
+                                              }),
+                                            )
+                                          }
+                                          placeholder="member_of"
+                                          value={field.repeatEntity.relationship ?? ""}
+                                        />
+                                      </label>
+                                    </>
+                                  ) : null}
                                 </div>
                               ) : null}
 

@@ -4722,3 +4722,101 @@ async def test_data_collection_flow_with_datasets_records_and_matrix_source() ->
             "q_crops",
             "q_rating",
         }
+
+
+@pytest.mark.asyncio
+async def test_roster_rows_register_child_entities_on_approval() -> None:
+    from app.models.operations import EntityRelationship
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        org_id = uuid4()
+        field_user_id = uuid4()
+        manager_user_id = uuid4()
+        project_id = uuid4()
+        survey_id = uuid4()
+        form_id = uuid4()
+        version_id = uuid4()
+        officer_id = uuid4()
+        now = datetime.now(UTC)
+        session.add_all(
+            [
+                Organization(id=org_id, name="Roster Org", slug="roster-org"),
+                User(id=field_user_id, email="f@roster.org", full_name="Field", password_hash="x"),
+                User(id=manager_user_id, email="m@roster.org", full_name="Manager", password_hash="x"),
+                FieldOfficerProfile(id=officer_id, organization_id=org_id, user_id=field_user_id, is_active=True),
+                Project(id=project_id, organization_id=org_id, name="Roster Project", slug="roster-project", status="active"),
+                Survey(
+                    id=survey_id, organization_id=org_id, project_id=project_id,
+                    created_by_user_id=manager_user_id, owner_user_id=manager_user_id,
+                    title="Household Registration", code="HH-REG", survey_type="registration", status="active",
+                ),
+                DataForm(
+                    id=form_id, organization_id=org_id, project_id=project_id, survey_id=survey_id,
+                    created_by_user_id=manager_user_id, name="Household Registration", slug="household-registration",
+                    status="published", current_version=1,
+                    controls_json={"entity_controls": {"linked_to_entity": True, "entity_type": "Household", "creates_new_entity": True, "requires_existing_entity": False}},
+                ),
+                DataFormVersion(
+                    id=version_id, organization_id=org_id, form_id=form_id, version=1,
+                    schema_json={
+                        "sections": [
+                            {
+                                "id": "identity", "title": "Household",
+                                "fields": [
+                                    {"id": "q_name", "variable_name": "entity_name", "type": "text", "label": "Household head", "required": True},
+                                    {
+                                        "id": "q_members", "variable_name": "members", "type": "repeat_group", "label": "Members",
+                                        "repeatEntity": {"entityType": "Household Member", "nameVariable": "member_name", "relationship": "member_of"},
+                                        "children": [{"id": "q_member_name", "variable_name": "member_name", "type": "text", "label": "Member name"}],
+                                    },
+                                ],
+                            }
+                        ]
+                    },
+                    offline_compatible=True, published_at=now,
+                ),
+            ]
+        )
+        await session.commit()
+
+        principal = CurrentPrincipal(
+            user_id=str(field_user_id), organization_id=str(org_id), email="f@roster.org",
+            full_name="Field", organization_slug="roster-org", organization_name="Roster Org",
+            roles=["field_officer"], permissions=["submission.create", "sync.mobile"], scope_type="own",
+        )
+        await MobileService(session).upload_submission(
+            principal=principal,
+            payload=MobileSubmissionUpload(
+                local_id="hh-0001", project_id=str(project_id), form_id=str(form_id), form_version_id=str(version_id),
+                entity_type="Household",
+                responses=[
+                    {"questionId": "q_name", "variableName": "entity_name", "value": "Yusuf Household", "updatedAt": now},
+                    {"questionId": "q_members", "variableName": "members", "value": [{"member_name": "Ada"}, {"member_name": "Ben"}], "updatedAt": now},
+                ],
+                location={"latitude": 9.0, "longitude": 7.0, "accuracy": 6, "timestamp": now},
+                device_id="android-test", app_version="1.0.0-test", created_at=now, submitted_at=now,
+            ),
+        )
+        submissions = await SubmissionService(session).list_submissions(
+            organization_id=org_id, status=None, actor_user_id=field_user_id, scope_type="own",
+        )
+        await SubmissionService(session).review_submission(
+            organization_id=org_id, actor_user_id=manager_user_id, submission_id=submissions[0].id,
+            payload=SubmissionReviewAction(action="approve", comment="Approved"),
+        )
+        await session.commit()
+
+        beneficiaries = (await session.execute(select(Beneficiary))).scalars().all()
+        parents = [b for b in beneficiaries if b.beneficiary_type == "Household"]
+        members = [b for b in beneficiaries if b.beneficiary_type == "Household Member"]
+        assert len(parents) == 1
+        assert {m.display_name for m in members} == {"Ada", "Ben"}
+
+        relationships = (await session.execute(select(EntityRelationship))).scalars().all()
+        assert len(relationships) == 2
+        assert all(r.parent_beneficiary_id == parents[0].id for r in relationships)
+        assert all(r.relationship_type == "member_of" for r in relationships)

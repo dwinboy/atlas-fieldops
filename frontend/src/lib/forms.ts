@@ -272,6 +272,9 @@ export type FormField = {
     columns: string[];
     scoring?: Record<string, number>;
   };
+  /** Roster → entity linking: register each row as a child entity of the submission's parent entity
+   * (e.g. each household-member row becomes a tracked member). Applied on approval, server-side. */
+  repeatEntity?: { entityType: string; nameVariable?: string; relationship?: string };
   repeat?: {
     min?: number;
     max?: number;
