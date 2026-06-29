@@ -121,7 +121,10 @@ class UserOperationalProfileRead(BaseModel):
 
 class UserRead(BaseModel):
     id: UUID
-    email: EmailStr
+    # Output schema: keep this permissive so already-stored data (e.g. bootstrap accounts on
+    # reserved domains like ``*.local``) can always be serialized. Strict EmailStr validation is
+    # enforced on input (UserCreate) where it belongs; a single legacy row must not 500 the list.
+    email: str
     full_name: str
     is_active: bool
     role_name: str | None = None
