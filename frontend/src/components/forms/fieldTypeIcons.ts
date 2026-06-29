@@ -25,6 +25,8 @@ import {
   Spline,
   Star,
   Table2,
+  Tags,
+  Timer,
   Type,
   Users,
   Variable,
@@ -95,4 +97,8 @@ export const fieldTypeIcons: Record<FieldType, typeof Type> = {
   measurement: SlidersHorizontal,
   constant_sum: SlidersHorizontal,
   slider: SlidersHorizontal,
+  range: SlidersHorizontal,
+  duration: Timer,
+  tags: Tags,
+  timestamp: Timer,
 };

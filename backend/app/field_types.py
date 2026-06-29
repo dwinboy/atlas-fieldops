@@ -51,6 +51,10 @@ FIELD_TYPE_SPECS: dict[str, FieldTypeSpec] = {
     "slider": FieldTypeSpec(runtime="Number", tags=("slider",)),
     "measurement": FieldTypeSpec(runtime="Text", tags=("measurement",)),
     "constant_sum": FieldTypeSpec(runtime="Text", tags=("constant-sum",)),
+    "range": FieldTypeSpec(runtime="Text", tags=("numeric-range",)),
+    "duration": FieldTypeSpec(runtime="Number", tags=("duration",)),
+    "tags": FieldTypeSpec(runtime="MultiSelect", tags=("tag-list",)),
+    "timestamp": FieldTypeSpec(runtime="DateTime", tags=("auto-timestamp",)),
     # Choice family.
     "select": FieldTypeSpec(runtime="SingleSelect"),
     "radio": FieldTypeSpec(runtime="SingleSelect"),

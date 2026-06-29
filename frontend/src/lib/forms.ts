@@ -57,7 +57,11 @@ export type FieldType =
   | "date_range"
   | "measurement"
   | "constant_sum"
-  | "slider";
+  | "slider"
+  | "range"
+  | "duration"
+  | "tags"
+  | "timestamp";
 
 /** A single row filter applied to a dataset- or record-backed selection. `fromVariable` makes the
  * filter dynamic — it compares against another question's answer (the basis for cascading lookups).
@@ -505,6 +509,9 @@ export const fieldCatalog: {
       { type: "slider", label: "Slider / scale", description: "Drag along a scale (min–max)" },
       { type: "percentage", label: "Percentage", description: "0–100 with a % sign" },
       { type: "measurement", label: "Measurement", description: "A number plus a unit (kg, ha…)" },
+      { type: "range", label: "Number range", description: "A low–high pair (e.g. 200–500)" },
+      { type: "duration", label: "Duration / stopwatch", description: "Time something took (start–stop)" },
+      { type: "tags", label: "Tag list", description: "Type several free-text entries" },
       { type: "email", label: "Email", description: "Validated email capture" },
       { type: "phone", label: "Phone", description: "Validated phone capture" },
       { type: "url", label: "URL", description: "Website or document link" },
@@ -514,7 +521,8 @@ export const fieldCatalog: {
       { type: "date_range", label: "Date range", description: "Start and end date" },
       { type: "month", label: "Month picker", description: "Pick a month and year" },
       { type: "day_of_week", label: "Day of week", description: "Pick a weekday (Mon–Sun)" },
-      { type: "auto_id", label: "Auto generated ID", description: "System-generated unique reference" }
+      { type: "auto_id", label: "Auto generated ID", description: "System-generated unique reference" },
+      { type: "timestamp", label: "Auto timestamp", description: "Records when the question was answered" }
     ]
   },
   {
@@ -651,6 +659,10 @@ export const fieldTypeHelp: Record<FieldType, string> = {
   measurement: "A number plus a chosen unit (kg/lb, ha/acre, m/ft) so officers record the unit they used.",
   constant_sum: "Distribute a fixed total (e.g. 100 points) across options — for priorities or budget shares.",
   slider: "Drag a handle along a scale to pick a number between a minimum and maximum (set the step for finer or coarser answers).",
+  range: "Capture a low and high value as one answer (e.g. an income band or an age range).",
+  duration: "Time how long something took with a start/stop stopwatch, or type the minutes — stored as a duration.",
+  tags: "Let the officer type several free-text entries (e.g. symptoms or crops not on a list); each entry becomes its own value.",
+  timestamp: "Automatically records the date and time the question was answered — read-only provenance for the record.",
 };
 
 /**
@@ -748,6 +760,10 @@ export const FIELD_TYPE_REGISTRY: Record<FieldType, FieldCapability[]> = {
   measurement: ["numeric", "decimal"],
   constant_sum: ["choice"],
   slider: ["numeric"],
+  range: [],
+  duration: ["numeric"],
+  tags: ["multiSelect"],
+  timestamp: ["displayOnly"],
 };
 
 /** All response types that carry a given capability. The capability arrays below are membership
@@ -1540,7 +1556,11 @@ function toXlsType(field: FormField, listName = fieldVariableName(field)): strin
     date_range: "text",
     measurement: "decimal",
     constant_sum: "text",
-    slider: "range"
+    slider: "range",
+    range: "text",
+    duration: "integer",
+    tags: "text",
+    timestamp: "dateTime"
   };
   return typeMap[field.type];
 }

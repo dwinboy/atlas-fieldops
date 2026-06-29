@@ -15,15 +15,15 @@ import {
  */
 const EXPECTED: Record<FieldCapability, FieldType[]> = {
   choice: ["select", "dropdown", "multiselect", "radio", "checkbox", "ranking", "likert", "yes_no", "constant_sum"],
-  multiSelect: ["multiselect", "checkbox"],
-  numeric: ["number", "decimal", "currency", "rating", "nps", "percentage", "counter", "measurement", "slider"],
+  multiSelect: ["multiselect", "checkbox", "tags"],
+  numeric: ["number", "decimal", "currency", "rating", "nps", "percentage", "counter", "measurement", "slider", "duration"],
   decimal: ["decimal", "currency", "measurement"],
   text: ["text", "textarea", "email", "url", "phone", "password"],
   date: ["date", "time", "datetime", "month", "date_range"],
   location: ["gps", "geolocation", "map", "geofence", "polygon", "path"],
   shape: ["polygon", "path"],
   media: ["photo", "image", "signature", "audio", "video", "file", "pdf", "scan_document"],
-  displayOnly: ["article", "auto_id", "hidden"],
+  displayOnly: ["article", "auto_id", "hidden", "timestamp"],
 };
 
 describe("field type capability registry", () => {

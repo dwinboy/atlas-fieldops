@@ -876,6 +876,145 @@ function DateRangeField({ value, answer }: { value: unknown; answer: (v: unknown
   );
 }
 
+/** Numeric range: a low/high pair stored as { low, high }. Empty when neither is entered. */
+function NumericRangeField({ value, answer }: { value: unknown; answer: (v: unknown) => void }) {
+  const range = isRecord(value) ? value : {};
+  const low = range.low === undefined || range.low === null ? "" : String(range.low);
+  const high = range.high === undefined || range.high === null ? "" : String(range.high);
+  const update = (next: { low: string; high: string }) => {
+    const lowNum = next.low.trim() === "" ? undefined : Number(next.low);
+    const highNum = next.high.trim() === "" ? undefined : Number(next.high);
+    answer(lowNum === undefined && highNum === undefined ? null : { low: lowNum, high: highNum });
+  };
+  const invalid = low !== "" && high !== "" && Number(low) > Number(high);
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+      <TextInput
+        keyboardType="numeric"
+        onChangeText={(text) => update({ low: text, high })}
+        placeholder="Low"
+        placeholderTextColor="#b0c5bc"
+        style={{ ...inputStyle, flex: 1 }}
+        value={low}
+      />
+      <Text style={{ color: "#49635a", fontWeight: "700" }}>–</Text>
+      <TextInput
+        keyboardType="numeric"
+        onChangeText={(text) => update({ low, high: text })}
+        placeholder="High"
+        placeholderTextColor="#b0c5bc"
+        style={{ ...inputStyle, flex: 1 }}
+        value={high}
+      />
+      {invalid ? <Text style={{ color: "#b42318", fontSize: 12 }}>Low &gt; High</Text> : null}
+    </View>
+  );
+}
+
+/** Duration: a stopwatch that stores elapsed whole seconds; also editable by typing minutes. */
+function DurationField({ value, answer }: { value: unknown; answer: (v: unknown) => void }) {
+  const seconds = typeof value === "number" && Number.isFinite(value) ? value : 0;
+  const [running, setRunning] = useState(false);
+  const startedAt = useRef<number | null>(null);
+  useEffect(() => {
+    if (!running) return;
+    startedAt.current = Date.now() - seconds * 1000;
+    const id = setInterval(() => {
+      if (startedAt.current !== null) answer(Math.round((Date.now() - startedAt.current) / 1000));
+    }, 1000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running]);
+  const mm = Math.floor(seconds / 60);
+  const ss = seconds % 60;
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={{ color: "#12332b", fontWeight: "800", fontSize: 22 }}>
+        {String(mm).padStart(2, "0")}:{String(ss).padStart(2, "0")}
+      </Text>
+      <View style={{ flexDirection: "row", gap: 10 }}>
+        <Pressable onPress={() => setRunning((r) => !r)} style={{ ...counterButton, paddingHorizontal: 18 }}>
+          <Text style={counterButtonText}>{running ? "Stop" : "Start"}</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => {
+            setRunning(false);
+            answer(null);
+          }}
+          style={{ ...counterButton, paddingHorizontal: 18 }}
+        >
+          <Text style={counterButtonText}>Reset</Text>
+        </Pressable>
+      </View>
+      <TextInput
+        keyboardType="numeric"
+        onChangeText={(text) => answer(text.trim() === "" ? null : Math.max(0, Math.round(Number(text) * 60)))}
+        placeholder="Or type minutes"
+        placeholderTextColor="#b0c5bc"
+        style={inputStyle}
+        value={seconds ? String(Math.round((seconds / 60) * 100) / 100) : ""}
+      />
+    </View>
+  );
+}
+
+/** Tag list: several free-text entries, stored as a string[]. Add on Enter, remove with ×. */
+function TagListField({ value, answer }: { value: unknown; answer: (v: unknown) => void }) {
+  const items = Array.isArray(value) ? value.map((item) => String(item)) : [];
+  const [draft, setDraft] = useState("");
+  const add = () => {
+    const next = draft.trim();
+    if (next && !items.includes(next)) answer([...items, next]);
+    setDraft("");
+  };
+  return (
+    <View style={{ gap: 8 }}>
+      {items.length ? (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+          {items.map((item, index) => (
+            <Pressable
+              key={`${item}-${index}`}
+              onPress={() => answer(items.filter((_, i) => i !== index))}
+              style={{ backgroundColor: "#e2efe9", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 }}
+            >
+              <Text style={{ color: "#12332b", fontWeight: "600", fontSize: 13 }}>{item}  ×</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+      <TextInput
+        blurOnSubmit={false}
+        onChangeText={setDraft}
+        onSubmitEditing={add}
+        placeholder="Type and press enter to add"
+        placeholderTextColor="#b0c5bc"
+        returnKeyType="done"
+        style={inputStyle}
+        value={draft}
+      />
+    </View>
+  );
+}
+
+/** Auto timestamp: read-only; records the moment it is first opened (ISO datetime). */
+function AutoTimestampField({ value, answer }: { value: unknown; answer: (v: unknown) => void }) {
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (seeded.current) return;
+    seeded.current = true;
+    if (value === null || value === undefined || String(value).trim() === "") {
+      answer(new Date().toISOString());
+    }
+  }, [value, answer]);
+  const display = value ? new Date(String(value)).toLocaleString() : "—";
+  return (
+    <View style={{ backgroundColor: "#f0f5f3", borderRadius: 12, padding: 14 }}>
+      <Text style={{ color: "#12332b", fontWeight: "700", fontSize: 15 }}>{display}</Text>
+      <Text style={{ color: "#8aa79b", fontSize: 12, marginTop: 4 }}>Captured automatically</Text>
+    </View>
+  );
+}
+
 /** Measurement: a number plus a unit chosen from the configured units, stored as { value, unit }. */
 function MeasurementField({
   question,
@@ -1114,6 +1253,18 @@ function renderInput(
   }
   if (tags.includes("slider")) {
     return <SliderField answer={answer} question={question} value={value} />;
+  }
+  if (tags.includes("numeric-range")) {
+    return <NumericRangeField answer={answer} value={value} />;
+  }
+  if (tags.includes("duration")) {
+    return <DurationField answer={answer} value={value} />;
+  }
+  if (tags.includes("tag-list")) {
+    return <TagListField answer={answer} value={value} />;
+  }
+  if (tags.includes("auto-timestamp")) {
+    return <AutoTimestampField answer={answer} value={value} />;
   }
 
   // ── GPS ──────────────────────────────────────────────────────────────────

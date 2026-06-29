@@ -45,6 +45,8 @@ _PREVIOUS_ALLOWLIST = {
     "subform", "auto_id", "month", "day_of_week", "path", "pdf", "scan_document", "fingerprint",
     "article", "user_select", "org_select", "percentage", "yes_no", "counter", "date_range",
     "measurement", "constant_sum", "slider",
+    # Added response types (sensor-free composites/specialised controls).
+    "range", "duration", "tags", "timestamp",
 }
 
 # The runtime mapping exactly as it was in the inline _mobile_question_type dict.
@@ -63,7 +65,8 @@ _PREVIOUS_RUNTIME = {
     "month": "Date", "day_of_week": "SingleSelect", "pdf": "FileUpload", "scan_document": "FileUpload",
     "fingerprint": "Text", "article": "Text", "percentage": "Number", "counter": "Number",
     "yes_no": "SingleSelect", "date_range": "Text", "measurement": "Text", "constant_sum": "Text",
-    "slider": "Number",
+    "slider": "Number", "range": "Text", "duration": "Number", "tags": "MultiSelect",
+    "timestamp": "DateTime",
 }
 
 
