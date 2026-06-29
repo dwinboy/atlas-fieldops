@@ -30,6 +30,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { KpiShard } from "@/components/ui/kpi-shard";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Textarea } from "@/components/ui/input";
@@ -2431,7 +2432,6 @@ function MetricCard({
   icon: Icon,
   label,
   onClick,
-  tone,
   value,
 }: {
   icon: LucideIcon;
@@ -2440,26 +2440,14 @@ function MetricCard({
   tone: BadgeProps["tone"];
   value: number | string;
 }) {
-  const content = (
-    <>
-      <div className="flex items-center justify-between gap-3">
-        <span className="rounded-xl bg-primary/10 p-2 text-primary">
-          <Icon aria-hidden="true" size={18} />
-        </span>
-        <Badge tone={tone}>Quality</Badge>
-      </div>
-      <p className="mt-4 text-2xl font-semibold">{typeof value === "number" ? value.toLocaleString() : value}</p>
-      <p className="mt-1 text-sm text-muted-foreground">{label}</p>
-    </>
+  return (
+    <KpiShard
+      icon={Icon}
+      label={label}
+      onClick={onClick}
+      value={typeof value === "number" ? value.toLocaleString() : value}
+    />
   );
-  if (onClick) {
-    return (
-      <button className="rounded-xl border bg-panel p-3 text-left shadow-line transition hover:border-primary/40 hover:bg-primary/5" onClick={onClick} type="button">
-        {content}
-      </button>
-    );
-  }
-  return <article className="rounded-xl border bg-panel p-3 shadow-line">{content}</article>;
 }
 
 function Panel({ action, children, title }: { action?: ReactNode; children: ReactNode; title: string }) {

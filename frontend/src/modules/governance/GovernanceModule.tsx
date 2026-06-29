@@ -25,6 +25,7 @@ import { useEffect, useMemo, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { GovernanceCommandCenter } from "@/components/GovernanceCommandCenter";
 import { Badge } from "@/components/ui/badge";
+import { KpiShard } from "@/components/ui/kpi-shard";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
@@ -111,7 +112,6 @@ function downloadCsv(filename: string, rows: Record<string, string | number | bo
 function MetricCard({
   icon,
   label,
-  tone = "neutral",
   value,
 }: {
   icon: ReactNode;
@@ -119,29 +119,7 @@ function MetricCard({
   tone?: "danger" | "neutral" | "success" | "warning";
   value: string | number;
 }) {
-  return (
-    <article className="surface-premium rounded-2xl p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            {label}
-          </p>
-          <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
-        </div>
-        <span
-          className={cn(
-            "rounded-xl border p-2",
-            tone === "danger" && "border-danger/20 bg-danger/10 text-danger",
-            tone === "success" && "border-success/20 bg-success/10 text-success",
-            tone === "warning" && "border-warning/20 bg-warning/10 text-warning",
-            tone === "neutral" && "border-border bg-muted text-muted-foreground",
-          )}
-        >
-          {icon}
-        </span>
-      </div>
-    </article>
-  );
+  return <KpiShard icon={icon} label={label} value={value} />;
 }
 
 function SectionPanel({

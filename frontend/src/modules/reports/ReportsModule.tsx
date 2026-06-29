@@ -35,6 +35,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { KpiShard } from "@/components/ui/kpi-shard";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
@@ -2112,19 +2113,8 @@ function DashboardCard({ dashboard }: { dashboard: DashboardRecord }) {
   );
 }
 
-function MetricCard({ icon: Icon, label, onClick, tone, value }: { icon: LucideIcon; label: string; onClick: () => void; tone: BadgeProps["tone"]; value: number }) {
-  return (
-    <button className="rounded-xl border bg-panel p-3 text-left shadow-line transition hover:border-primary/40 hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary/30" onClick={onClick} type="button">
-      <div className="flex items-center justify-between gap-3">
-        <span className="rounded-xl bg-primary/10 p-2 text-primary">
-          <Icon aria-hidden="true" size={18} />
-        </span>
-        <Badge tone={tone}>Reports</Badge>
-      </div>
-      <p className="mt-4 text-2xl font-semibold">{value.toLocaleString()}</p>
-      <p className="mt-1 text-sm text-muted-foreground">{label}</p>
-    </button>
-  );
+function MetricCard({ icon: Icon, label, onClick, value }: { icon: LucideIcon; label: string; onClick: () => void; tone: BadgeProps["tone"]; value: number }) {
+  return <KpiShard icon={Icon} label={label} onClick={onClick} value={value.toLocaleString()} />;
 }
 
 function Panel({ action, children, title }: { action?: ReactNode; children: ReactNode; title: string }) {

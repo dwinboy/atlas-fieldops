@@ -27,6 +27,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { AccessDenied, isPermissionError } from "@/components/ui/access-denied";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { KpiShard } from "@/components/ui/kpi-shard";
 import { Button } from "@/components/ui/button";
 import { ActionMenu, type ActionMenuItem } from "@/components/ui/dropdown-menu";
 import { HelpHint } from "@/components/ui/help-hint";
@@ -472,7 +473,6 @@ function MetricCard({
   icon,
   label,
   onClick,
-  tone = "neutral",
   value,
 }: {
   icon: ReactNode;
@@ -481,40 +481,7 @@ function MetricCard({
   tone?: "danger" | "neutral" | "success" | "warning";
   value: string | number;
 }) {
-  const Component = onClick ? "button" : "article";
-  return (
-    <Component
-      className={cn(
-        "surface-premium w-full rounded-2xl p-4 text-left",
-        onClick && "transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-line focus:outline-none focus:ring-2 focus:ring-primary/30",
-      )}
-      onClick={onClick}
-      type={onClick ? "button" : undefined}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            {label}
-          </p>
-          <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
-        </div>
-        <span
-          className={cn(
-            "rounded-xl border p-2",
-            tone === "danger" && "border-danger/20 bg-danger/10 text-danger",
-            tone === "success" &&
-              "border-success/20 bg-success/10 text-success",
-            tone === "warning" &&
-              "border-warning/20 bg-warning/10 text-warning",
-            tone === "neutral" &&
-              "border-border bg-muted text-muted-foreground",
-          )}
-        >
-          {icon}
-        </span>
-      </div>
-    </Component>
-  );
+  return <KpiShard icon={icon} label={label} onClick={onClick} value={value} />;
 }
 
 function caseStatusTone(status: EntityStatus): BadgeProps["tone"] {

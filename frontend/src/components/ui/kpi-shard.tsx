@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { isValidElement, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -15,7 +15,8 @@ export type KpiShardProps = {
   label: string;
   value: ReactNode;
   detail?: string;
-  icon: LucideIcon;
+  /** Either a lucide-react icon component (rendered at size 20 / strokeWidth 1.5) or a ready node. */
+  icon: LucideIcon | ReactNode;
   trend?: KpiShardTrend;
   onClick?: () => void;
   className?: string;
@@ -23,11 +24,24 @@ export type KpiShardProps = {
 
 export function KpiShard({ label, value, detail, icon: Icon, trend, onClick, className }: KpiShardProps) {
   const interactive = typeof onClick === "function";
+  // A pre-rendered node (e.g. <Foo />) is a valid element; a lucide component (forwardRef object)
+  // is not, so isValidElement reliably distinguishes "already rendered" from "component to render".
+  let iconNode: ReactNode;
+  if (isValidElement(Icon)) {
+    iconNode = (
+      <span aria-hidden="true" className="shrink-0 text-primary [&>svg]:size-5">
+        {Icon}
+      </span>
+    );
+  } else {
+    const IconComponent = Icon as LucideIcon;
+    iconNode = <IconComponent aria-hidden="true" className="shrink-0 text-primary" size={20} strokeWidth={1.5} />;
+  }
   const body = (
     <>
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm font-medium text-on-surface-variant">{label}</p>
-        <Icon aria-hidden="true" className="shrink-0 text-primary" size={20} strokeWidth={1.5} />
+        {iconNode}
       </div>
       <p className="mt-3 text-3xl font-bold tabular-nums tracking-tight text-on-surface">{value}</p>
       {trend ? (
