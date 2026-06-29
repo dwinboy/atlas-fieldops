@@ -1782,7 +1782,7 @@ function SourceDrivenRepeatGroup({
   const fields = repeatFields(question);
   const seedVariable = question.selection?.seedChildVariable ?? null;
   const seedField = (seedVariable && fields.find((f) => f.variableName === seedVariable)) || fields[0] || null;
-  const sourceKey = options.map((option) => option.value).join(" ");
+  const sourceKey = options.map((option) => option.value).join(" ");
 
   useEffect(() => {
     if (options.length === 0) return;
