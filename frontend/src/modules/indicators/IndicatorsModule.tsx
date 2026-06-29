@@ -29,6 +29,7 @@ import { useEffect, useMemo, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { KpiShard } from "@/components/ui/kpi-shard";
+import { EmptyMini } from "@/components/ui/empty-mini";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
@@ -1830,6 +1831,3 @@ function ProgressBar({ value }: { value: number }) {
   );
 }
 
-function EmptyMini({ label }: { label: string }) {
-  return <div className="rounded-xl border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">{label}</div>;
-}
