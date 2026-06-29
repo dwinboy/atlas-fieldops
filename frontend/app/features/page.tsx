@@ -1,13 +1,22 @@
 import type { Metadata } from "next";
 
-import { CTASection, FeatureGrid, SectionIntro, SimplePageHero, WorkflowShowcase } from "@/components/marketing/MarketingBlocks";
+import {
+  ArchitectureGraphic,
+  CTASection,
+  DataUseGraphic,
+  FeatureGrid,
+  ModuleEcosystemGraphic,
+  OperatingFlowGraphic,
+  SectionIntro,
+  SimplePageHero,
+} from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
 import { pageFeatureIcons, platformFeatures } from "@/lib/marketing/content";
 import { marketingMetadata } from "@/lib/marketing/seo";
 
 export const metadata: Metadata = marketingMetadata({
-  title: "Features",
-  description: "Explore project setup, sector packs, form builder, offline data collection, field operations, submissions, GIS mapping, KPIs, reports, data quality, governance, and administration.",
+  title: "Features for Field Data Collection, Operations, GIS, and Reporting",
+  description: "Explore Atlas FieldOps features for project setup, sector packs, form builder, offline mobile data collection, assignments, submissions, GIS mapping, KPIs, reports, data quality, governance, and administration.",
   path: "/features",
 });
 
@@ -17,10 +26,12 @@ export default function FeaturesPage() {
       <main>
         <SimplePageHero
           eyebrow="Features"
-          title="A complete operating system for field data teams"
-          text="Atlas FieldOps connects every feature to the operational workflow: sector setup, forms, entities, field teams, approvals, maps, KPIs, analytics, and reports."
+          title="A complete operating system for field data and operations teams"
+          text="Atlas FieldOps connects every feature to the operational workflow: sector setup, forms, entities, field teams, approvals, maps, KPIs, analytics, reports, imports, and governance."
         />
         <FeatureGrid />
+        <OperatingFlowGraphic />
+        <ModuleEcosystemGraphic />
         <section className="bg-white py-20">
           <SectionIntro eyebrow="Capability map" title="Everything connects to trusted decisions" text="Each capability is designed to feed operations, quality control, reporting, and action." />
           <div className="mx-auto mt-12 grid max-w-7xl gap-4 px-4 sm:px-6 lg:grid-cols-3 lg:px-8">
@@ -36,7 +47,8 @@ export default function FeaturesPage() {
             })}
           </div>
         </section>
-        <WorkflowShowcase />
+        <ArchitectureGraphic />
+        <DataUseGraphic />
         <CTASection />
       </main>
     </MarketingShell>

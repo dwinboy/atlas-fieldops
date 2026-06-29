@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { site } from "@/lib/marketing/content";
+import { seoKeywords, site } from "@/lib/marketing/content";
 
 export function marketingMetadata({
   description,
@@ -15,6 +15,7 @@ export function marketingMetadata({
   return {
     title,
     description,
+    keywords: seoKeywords,
     alternates: { canonical: url },
     openGraph: {
       title: `${title} | ${site.name}`,
@@ -22,12 +23,13 @@ export function marketingMetadata({
       url,
       siteName: site.name,
       type: "website",
-      images: [{ url: "/og-image.png", width: 1200, height: 630, alt: `${site.name} platform preview` }],
+      images: [{ url: `${site.url}/og-image.png`, width: 1200, height: 630, alt: `${site.name} platform preview` }],
     },
     twitter: {
       card: "summary_large_image",
       title: `${title} | ${site.name}`,
       description,
+      images: [`${site.url}/og-image.png`],
     },
   };
 }

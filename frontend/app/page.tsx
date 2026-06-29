@@ -3,9 +3,22 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 
-import { CTASection, FeatureGrid, HeroMockup, IndustryGrid, SectionIntro, TrustedBy, TrustBand, WorkflowShowcase } from "@/components/marketing/MarketingBlocks";
+import {
+  ArchitectureGraphic,
+  CTASection,
+  DataUseGraphic,
+  FeatureGrid,
+  HeroMockup,
+  IndustryGrid,
+  ModuleEcosystemGraphic,
+  OperatingFlowGraphic,
+  SectionIntro,
+  SectorAdaptabilityShowcase,
+  TrustedBy,
+  TrustBand,
+} from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
-import { platformModules, site } from "@/lib/marketing/content";
+import { site } from "@/lib/marketing/content";
 import { breadcrumbSchema, JsonLd, marketingMetadata } from "@/lib/marketing/seo";
 
 export const metadata: Metadata = marketingMetadata({
@@ -45,7 +58,7 @@ export default function HomePage() {
               Offline-ready data collection for every sector
             </p>
             <h1 className="mt-4 text-4xl font-semibold tracking-tight text-[#0c1f1b] md:text-6xl md:leading-[0.98]">
-              Build forms, collect field data, and run operations from one platform.
+              Field data collection software for every sector and every workflow.
             </h1>
             <p className="mx-auto mt-4 max-w-3xl text-base leading-7 text-[#5b6a65] md:text-lg md:leading-8">
               Atlas FieldOps helps organizations in agriculture, health, education, retail, logistics, inventory, audits, HR, government, and humanitarian work collect trusted mobile data, manage entities, approve submissions, map coverage, track KPIs, and report with confidence.
@@ -74,22 +87,9 @@ export default function HomePage() {
           />
           <FeatureGrid />
         </section>
-        <section className="bg-white py-20">
-          <SectionIntro
-            eyebrow="Modules"
-            title="A complete data operations platform, from projects to reports"
-            text="The product story is simple: projects define the sector context, forms collect evidence, approved submissions feed entities, KPIs, maps, reports, and management decisions."
-          />
-          <div className="mx-auto mt-12 grid max-w-7xl gap-4 px-4 sm:px-6 md:grid-cols-2 lg:grid-cols-5 lg:px-8">
-            {platformModules.map(([title, text]) => (
-              <article className="rounded-xl border border-black/10 bg-[#fafaf8] p-5 shadow-sm" key={title}>
-                <h3 className="text-base font-semibold">{title}</h3>
-                <p className="mt-2 text-sm leading-6 text-[#5b6a65]">{text}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-        <WorkflowShowcase />
+        <ModuleEcosystemGraphic />
+        <OperatingFlowGraphic />
+        <ArchitectureGraphic />
         <section className="bg-white py-20">
           <SectionIntro
             eyebrow="Use cases"
@@ -98,6 +98,8 @@ export default function HomePage() {
           />
           <IndustryGrid />
         </section>
+        <SectorAdaptabilityShowcase />
+        <DataUseGraphic />
         <TrustBand />
         <CTASection />
       </main>

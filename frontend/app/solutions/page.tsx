@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { CTASection, IndustryGrid, SectionIntro, SimplePageHero } from "@/components/marketing/MarketingBlocks";
+import { CTASection, IndustryGrid, SectionIntro, SectorAdaptabilityShowcase, SimplePageHero } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
 import { solutionPages } from "@/lib/marketing/content";
 import { marketingMetadata } from "@/lib/marketing/seo";
 
 export const metadata: Metadata = marketingMetadata({
-  title: "Solutions for NGOs, Governments, Donors, Research, Health, and Education",
-  description: "Industry-specific monitoring and evaluation software for NGOs, governments, donors, research teams, health programs, and education programs.",
+  title: "Solutions by Sector for Field Data Collection and Operations",
+  description: "Sector-adaptive data collection software for NGOs, governments, agriculture, health, education, retail, inventory, logistics, manufacturing, audits, HR, research, and custom operations.",
   path: "/solutions",
 });
 
@@ -18,10 +18,11 @@ export default function SolutionsPage() {
       <main>
         <SimplePageHero
           eyebrow="Solutions"
-          title="Purpose-built workflows for complex field programs"
-          text="Support sector-specific operations while keeping one shared platform for data quality, approvals, maps, analytics, and reporting."
+          title="Purpose-built workflows for every field operation"
+          text="Support sector-specific operations while keeping one shared platform for form building, mobile collection, data quality, approvals, maps, analytics, reports, and governance."
         />
         <IndustryGrid />
+        <SectorAdaptabilityShowcase />
         <section className="py-20">
           <SectionIntro eyebrow="Industries" title="Operational value by sector" text="Every solution connects field activity to program decisions and reporting." />
           <div className="mx-auto mt-12 grid max-w-7xl gap-4 px-4 sm:px-6 md:grid-cols-2 lg:grid-cols-3 lg:px-8">

@@ -1,10 +1,36 @@
-import { ArrowRight, Check, ChevronDown, MapPin, RadioTower, ShieldCheck, Smartphone } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  ChevronDown,
+  ClipboardCheck,
+  ClipboardList,
+  Database,
+  FileText,
+  Layers3,
+  MapPin,
+  RadioTower,
+  ShieldCheck,
+  Smartphone,
+  UsersRound,
+  Workflow,
+} from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
-import { industries, metrics, platformFeatures, pricingTiers, trustLogos, workflowSteps } from "@/lib/marketing/content";
+import {
+  architectureLayers,
+  industries,
+  metrics,
+  operatingFlow,
+  platformModules,
+  platformFeatures,
+  pricingTiers,
+  sectorCapabilities,
+  trustLogos,
+  workflowSteps,
+} from "@/lib/marketing/content";
 import { cn } from "@/lib/utils";
 
 export function SectionIntro({ eyebrow, title, text }: { eyebrow: string; title: string; text: string }) {
@@ -163,6 +189,259 @@ export function WorkflowShowcase() {
               <p className="mt-3 text-sm font-semibold">{step}</p>
             </div>
           ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function OperatingFlowGraphic() {
+  const icons = [Layers3, ClipboardCheck, RadioTower, Smartphone, ShieldCheck, FileText];
+
+  return (
+    <section className="bg-white py-20">
+      <SectionIntro
+        eyebrow="How the platform works"
+        title="One clear path from setup to trusted operational data"
+        text="Atlas FieldOps is built around the way field organizations actually work: configure the context, collect evidence, review it, and turn approved data into action."
+      />
+      <ol className="mx-auto mt-12 grid max-w-7xl gap-4 px-4 sm:px-6 lg:grid-cols-6 lg:px-8">
+        {operatingFlow.map((step, index) => {
+          const Icon = icons[index % icons.length];
+          return (
+            <li className="group relative rounded-2xl border border-black/10 bg-[#fafaf8] p-4 shadow-sm transition hover:-translate-y-1 hover:shadow-lg" key={step.title}>
+              {index < operatingFlow.length - 1 ? (
+                <span className="absolute -right-3 top-10 z-10 hidden h-6 w-6 items-center justify-center rounded-full border border-[#0d9488]/20 bg-white text-[#0d9488] shadow-sm lg:flex">
+                  <ArrowRight size={14} />
+                </span>
+              ) : null}
+              <div className="flex items-center justify-between gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0c1f1b] text-white shadow-lg shadow-[#0c1f1b]/10">
+                  <Icon size={20} />
+                </span>
+                <span className="rounded-full bg-[#0d9488]/10 px-2 py-1 font-mono text-[11px] font-semibold text-[#0d9488]">0{index + 1}</span>
+              </div>
+              <h3 className="mt-5 text-base font-semibold leading-5 text-[#0c1f1b]">{step.title}</h3>
+              <p className="mt-2 text-xs leading-5 text-[#5b6a65]">{step.text}</p>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
+export function ArchitectureGraphic() {
+  const firstColumn = architectureLayers.slice(0, 4);
+  const secondColumn = architectureLayers.slice(4);
+
+  return (
+    <section className="px-4 py-20 sm:px-6 lg:px-8">
+      <div className="mx-auto grid max-w-7xl gap-10 rounded-[24px] border border-black/10 bg-[#0c1f1b] p-6 text-white shadow-2xl md:p-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#5eead4]">Architecture</p>
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">Built as an operational data system, not just a survey tool.</h2>
+          <p className="mt-4 text-sm leading-7 text-white/70">
+            Every record keeps its organization, project, entity, form version, user, location, review state, and audit trail so data can move safely from mobile capture to dashboards and reports.
+          </p>
+          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            {[
+              ["Multi-tenant", "Tenant isolation"],
+              ["Offline-ready", "Mobile sync"],
+              ["Governed", "Audit history"],
+            ].map(([label, text]) => (
+              <div className="rounded-lg border border-white/12 bg-white/8 p-3" key={label}>
+                <p className="text-sm font-semibold">{label}</p>
+                <p className="mt-1 text-xs text-white/60">{text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="relative rounded-2xl border border-white/12 bg-white/[0.06] p-4">
+          <div className="absolute inset-x-10 top-1/2 hidden h-px bg-gradient-to-r from-transparent via-[#5eead4]/45 to-transparent lg:block" />
+          <div className="grid gap-4 lg:grid-cols-[1fr_170px_1fr] lg:items-center">
+            <div className="grid gap-3">
+              {firstColumn.map(([layer, text], index) => (
+                <div className="rounded-xl border border-white/10 bg-white/[0.08] p-4" key={layer}>
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-md bg-[#5eead4] font-mono text-xs font-semibold text-[#0c1f1b]">
+                      {index + 1}
+                    </span>
+                    <span className="text-sm font-semibold">{layer}</span>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-white/62">{text}</p>
+                </div>
+              ))}
+            </div>
+            <div className="relative z-10 rounded-2xl border border-[#5eead4]/35 bg-[#5eead4] p-4 text-[#0c1f1b] shadow-2xl shadow-[#5eead4]/10">
+              <Database size={24} />
+              <h3 className="mt-3 text-sm font-semibold">Trusted data core</h3>
+              <p className="mt-2 text-xs leading-5 text-[#16433b]">Every record keeps tenant, project, entity, form version, location, user, status, and audit context.</p>
+            </div>
+            <div className="grid gap-3">
+              {secondColumn.map(([layer, text], index) => (
+                <div className="rounded-xl border border-white/10 bg-white/[0.08] p-4" key={layer}>
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-md bg-white/14 font-mono text-xs font-semibold text-[#5eead4]">
+                      {index + firstColumn.length + 1}
+                    </span>
+                    <span className="text-sm font-semibold">{layer}</span>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-white/62">{text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function ModuleEcosystemGraphic() {
+  const modules = platformModules.slice(0, 10);
+  const icons = [Layers3, ClipboardList, RadioTower, ClipboardCheck, MapPin, Database, FileText, ShieldCheck, UsersRound, Workflow];
+
+  return (
+    <section className="px-4 py-20 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl">
+        <SectionIntro
+          eyebrow="Module ecosystem"
+          title="Each module has a job, but the data stays connected"
+          text="The public pages now show Atlas FieldOps as one operating system: projects sit at the center, and every module contributes to collection, control, analysis, or action."
+        />
+        <div className="relative mt-12 rounded-[24px] border border-black/10 bg-white p-5 shadow-sm md:p-8">
+          <div className="soft-grid absolute inset-0 opacity-40" />
+          <div className="relative grid gap-4 md:grid-cols-2 lg:grid-cols-[1fr_220px_1fr] lg:items-center">
+            <div className="grid gap-3">
+              {modules.slice(0, 5).map(([title, text], index) => {
+                const Icon = icons[index];
+                return (
+                  <article className="rounded-xl border border-black/10 bg-[#fafaf8] p-4 shadow-sm" key={title}>
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0d9488]/10 text-[#0d9488]">
+                        <Icon size={18} />
+                      </span>
+                      <h3 className="text-sm font-semibold text-[#0c1f1b]">{title}</h3>
+                    </div>
+                    <p className="mt-2 text-xs leading-5 text-[#5b6a65]">{text}</p>
+                  </article>
+                );
+              })}
+            </div>
+            <div className="relative rounded-2xl border border-[#0d9488]/20 bg-[#0d9488] p-5 text-white shadow-2xl shadow-[#0d9488]/15">
+              <span className="absolute -left-3 top-1/2 hidden h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-white text-[#0d9488] shadow lg:flex">
+                <ArrowRight size={14} />
+              </span>
+              <span className="absolute -right-3 top-1/2 hidden h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-white text-[#0d9488] shadow lg:flex">
+                <ArrowRight size={14} />
+              </span>
+              <Layers3 size={26} />
+              <h3 className="mt-3 text-xl font-semibold">Project workspace</h3>
+              <p className="mt-2 text-sm leading-6 text-white/78">Sector, geography, forms, teams, entities, rules, collection, and reporting stay anchored to the same project context.</p>
+            </div>
+            <div className="grid gap-3">
+              {modules.slice(5, 10).map(([title, text], offset) => {
+                const index = offset + 5;
+                const Icon = icons[index];
+                return (
+                  <article className="rounded-xl border border-black/10 bg-[#fafaf8] p-4 shadow-sm" key={title}>
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0d9488]/10 text-[#0d9488]">
+                        <Icon size={18} />
+                      </span>
+                      <h3 className="text-sm font-semibold text-[#0c1f1b]">{title}</h3>
+                    </div>
+                    <p className="mt-2 text-xs leading-5 text-[#5b6a65]">{text}</p>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function SectorAdaptabilityShowcase() {
+  const primarySectors = sectorCapabilities.slice(0, 9);
+  const customSector = sectorCapabilities.find(([sector]) => sector === "Custom");
+
+  return (
+    <section className="py-20">
+      <SectionIntro
+        eyebrow="Sector-adaptive"
+        title="One platform that speaks the language of each operation"
+        text="Project sector packs and custom settings adapt the same core system to farmers, stores, facilities, schools, shipments, assets, employees, inspections, and any custom record type."
+      />
+      <div className="mx-auto mt-12 grid max-w-7xl gap-6 px-4 sm:px-6 lg:grid-cols-[1fr_1.2fr] lg:px-8 lg:items-center">
+        <div className="rounded-[24px] border border-black/10 bg-[#0c1f1b] p-6 text-white shadow-2xl">
+          <div className="rounded-2xl border border-white/12 bg-white/[0.08] p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#5eead4]">Same platform engine</p>
+            <h3 className="mt-3 text-2xl font-semibold">Sector packs change the language, not the architecture.</h3>
+            <p className="mt-3 text-sm leading-6 text-white/68">Forms, entities, assignments, GPS, approvals, data quality, maps, metrics, and reports all stay connected through configurable project context.</p>
+          </div>
+          {customSector ? (
+            <div className="mt-4 rounded-2xl border border-[#5eead4]/25 bg-[#5eead4]/12 p-5">
+              <p className="text-sm font-semibold text-[#5eead4]">{customSector[0]}</p>
+              <p className="mt-2 text-sm leading-6 text-white/70">{customSector[1]}</p>
+            </div>
+          ) : null}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {primarySectors.map(([sector, detail]) => (
+            <article className="rounded-xl border border-black/10 bg-white p-4 shadow-sm" key={sector}>
+              <p className="text-sm font-semibold text-[#0d9488]">{sector}</p>
+              <p className="mt-2 text-xs leading-5 text-[#5b6a65]">{detail}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function DataUseGraphic() {
+  const lanes = [
+    ["Capture", "Mobile/Web/Import", Smartphone],
+    ["Review", "Approve/Return/Clean", ClipboardCheck],
+    ["Official record", "Entities/KPIs/Maps", Database],
+    ["Decide", "Reports/Dashboards/Exports", FileText],
+  ] as const;
+
+  return (
+    <section className="bg-white py-20">
+      <SectionIntro
+        eyebrow="Data use"
+        title="Users can see exactly when data becomes ready"
+        text="A visitor should understand immediately: raw data is captured first, then reviewed and cleaned, then promoted into official records, dashboards, maps, KPIs, and reports."
+      />
+      <div className="mx-auto mt-12 max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="relative rounded-[24px] border border-black/10 bg-[#fafaf8] p-5 shadow-sm md:p-8">
+          <div className="grid gap-4 lg:grid-cols-4">
+            {lanes.map(([title, label, Icon], index) => (
+              <article className="relative rounded-2xl border border-black/10 bg-white p-5 shadow-sm" key={title}>
+                {index < lanes.length - 1 ? (
+                  <span className="absolute -right-3 top-1/2 z-10 hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-[#0d9488]/20 bg-white text-[#0d9488] shadow-sm lg:flex">
+                    <ArrowRight size={15} />
+                  </span>
+                ) : null}
+                <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#0d9488]/10 text-[#0d9488]">
+                  <Icon size={22} />
+                </span>
+                <h3 className="mt-4 text-xl font-semibold text-[#0c1f1b]">{title}</h3>
+                <p className="mt-1 text-sm font-semibold text-[#0d9488]">{label}</p>
+                <div className="mt-4 h-2 rounded-full bg-[#e0ebe7]">
+                  <div className="h-full rounded-full bg-[#0d9488]" style={{ width: `${40 + index * 18}%` }} />
+                </div>
+              </article>
+            ))}
+          </div>
+          <div className="mt-5 rounded-2xl border border-[#0d9488]/20 bg-white p-5">
+            <p className="text-sm font-semibold text-[#0c1f1b]">Final result: trusted operational intelligence</p>
+            <p className="mt-2 text-sm leading-6 text-[#5b6a65]">Approved submissions update entity profiles, quality dashboards, GIS layers, KPI progress, supervisor queues, reports, and governed exports.</p>
+          </div>
         </div>
       </div>
     </section>

@@ -572,7 +572,7 @@ export type MobileSelectionAutofill = {
 };
 
 export type MobileSelectionConfig = {
-  source: "static" | "dataset" | "record";
+  source: "static" | "dataset" | "record" | "question";
   datasetId?: string | null;
   displayColumn?: string | null;
   valueColumn?: string | null;

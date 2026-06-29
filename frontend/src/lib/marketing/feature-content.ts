@@ -2,15 +2,15 @@ import type { FeatureDetailContent } from "@/components/marketing/MarketingBlock
 
 export const formBuilderContent: FeatureDetailContent = {
   eyebrow: "Features",
-  title: "Design forms backwards from your indicators",
-  lede: "Build mobile-ready data collection forms with sections, repeat groups, skip logic, validation, and full version history — so every question you ask maps to an indicator you report.",
+  title: "Build mobile-ready forms for any field workflow",
+  lede: "Create surveys, inspections, audits, stock counts, registrations, follow-ups, delivery proof, training records, and custom forms with logic, validation, entity links, versioning, and governance.",
   capabilities: [
     { title: "40+ field types", description: "Text, numbers, choices, dates, GPS and geofence, photo and signature, barcode, ratings, matrices, and repeat groups — grouped so the common ones are one tap away." },
     { title: "Logic and validation", description: "Skip logic, required fields, ranges, and consent checks keep bad data out at the point of capture, before it ever reaches review." },
     { title: "Reference data and bindings", description: "Bind questions to controlled lists so enumerators choose from approved values instead of free text." },
     { title: "Versioning that's safe", description: "Edit a published form into a new draft version while the live version keeps collecting — publish only when the new version is ready." },
-    { title: "Entity and duplicate controls", description: "Link forms to farmers, households, or facilities, set submission frequency, and configure duplicate detection on phone, ID, name, and GPS." },
-    { title: "Templates and duplication", description: "Start from sector templates or duplicate last round's form in one click for baseline → midline → endline continuity." },
+    { title: "Entity and duplicate controls", description: "Link forms to people, households, stores, facilities, products, assets, routes, cases, or custom records, then configure duplicate checks and submission frequency." },
+    { title: "Templates and duplication", description: "Start from sector templates or duplicate a previous form in one click for recurring surveys, inspections, stock counts, audits, or follow-up visits." },
   ],
   workflow: [
     { title: "Pick a starting point", description: "Blank canvas, a sector template, a duplicate of an existing form, or an XLSForm import." },
@@ -19,7 +19,7 @@ export const formBuilderContent: FeatureDetailContent = {
     { title: "Publish and assign", description: "Publish the form and assign it to field officers — it reaches their devices on the next sync, online or offline." },
   ],
   outcomes: [
-    "Every question traces to an indicator and a report",
+    "Every question can trace to the project, entity, workflow, KPI, dashboard, or report that needs it",
     "Clean data at source means less rework downstream",
     "Field teams see a simple form; managers keep full governance",
     "New survey rounds reuse proven instruments instead of starting over",

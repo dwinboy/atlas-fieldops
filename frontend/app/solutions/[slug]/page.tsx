@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 
-import { CTASection, SectionIntro, SimplePageHero } from "@/components/marketing/MarketingBlocks";
+import { CTASection, DataUseGraphic, OperatingFlowGraphic, SectionIntro, SimplePageHero } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
 import { site, solutionPages } from "@/lib/marketing/content";
 import { breadcrumbSchema, faqSchema, JsonLd, marketingMetadata } from "@/lib/marketing/seo";
@@ -62,6 +62,8 @@ export default function SolutionDetailPage({ params }: { params: { slug: string 
             </ul>
           </article>
         </section>
+        <OperatingFlowGraphic />
+        <DataUseGraphic />
         <section className="bg-white py-20">
           <SectionIntro eyebrow="Next step" title="See how this workflow fits your organization" text="Atlas FieldOps can be configured around your programs, data collection methods, geography, approvals, and reporting commitments." />
           <div className="mt-8 flex justify-center">

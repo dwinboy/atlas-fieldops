@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { CTASection, SimplePageHero } from "@/components/marketing/MarketingBlocks";
+import { CTASection, DataUseGraphic, OperatingFlowGraphic, SimplePageHero } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
 import { marketingMetadata } from "@/lib/marketing/seo";
 
@@ -33,6 +33,8 @@ export default function AgricultureSolutionPage() {
             ))}
           </div>
         </section>
+        <OperatingFlowGraphic />
+        <DataUseGraphic />
         <CTASection />
       </main>
     </MarketingShell>

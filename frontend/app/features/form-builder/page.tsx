@@ -6,9 +6,9 @@ import { formBuilderContent } from "@/lib/marketing/feature-content";
 import { marketingMetadata } from "@/lib/marketing/seo";
 
 export const metadata: Metadata = marketingMetadata({
-  title: "Form Builder for M&E Surveys",
+  title: "Form Builder for Surveys, Inspections, Audits, and Field Workflows",
   description:
-    "Design mobile-ready data collection forms with sections, repeat groups, skip logic, validation, and versioning — backwards from your indicators.",
+    "Design mobile-ready data collection forms for surveys, inspections, audits, registrations, stock counts, delivery proof, and custom workflows with logic, validation, repeat groups, entity links, and versioning.",
   path: "/features/form-builder",
 });
 

@@ -106,6 +106,56 @@ export const workflowSteps = [
   "Reports",
 ];
 
+export const operatingFlow = [
+  {
+    title: "Configure the operating context",
+    text: "Choose a sector pack or custom setup, define projects, locations, teams, entities, KPIs, approval rules, and reporting needs.",
+  },
+  {
+    title: "Build governed data instruments",
+    text: "Create forms for surveys, inspections, stock counts, registrations, delivery proof, audits, training, complaints, or custom workflows.",
+  },
+  {
+    title: "Assign field work",
+    text: "Send the right forms, entities, locations, boundaries, and instructions to field officers, supervisors, stores, routes, facilities, or assets.",
+  },
+  {
+    title: "Collect online or offline",
+    text: "Capture responses, GPS, timestamps, photos, signatures, files, barcodes, linked records, and draft work even when connectivity is weak.",
+  },
+  {
+    title: "Review and clean the evidence",
+    text: "Run approvals, corrections, duplicate checks, GPS validation, spreadsheet-style cleaning, data quality review, and audit logging.",
+  },
+  {
+    title: "Use trusted data everywhere",
+    text: "Approved data updates entities, maps, dashboards, KPIs, reports, exports, supervisor queues, and management decisions.",
+  },
+];
+
+export const architectureLayers = [
+  ["Organization", "Tenant, users, roles, branding, security, plans, and audit policy."],
+  ["Projects", "Sector context, geography, entity categories, teams, forms, KPIs, and governance."],
+  ["Entities", "People, households, facilities, products, stores, assets, cases, routes, or custom records."],
+  ["Forms", "Mobile-ready surveys, inspections, audits, inventory checks, registrations, and follow-ups."],
+  ["Submissions", "Field, web, uploaded, imported, returned, corrected, approved, or rejected records."],
+  ["Quality", "Validation, duplicates, GPS checks, missing data, outliers, conflicts, and reconciliation."],
+  ["Intelligence", "Maps, metrics, dashboards, reports, exports, donor/client views, and management actions."],
+];
+
+export const sectorCapabilities = [
+  ["Agriculture", "Farmers, farms, crops, inputs, training, yields, farm GPS, extension visits."],
+  ["Health", "Facilities, outreach, referrals, visits, patient follow-up, stock, supervision."],
+  ["Education", "Schools, students, teachers, attendance, inspections, infrastructure, training."],
+  ["Retail", "Stores, products, prices, brands, shelves, suppliers, stock, sales visits."],
+  ["Inventory", "Items, warehouses, receipts, issues, transfers, counts, variances, barcodes."],
+  ["Logistics", "Routes, vehicles, shipments, proof of delivery, incidents, warehouses."],
+  ["Manufacturing", "Batches, production checks, downtime, quality control, waste, corrective action."],
+  ["Audits", "Checklists, findings, evidence, risk scoring, corrective actions, approval trails."],
+  ["HR", "Employees, attendance, training, equipment assignment, supervisor review."],
+  ["Custom", "Any record, workflow, form, approval process, dashboard, and report structure."],
+];
+
 export const industries = [
   {
     title: "NGO and humanitarian operations",
@@ -377,6 +427,9 @@ export const resourceCards = [
   { title: "Data quality rule starter pack", type: "Template", text: "Create duplicate, outlier, GPS, and validation rules before collection begins.", category: "Downloads" },
   { title: "Donor reporting workbook", type: "Whitepaper", text: "Connect indicators, approved submissions, maps, and governance controls.", category: "Whitepapers" },
   { title: "Enumerator training outline", type: "Video", text: "Plan mobile collection onboarding, field support, and sync readiness.", category: "Videos" },
+  { title: "Retail field audit checklist", type: "Checklist", text: "Standardize store visits, shelf checks, price monitoring, stock evidence, and supervisor review.", category: "Sector Packs" },
+  { title: "GIS coverage planning guide", type: "Guide", text: "Use boundaries, assigned locations, GPS accuracy, and coverage layers to monitor field reach.", category: "Mapping" },
+  { title: "Submission approval playbook", type: "Guide", text: "Set practical approval chains, return reasons, correction steps, and audit-ready review policies.", category: "Governance" },
 ];
 
 export const blogPosts = [
@@ -404,6 +457,30 @@ export const blogPosts = [
     tags: ["donor reporting software", "impact measurement platform"],
     excerpt: "How governed submissions and indicators make reporting faster and more trustworthy.",
   },
+  {
+    title: "How to design forms that field officers can complete correctly",
+    category: "Form Design",
+    tags: ["mobile forms", "data quality"],
+    excerpt: "A practical approach to question wording, validation, choice lists, GPS, media evidence, and supervisor review.",
+  },
+  {
+    title: "Why entity-linked data collection is stronger than standalone surveys",
+    category: "Entity Management",
+    tags: ["entity registry", "beneficiary tracking"],
+    excerpt: "How registration, follow-up, profile history, and linked submissions create a clearer operational record.",
+  },
+  {
+    title: "Preparing mobile teams for offline sync before field deployment",
+    category: "Mobile Operations",
+    tags: ["offline sync", "field officer app"],
+    excerpt: "The readiness checks every manager should complete before sending teams to low-connectivity areas.",
+  },
+  {
+    title: "Using data quality queues to protect operational decisions",
+    category: "Data Quality",
+    tags: ["duplicate detection", "approval workflow"],
+    excerpt: "How missing data, duplicates, GPS issues, and returned submissions should move through a controlled review process.",
+  },
 ];
 
 export const caseStudies = [
@@ -430,6 +507,30 @@ export const caseStudies = [
     organizationType: "INGO",
     result: "5 regions connected",
     text: "A response program linked vulnerability scoring, distribution evidence, feedback, and protection cases.",
+  },
+  {
+    title: "Retail operations team improves store audit visibility",
+    sector: "Retail",
+    country: "National",
+    organizationType: "Private sector",
+    result: "87% same-day review",
+    text: "Store visits, product checks, supplier evidence, and stock issues were moved from spreadsheets into governed mobile workflows.",
+  },
+  {
+    title: "Education program standardizes school monitoring",
+    sector: "Education",
+    country: "Regional",
+    organizationType: "Foundation",
+    result: "120 schools profiled",
+    text: "School profiles, attendance checks, infrastructure findings, and training follow-ups were connected to district dashboards.",
+  },
+  {
+    title: "Inspection team creates audit-ready evidence trail",
+    sector: "Audits",
+    country: "Multi-site",
+    organizationType: "Enterprise",
+    result: "64% faster closure",
+    text: "Inspection forms, photos, GPS evidence, corrective actions, approvals, and exports were kept in one traceable workflow.",
   },
 ];
 

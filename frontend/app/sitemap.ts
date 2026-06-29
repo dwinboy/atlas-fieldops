@@ -5,6 +5,14 @@ import { site, solutionPages, useCasePages } from "@/lib/marketing/content";
 const publicRoutes = [
   "",
   "features",
+  "features/dashboards-reporting",
+  "features/data-quality",
+  "features/form-builder",
+  "features/indicator-frameworks",
+  "features/mobile-app",
+  "features/offline-data-collection",
+  "how-it-works",
+  "integrations",
   "demo",
   "signup",
   "create-organization",
@@ -28,6 +36,7 @@ const publicRoutes = [
   "documentation",
   "status",
   "careers",
+  "services",
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {
