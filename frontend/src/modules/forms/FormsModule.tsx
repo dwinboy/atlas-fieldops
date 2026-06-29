@@ -47,6 +47,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyMini } from "@/components/ui/empty-mini";
+import { EmptyState } from "@/components/ui/empty-state";
 import { KpiShard } from "@/components/ui/kpi-shard";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
@@ -2513,9 +2515,10 @@ function FormsGovernanceDashboard({
                 </button>
               ))}
               {!group.forms.length ? (
-                <p className="rounded-lg border border-dashed bg-background/50 p-3 text-sm text-muted-foreground">
-                  No forms currently need attention in this category.
-                </p>
+                <EmptyMini
+                  icon={CheckCircle2}
+                  label="No forms currently need attention in this category."
+                />
               ) : null}
             </div>
           </section>
@@ -2696,13 +2699,11 @@ function FormStatusCards({
 
   if (!forms.length) {
     return (
-      <div className="rounded-xl border border-dashed bg-panel p-8 text-center">
-        <FileStack aria-hidden="true" className="mx-auto text-muted-foreground" size={24} />
-        <p className="mt-3 font-medium">No {section} forms yet</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Forms will appear here when they match this status.
-        </p>
-      </div>
+      <EmptyState
+        icon={FileStack}
+        title={`No ${section} forms yet`}
+        description="Forms will appear here when they match this status."
+      />
     );
   }
   return (
@@ -7870,9 +7871,10 @@ function FormAnalyticsPanel({
               </tbody>
             </table>
             {!questionAnalytics.length ? (
-              <p className="rounded-lg border border-dashed bg-panel p-4 text-sm text-muted-foreground">
-                Question analytics will appear after this form receives submissions or uploaded rows.
-              </p>
+              <EmptyMini
+                icon={BarChart3}
+                label="Question analytics will appear after this form receives submissions or uploaded rows."
+              />
             ) : null}
           </div>
         </section>
@@ -7963,9 +7965,10 @@ function FormRelationshipsPanel({
             </div>
           ))}
           {!related.length ? (
-            <p className="rounded-lg border border-dashed bg-panel p-4 text-sm text-muted-foreground">
-              Related forms will appear when this project has a registration, baseline, monitoring, or endline chain.
-            </p>
+            <EmptyMini
+              icon={Link2}
+              label="Related forms will appear when this project has a registration, baseline, monitoring, or endline chain."
+            />
           ) : null}
         </div>
       </section>
@@ -8484,9 +8487,7 @@ function InsightCard({
             </p>
           ))
         ) : (
-          <p className="rounded-xl border border-dashed bg-muted/30 px-3 py-3 text-sm text-muted-foreground">
-            No activity yet.
-          </p>
+          <EmptyMini icon={History} label="No activity yet." />
         )}
       </div>
     </div>

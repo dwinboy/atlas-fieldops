@@ -33,6 +33,7 @@ import { AtlasFieldOpsLogo } from "@/components/brand/AtlasFieldOpsLogo";
 import { DynamicForms } from "@/components/DynamicForms";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyMini } from "@/components/ui/empty-mini";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -449,9 +450,7 @@ function MobileFormPreview({
                       </label>
                     ))}
                     {!fields.length ? (
-                      <div className="rounded-lg border border-dashed bg-background p-3 text-xs text-muted-foreground">
-                        No questions in this section yet.
-                      </div>
+                      <EmptyMini icon={ListChecks} label="No questions in this section yet." />
                     ) : null}
                   </div>
                 </div>
@@ -461,9 +460,7 @@ function MobileFormPreview({
         );
       })}
       {!form.fields.length ? (
-        <div className="rounded-xl border border-dashed bg-panel p-5 text-center text-xs text-muted-foreground">
-          Add a question to see it in preview.
-        </div>
+        <EmptyMini icon={ListChecks} label="Add a question to see it in preview." />
       ) : null}
     </div>
   );
@@ -9513,11 +9510,10 @@ export function FormCreationWorkspace({
                           </label>
                         ))
                       ) : (
-                        <div className="rounded-md border border-dashed bg-panel/70 p-3 text-sm text-muted-foreground">
-                          No active field officers found. Create field officer
-                          users in Users & Teams or Field Operations before
-                          assigning this form.
-                        </div>
+                        <EmptyMini
+                          icon={Smartphone}
+                          label="No active field officers found. Create field officer users in Users & Teams or Field Operations before assigning this form."
+                        />
                       )}
                     </div>
                   </div>
@@ -9589,10 +9585,10 @@ export function FormCreationWorkspace({
                           </label>
                         ))
                       ) : (
-                        <div className="rounded-md border border-dashed bg-panel/70 p-3 text-sm text-muted-foreground">
-                          No active teams found. Create teams in Users & Teams
-                          before assigning this form.
-                        </div>
+                        <EmptyMini
+                          icon={ClipboardList}
+                          label="No active teams found. Create teams in Users & Teams before assigning this form."
+                        />
                       )}
                     </div>
                   </div>
@@ -10872,9 +10868,7 @@ export function FormCreationWorkspace({
               <MobileFormPreview form={draftForm} frame={previewDeviceMode} />
             </div>
           ) : (
-            <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-10 text-center text-sm text-muted-foreground">
-              No questions yet. Return to Builder and add questions.
-            </div>
+            <EmptyMini icon={ListChecks} label="No questions yet. Return to Builder and add questions." />
           )}
         </section>
       ) : null}
