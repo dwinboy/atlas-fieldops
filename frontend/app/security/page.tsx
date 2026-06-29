@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 
 import { CTASection, SimplePageHero } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
-import { SecurityCoreGraphic } from "@/components/marketing/illustrations";
 import { marketingMetadata } from "@/lib/marketing/seo";
 
 export const metadata: Metadata = marketingMetadata({
@@ -26,7 +26,16 @@ export default function SecurityPage() {
       <main>
         <SimplePageHero eyebrow="Security" title="Enterprise trust for sensitive field data" text="Atlas FieldOps is designed for organizations that need accountable data collection, governed access, auditability, and reliable operational controls." />
         <div className="mx-auto mb-16 max-w-4xl px-4 sm:px-6 lg:px-8">
-          <SecurityCoreGraphic />
+          <div className="overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-[0_10px_40px_-12px_rgba(0,82,50,0.18)]">
+            <Image
+              alt="Atlas FieldOps secure core architecture: role permissions, audit logs, encrypted database, and approval chain around a central secure core"
+              className="h-auto w-full rounded-xl"
+              width={1376}
+              height={768}
+              sizes="(max-width: 1024px) 100vw, 960px"
+              src="/marketing/security-architecture.png"
+            />
+          </div>
         </div>
         <section className="mx-auto grid max-w-7xl gap-5 px-4 pb-20 sm:px-6 md:grid-cols-2 lg:grid-cols-3 lg:px-8">
           {controls.map(([title, text]) => (
