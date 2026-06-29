@@ -8320,75 +8320,95 @@ function FormFilters({
     Boolean(filters.dateFrom) ||
     Boolean(filters.dateTo);
   return (
-    <div className="grid gap-3 rounded-xl border bg-panel p-3 shadow-line grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
-      <Select
-        onChange={(event) => onChange({ projectName: event.target.value })}
-        value={filters.projectName}
-      >
-        <option value="">All projects</option>
-        {projectNames.map((projectName) => (
-          <option key={projectName} value={projectName}>
-            {projectName}
-          </option>
-        ))}
-      </Select>
-      <Select
-        onChange={(event) => onChange({ status: event.target.value })}
-        value={filters.status}
-      >
-        <option value="">All statuses</option>
-        {statuses.map((status) => (
-          <option key={status} value={status}>
-            {status}
-          </option>
-        ))}
-      </Select>
-      <Select
-        onChange={(event) => onChange({ owner: event.target.value })}
-        value={filters.owner}
-      >
-        <option value="">All owners</option>
-        {owners.map((owner) => (
-          <option key={owner} value={owner}>
-            {owner}
-          </option>
-        ))}
-      </Select>
-      <Select
-        onChange={(event) => onChange({ formType: event.target.value })}
-        value={filters.formType}
-      >
-        <option value="">All form types</option>
-        {formTypes.map((formType) => (
-          <option key={formType} value={formType}>
-            {formType}
-          </option>
-        ))}
-      </Select>
-      <div className="col-span-2 flex gap-2 md:col-span-1">
-        <Input
-          aria-label="Updated from"
-          onChange={(event) => onChange({ dateFrom: event.target.value })}
-          type="date"
-          value={filters.dateFrom}
-        />
-        <Input
-          aria-label="Updated to"
-          onChange={(event) => onChange({ dateTo: event.target.value })}
-          type="date"
-          value={filters.dateTo}
-        />
+    <div className="space-y-3 rounded-xl border border-border-subtle bg-surface-container-lowest p-4 shadow-[0_1px_3px_0_rgba(0,0,0,0.05)]">
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+        <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+          <span>Project</span>
+          <Select
+            onChange={(event) => onChange({ projectName: event.target.value })}
+            value={filters.projectName}
+          >
+            <option value="">All projects</option>
+            {projectNames.map((projectName) => (
+              <option key={projectName} value={projectName}>
+                {projectName}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+          <span>Status</span>
+          <Select
+            onChange={(event) => onChange({ status: event.target.value })}
+            value={filters.status}
+          >
+            <option value="">All statuses</option>
+            {statuses.map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+          <span>Owner</span>
+          <Select
+            onChange={(event) => onChange({ owner: event.target.value })}
+            value={filters.owner}
+          >
+            <option value="">All owners</option>
+            {owners.map((owner) => (
+              <option key={owner} value={owner}>
+                {owner}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+          <span>Form type</span>
+          <Select
+            onChange={(event) => onChange({ formType: event.target.value })}
+            value={filters.formType}
+          >
+            <option value="">All form types</option>
+            {formTypes.map((formType) => (
+              <option key={formType} value={formType}>
+                {formType}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <div className="col-span-2 grid gap-1.5 text-xs font-medium text-muted-foreground md:col-span-3 xl:col-span-2">
+          <span>Updated date range</span>
+          <div className="flex items-center gap-2">
+            <Input
+              aria-label="Updated from"
+              onChange={(event) => onChange({ dateFrom: event.target.value })}
+              type="date"
+              value={filters.dateFrom}
+            />
+            <span className="text-muted-foreground">–</span>
+            <Input
+              aria-label="Updated to"
+              onChange={(event) => onChange({ dateTo: event.target.value })}
+              type="date"
+              value={filters.dateTo}
+            />
+          </div>
+        </div>
       </div>
-      <Button
-        disabled={!hasActiveFilters}
-        onClick={() =>
-          onChange({ dateFrom: "", dateTo: "", formType: "", owner: "", projectName: "", status: "" })
-        }
-        variant="ghost"
-      >
-        <SlidersHorizontal aria-hidden="true" />
-        Clear filters
-      </Button>
+      <div className="flex justify-end">
+        <Button
+          disabled={!hasActiveFilters}
+          onClick={() =>
+            onChange({ dateFrom: "", dateTo: "", formType: "", owner: "", projectName: "", status: "" })
+          }
+          variant="ghost"
+        >
+          <SlidersHorizontal aria-hidden="true" />
+          Clear filters
+        </Button>
+      </div>
     </div>
   );
 }
