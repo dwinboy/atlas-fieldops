@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownUp, ChevronLeft, ChevronRight, Maximize2, Minimize2, Search, X } from "lucide-react";
+import { ArrowDownUp, ChevronLeft, ChevronRight, Inbox, Maximize2, Minimize2, Search, SearchX, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
@@ -128,20 +128,26 @@ export function DataTable<T>({
     selectablePagedRows.every((row) => selection?.isSelected(row));
   const tableMinWidth = Math.max(920, columns.length * 180 + (selection ? 44 : 0));
 
+  const EmptyIcon = query ? SearchX : Inbox;
   const emptyContent = (
-    <div className="mx-auto max-w-sm rounded-2xl border border-dashed bg-muted/20 p-5">
-      <p className="font-medium text-foreground">
-        {query ? "No matches found" : emptyLabel}
-      </p>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {query
-          ? "Try a different search term or clear the search."
-          : emptyDescription ??
-            "New records will appear here when they are available."}
-      </p>
+    <div className="mx-auto flex max-w-sm flex-col items-center gap-3 rounded-2xl border border-dashed border-border-subtle bg-surface-container-lowest p-6 text-center">
+      <span className="flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <EmptyIcon aria-hidden="true" size={20} strokeWidth={1.5} />
+      </span>
+      <div className="space-y-1">
+        <p className="font-medium text-foreground">
+          {query ? "No matches found" : emptyLabel}
+        </p>
+        <p className="text-sm text-muted-foreground">
+          {query
+            ? "Try a different search term or clear the search."
+            : emptyDescription ??
+              "New records will appear here when they are available."}
+        </p>
+      </div>
       {!query && emptyAction ? (
         <Button
-          className="mt-3"
+          className="mt-1"
           onClick={emptyAction.onClick}
           size="sm"
           type="button"
@@ -266,6 +272,9 @@ export function DataTable<T>({
         ) : null}
       </div>
 
+      {filteredRows.length === 0 ? (
+        <div className="hidden px-4 py-12 md:block">{emptyContent}</div>
+      ) : (
       <div
         className={cn(
           "hidden overflow-x-auto overflow-y-auto overscroll-contain product-scrollbar md:block",
@@ -399,19 +408,10 @@ export function DataTable<T>({
               </tr>
               );
             })}
-            {filteredRows.length === 0 ? (
-              <tr>
-                <td
-                  className="px-4 py-12 text-center text-muted-foreground"
-                  colSpan={columns.length + (selection ? 1 : 0)}
-                >
-                  {emptyContent}
-                </td>
-              </tr>
-            ) : null}
           </tbody>
         </table>
       </div>
+      )}
 
       {filteredRows.length > pageSize ? (
         <div className="flex flex-col gap-2 border-t bg-muted/15 px-3 py-2.5 text-[11px] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
