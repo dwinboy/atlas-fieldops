@@ -10,7 +10,6 @@ import {
   Eye,
   FileCheck2,
   Flag,
-  FolderKanban,
   LockKeyhole,
   MapPinned,
   Plus,
@@ -27,6 +26,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getNavigationItemByView } from "@/config/navigation";
+import { EmptyDocsArt } from "@/components/ui/empty-illustrations";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import {
@@ -831,8 +831,8 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
                 </button>
               );
             }) : (
-              <div className="rounded-lg border border-dashed bg-background p-6 text-center">
-                <FolderKanban aria-hidden="true" className="mx-auto text-muted-foreground" size={24} />
+              <div className="flex flex-col items-center rounded-lg border border-dashed bg-background p-6 text-center">
+                <EmptyDocsArt />
                 <h3 className="mt-3 font-semibold">No surveys in this project yet</h3>
                 <div className="mt-2">
                   <HelpHint label="About creating the first survey" title="No surveys yet">

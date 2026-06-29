@@ -15,6 +15,8 @@ type EmptyStateProps = {
   className?: string;
   description: string;
   icon?: LucideIcon;
+  /** Optional centered isometric illustration (FieldOps Precision). Takes priority over `icon`. */
+  illustration?: ReactNode;
   secondaryAction?: EmptyStateAction;
   title: string;
 };
@@ -25,6 +27,7 @@ export function EmptyState({
   className,
   description,
   icon: Icon,
+  illustration,
   secondaryAction,
   title,
 }: EmptyStateProps) {
@@ -35,7 +38,9 @@ export function EmptyState({
         className,
       )}
     >
-      {Icon ? (
+      {illustration ? (
+        <div className="mb-1">{illustration}</div>
+      ) : Icon ? (
         <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary shadow-[0_0_0_8px_hsl(var(--primary)/0.05)]">
           <Icon aria-hidden="true" size={20} />
         </span>
