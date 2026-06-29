@@ -1,9 +1,11 @@
+import { useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Copy, Settings2, Trash2 } from "lucide-react";
 
 import {
   fieldAppearanceWithTag,
   hasFieldTag,
 } from "@/components/forms/fieldMetadata";
+import { VariableInsertMenu } from "@/components/forms/VariableInsertMenu";
 import { ResponseTypeField } from "@/components/forms/ResponseTypeField";
 import {
   labelPatchWithAutoVariable,
@@ -28,6 +30,38 @@ export function CommonSettingsPanel({
   onMoveField: (fieldId: string, direction: -1 | 1) => void;
   onDeleteQuestion: (fieldId: string) => void;
 }) {
+  // One unified "Default (pre-fill)" control replacing the old fixed-value + dynamic-default blocks.
+  type DefaultMode = "none" | "fixed" | "today" | "copy" | "formula";
+  const deriveDefaultMode = (candidate: FormField): DefaultMode => {
+    const dynamic = (candidate.dynamicDefault ?? "").trim();
+    if (dynamic === "today()") return "today";
+    if (/^\$\{[^}]+\}$/.test(dynamic)) return "copy";
+    if (dynamic) return "formula";
+    const fixed = candidate.defaultValue;
+    if (fixed !== undefined && fixed !== null && fixed !== "") return "fixed";
+    return "none";
+  };
+  const [defaultMode, setDefaultMode] = useState<DefaultMode>(() => deriveDefaultMode(field));
+  // Re-sync the mode when the builder switches to a different question (React's "adjust state on
+  // prop change" pattern — set during render, guarded so it runs only on an actual id change).
+  const lastFieldId = useRef(field.id);
+  if (lastFieldId.current !== field.id) {
+    lastFieldId.current = field.id;
+    setDefaultMode(deriveDefaultMode(field));
+  }
+  const dateLikeDefault = ["date", "datetime", "time", "month"].includes(field.type);
+  const applyDefaultMode = (mode: DefaultMode) => {
+    setDefaultMode(mode);
+    const patch: Partial<FormField> =
+      mode === "today"
+        ? { defaultValue: undefined, dynamicDefault: "today()" }
+        : mode === "fixed"
+          ? { dynamicDefault: undefined }
+          : mode === "none"
+            ? { defaultValue: undefined, dynamicDefault: undefined }
+            : { defaultValue: undefined, dynamicDefault: mode === "formula" ? (field.dynamicDefault ?? "") : "" };
+    onUpdateForm(updateField(form, field.id, patch));
+  };
   return (
                             <section className="mt-4 rounded-lg border bg-panel p-4">
                               <div className="flex flex-wrap items-center gap-2">
@@ -68,34 +102,43 @@ export function CommonSettingsPanel({
                                       Inside a repeat group it shows that row’s own answer. Works in the label and hint.
                                     </HelpHint>
                                   </span>
-                                  <Input
-                                    className="mt-2"
-                                    onChange={(event) => {
-                                      const siblingVariableNames =
-                                        form.fields
-                                          .filter(
-                                            (candidate) =>
-                                              candidate.id !== field.id,
-                                          )
-                                          .map((candidate) => candidate.variableName)
-                                          .filter((name): name is string =>
-                                            Boolean(name),
-                                          );
-                                      onUpdateForm(
-                                        updateField(
-                                          form,
-                                          field.id,
-                                          labelPatchWithAutoVariable(
-                                            field,
-                                            event.target.value,
-                                            siblingVariableNames,
+                                  <div className="mt-2 flex items-center gap-2">
+                                    <Input
+                                      onChange={(event) => {
+                                        const siblingVariableNames =
+                                          form.fields
+                                            .filter(
+                                              (candidate) =>
+                                                candidate.id !== field.id,
+                                            )
+                                            .map((candidate) => candidate.variableName)
+                                            .filter((name): name is string =>
+                                              Boolean(name),
+                                            );
+                                        onUpdateForm(
+                                          updateField(
+                                            form,
+                                            field.id,
+                                            labelPatchWithAutoVariable(
+                                              field,
+                                              event.target.value,
+                                              siblingVariableNames,
+                                            ),
                                           ),
-                                        ),
-                                      );
-                                    }}
-                                    placeholder="Question shown to field officers"
-                                    value={field.label}
-                                  />
+                                        );
+                                      }}
+                                      placeholder="Question shown to field officers"
+                                      value={field.label}
+                                    />
+                                    <VariableInsertMenu
+                                      excludeFieldId={field.id}
+                                      form={form}
+                                      label="Pipe answer…"
+                                      onInsert={(token) =>
+                                        onUpdateForm(updateField(form, field.id, { label: `${field.label}${token}` }))
+                                      }
+                                    />
+                                  </div>
                                 </label>
                                 <label className="block text-sm font-semibold">
                                   <span className="inline-flex items-center gap-1.5">
@@ -255,74 +298,99 @@ export function CommonSettingsPanel({
                                 "calculated",
                                 "lookup",
                               ].includes(field.type) ? (
-                                <>
-                                <label className="mt-4 block text-sm font-semibold">
-                                  <span className="inline-flex items-center gap-1.5">
-                                    Default value
-                                    <HelpHint label="About default value" title="Default value">
-                                      Pre-fills the answer when the officer opens the question; they can still change it.
-                                      Leave blank for no default.
+                                <div className="mt-4">
+                                  <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
+                                    Default (pre-fill)
+                                    <HelpHint label="About defaults" title="Default (pre-fill)">
+                                      One pre-fill for this question — the officer can still change it.
+                                      <br />• <strong>Fixed</strong>: a set value.
+                                      <br />• <strong>Today’s date</strong>: the current date.
+                                      <br />• <strong>Copy another answer</strong>: mirror an earlier question.
+                                      <br />• <strong>Formula</strong>: a computed value (e.g.{" "}
+                                      <code>{"concat(${first}, ' ', ${last})"}</code>).
                                     </HelpHint>
                                   </span>
-                                  {field.options?.length ? (
-                                    <Select
-                                      className="mt-2"
-                                      onChange={(event) =>
-                                        onUpdateForm(
-                                          updateField(form, field.id, {
-                                            defaultValue: event.target.value || undefined,
-                                          }),
-                                        )
-                                      }
-                                      value={String(field.defaultValue ?? "")}
-                                    >
-                                      <option value="">No default</option>
-                                      {field.options.map((option) => (
-                                        <option key={option} value={option}>
-                                          {option}
-                                        </option>
-                                      ))}
-                                    </Select>
-                                  ) : (
-                                    <Input
-                                      className="mt-2"
-                                      onChange={(event) =>
-                                        onUpdateForm(
-                                          updateField(form, field.id, {
-                                            defaultValue: event.target.value || undefined,
-                                          }),
-                                        )
-                                      }
-                                      placeholder="Pre-filled answer (optional)"
-                                      value={String(field.defaultValue ?? "")}
-                                    />
-                                  )}
-                                </label>
-                                <label className="mt-3 block text-sm font-semibold">
-                                  <span className="inline-flex items-center gap-1.5">
-                                    Dynamic default
-                                    <HelpHint label="About dynamic default" title="Dynamic default">
-                                      Pre-fills from a formula when the question first opens (still
-                                      editable). Use <code>today()</code> for today’s date,{" "}
-                                      <code>{"${question}"}</code> to copy an earlier answer, or a
-                                      formula like <code>{"concat(${first}, ' ', ${last})"}</code>.
-                                      Overrides the fixed default above.
-                                    </HelpHint>
-                                  </span>
-                                  <Input
-                                    className="mt-2 font-mono"
-                                    onChange={(event) =>
-                                      onUpdateForm(
-                                        updateField(form, field.id, {
-                                          dynamicDefault: event.target.value || undefined,
-                                        }),
-                                      )
-                                    }
-                                    placeholder="e.g. today()  ·  ${visit_date}"
-                                    value={String(field.dynamicDefault ?? "")}
-                                  />
-                                </label>
-                                </>
+                                  <Select
+                                    className="mt-2"
+                                    onChange={(event) => applyDefaultMode(event.target.value as DefaultMode)}
+                                    value={defaultMode}
+                                  >
+                                    <option value="none">No default</option>
+                                    <option value="fixed">Fixed value</option>
+                                    {dateLikeDefault ? <option value="today">Today’s date</option> : null}
+                                    <option value="copy">Copy another answer</option>
+                                    <option value="formula">Formula</option>
+                                  </Select>
+                                  {defaultMode === "fixed" ? (
+                                    field.options?.length ? (
+                                      <Select
+                                        className="mt-2"
+                                        onChange={(event) =>
+                                          onUpdateForm(updateField(form, field.id, { defaultValue: event.target.value || undefined }))
+                                        }
+                                        value={String(field.defaultValue ?? "")}
+                                      >
+                                        <option value="">Choose…</option>
+                                        {field.options.map((option) => (
+                                          <option key={option} value={option}>
+                                            {option}
+                                          </option>
+                                        ))}
+                                      </Select>
+                                    ) : (
+                                      <Input
+                                        className="mt-2"
+                                        onChange={(event) =>
+                                          onUpdateForm(updateField(form, field.id, { defaultValue: event.target.value || undefined }))
+                                        }
+                                        placeholder="Pre-filled answer"
+                                        value={String(field.defaultValue ?? "")}
+                                      />
+                                    )
+                                  ) : null}
+                                  {defaultMode === "today" ? (
+                                    <p className="mt-2 text-xs text-muted-foreground">
+                                      Pre-fills today’s date when the question opens.
+                                    </p>
+                                  ) : null}
+                                  {defaultMode === "copy" ? (
+                                    <div className="mt-2 flex items-center gap-2">
+                                      <Input
+                                        className="font-mono"
+                                        disabled
+                                        placeholder="Pick a question →"
+                                        value={String(field.dynamicDefault ?? "")}
+                                      />
+                                      <VariableInsertMenu
+                                        excludeFieldId={field.id}
+                                        form={form}
+                                        label="Choose question…"
+                                        onInsert={(token) =>
+                                          onUpdateForm(updateField(form, field.id, { dynamicDefault: token }))
+                                        }
+                                      />
+                                    </div>
+                                  ) : null}
+                                  {defaultMode === "formula" ? (
+                                    <div className="mt-2 flex items-center gap-2">
+                                      <Input
+                                        className="font-mono"
+                                        onChange={(event) =>
+                                          onUpdateForm(updateField(form, field.id, { dynamicDefault: event.target.value || undefined }))
+                                        }
+                                        placeholder="e.g. concat(${first}, ' ', ${last})"
+                                        value={String(field.dynamicDefault ?? "")}
+                                      />
+                                      <VariableInsertMenu
+                                        excludeFieldId={field.id}
+                                        form={form}
+                                        onInsert={(token) =>
+                                          onUpdateForm(updateField(form, field.id, { dynamicDefault: `${field.dynamicDefault ?? ""}${token}` }))
+                                        }
+                                      />
+                                    </div>
+                                  ) : null}
+                                </div>
                               ) : null}
                               <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
                                 <label className="text-sm font-semibold">

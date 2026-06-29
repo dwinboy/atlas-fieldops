@@ -248,10 +248,10 @@ export function ResponseSettingsPanel({
                                       onChange={(event) => setMatrixRowSource(event.target.value)}
                                       value={matrixRowSource}
                                     >
-                                      <option value="static">Type them</option>
-                                      <option value="question">Another question’s answers</option>
-                                      <option value="dataset">A dataset</option>
-                                      <option value="record">Records from another form</option>
+                                      <option value="static">Type the rows myself</option>
+                                      <option value="question">One per another question’s answer</option>
+                                      <option value="dataset">One per dataset entry</option>
+                                      <option value="record">One per record from another form</option>
                                     </Select>
                                   </label>
                                   <div className="grid gap-4 lg:grid-cols-2">
@@ -401,9 +401,9 @@ export function ResponseSettingsPanel({
                                       value={matrixRowSource}
                                     >
                                       <option value="static">Officer adds rows manually</option>
-                                      <option value="question">One row per another question’s answer</option>
-                                      <option value="dataset">One row per dataset entry</option>
-                                      <option value="record">One row per record from another form</option>
+                                      <option value="question">One per another question’s answer</option>
+                                      <option value="dataset">One per dataset entry</option>
+                                      <option value="record">One per record from another form</option>
                                     </Select>
                                   </label>
                                   {matrixRowSource === "question" ? (

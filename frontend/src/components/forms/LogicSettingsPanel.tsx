@@ -12,6 +12,7 @@ import {
   type LogicConditionOperator,
   type LogicRule,
 } from "@/lib/forms";
+import { VariableInsertMenu } from "@/components/forms/VariableInsertMenu";
 
 /** Conditional logic settings tab: visual rule builder (action/condition) + advanced expression rules. */
 export function LogicSettingsPanel({
@@ -237,16 +238,25 @@ export function LogicSettingsPanel({
                                       Dynamic choices
                                     </option>
                                   </Select>
-                                  <Input
-                                    className="font-mono"
-                                    onChange={(event) =>
-                                      setAdvancedLogicExpression(
-                                        event.target.value,
-                                      )
-                                    }
-                                    placeholder="${age} >= 18 and ${consent} = 'Yes'"
-                                    value={advancedLogicExpression}
-                                  />
+                                  <div className="flex items-center gap-2">
+                                    <Input
+                                      className="font-mono"
+                                      onChange={(event) =>
+                                        setAdvancedLogicExpression(
+                                          event.target.value,
+                                        )
+                                      }
+                                      placeholder="${age} >= 18 and ${consent} = 'Yes'"
+                                      value={advancedLogicExpression}
+                                    />
+                                    <VariableInsertMenu
+                                      excludeFieldId={field.id}
+                                      form={form}
+                                      onInsert={(token) =>
+                                        setAdvancedLogicExpression(`${advancedLogicExpression}${token}`)
+                                      }
+                                    />
+                                  </div>
                                 </div>
                                 <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
                                   <Input
