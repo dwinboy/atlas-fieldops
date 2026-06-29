@@ -73,7 +73,9 @@ import {
   removeChoiceOptionDraft,
 } from "@/components/forms/ChoiceOptionsEditor";
 import { CrossFieldRuleBuilder } from "@/components/forms/CrossFieldRuleBuilder";
+import { checkFormHealth } from "@/lib/formHealth";
 import { FieldInputPreview } from "@/components/forms/FieldInputPreview";
+import { FieldInsightCard } from "@/components/forms/FieldInsightCard";
 import { FormPreviewTester } from "@/components/forms/FormPreviewTester";
 import {
   createDefaultFormControls,
@@ -686,6 +688,20 @@ export function DynamicForms({
     selectedFormReviewRows.find(
       (submission) => submission.id === selectedReviewSubmissionId,
     ) ?? selectedFormReviewRows[0];
+  // Structural health of the form: surfaced inline on questions and folded into publish-readiness.
+  const formHealthIssues = useMemo(
+    () => (selectedForm ? checkFormHealth(selectedForm) : []),
+    [selectedForm],
+  );
+  const fieldIssueSeverity = useMemo(() => {
+    const map = new Map<string, "error" | "warning">();
+    for (const issue of formHealthIssues) {
+      if (!issue.fieldId) continue;
+      if (issue.severity === "error" || !map.has(issue.fieldId)) map.set(issue.fieldId, issue.severity);
+    }
+    return map;
+  }, [formHealthIssues]);
+  const formStructurallySound = !formHealthIssues.some((issue) => issue.severity === "error");
   const readinessItems: FormReadinessItem[] = useMemo(
     () =>
       buildFormReadinessChecklist(selectedForm, {
@@ -699,6 +715,7 @@ export function DynamicForms({
         mobilePreviewChecked: selectedFormReadiness.mobilePreviewChecked,
         pilotTestCompleted: selectedFormReadiness.pilotTestCompleted,
         deploymentAudienceSelected: Boolean(mobileDeploymentAudience.trim()),
+        structurallySound: formStructurallySound,
       }),
     [
       selectedForm,
@@ -710,6 +727,7 @@ export function DynamicForms({
       selectedFormReadiness.mobilePreviewChecked,
       selectedFormReadiness.pilotTestCompleted,
       mobileDeploymentAudience,
+      formStructurallySound,
     ],
   );
   const readinessReadyForPublish = isFormReadyForPublish(readinessItems);
@@ -6696,6 +6714,12 @@ export function DynamicForms({
                             ))}
                           </div>
 
+                          <FieldInsightCard
+                            field={selectedField}
+                            form={selectedForm}
+                            onJump={(fieldId) => openFieldSettings(fieldId)}
+                          />
+
                           {focusSettingsTab === "common" ? (
                             <CommonSettingsPanel
                               field={selectedField}
@@ -6958,6 +6982,7 @@ export function DynamicForms({
                                       key={field.id}
                                       field={field}
                                       index={globalIndex}
+                                      issueSeverity={fieldIssueSeverity.get(field.id)}
                                       selected={selectedField?.id === field.id}
                                       canMoveDown={
                                         globalIndex <

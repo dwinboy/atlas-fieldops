@@ -25,6 +25,7 @@ export function SortableField({
   referenceBound,
   canMoveDown,
   canMoveUp,
+  issueSeverity,
 }: {
   field: FormField;
   index: number;
@@ -40,6 +41,8 @@ export function SortableField({
   referenceBound: boolean;
   canMoveDown: boolean;
   canMoveUp: boolean;
+  /** Worst health-check severity for this question, if any — shown as a badge in the row. */
+  issueSeverity?: "error" | "warning";
 }) {
   const {
     attributes,
@@ -95,6 +98,11 @@ export function SortableField({
               ) : null}
               {field.type === "repeat_group" ? (
                 <Badge tone="collect">repeat group</Badge>
+              ) : null}
+              {issueSeverity ? (
+                <Badge tone={issueSeverity === "error" ? "danger" : "warning"}>
+                  {issueSeverity === "error" ? "⚠ needs fixing" : "⚠ check"}
+                </Badge>
               ) : null}
             </div>
             <Input

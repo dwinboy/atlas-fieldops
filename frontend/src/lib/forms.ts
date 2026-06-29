@@ -478,6 +478,8 @@ export type FormReadinessFlags = {
   mobilePreviewChecked: boolean;
   pilotTestCompleted: boolean;
   deploymentAudienceSelected: boolean;
+  /** No structural problems from the form health check (no broken refs, duplicate variables, …). */
+  structurallySound?: boolean;
 };
 
 export type FormReadinessItem = {
@@ -1724,6 +1726,15 @@ export function buildFormReadinessChecklist(
       label: "Questions added",
       description: "Field officers need at least one clear question before collection can begin.",
       complete: Boolean(normalized?.fields.length),
+      required: true
+    },
+    {
+      id: "structure",
+      label: "No structural problems",
+      description:
+        "The health check found no broken references, duplicate variables, circular calculations, or empty choice lists.",
+      // Defaults to complete when the caller doesn't run the health check, so older callers are unaffected.
+      complete: flags.structurallySound ?? true,
       required: true
     },
     {
