@@ -47,6 +47,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { KpiShard } from "@/components/ui/kpi-shard";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -2257,18 +2258,15 @@ function FormsDashboard({
     .slice(0, 4);
   return (
     <div className="space-y-3">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
-          <button
-            className="rounded-xl border bg-panel p-3 text-left shadow-line transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-soft"
+          <KpiShard
             key={card.label}
+            label={card.label}
+            value={card.value}
+            icon={card.icon}
             onClick={() => onOpenSection(card.section)}
-            type="button"
-          >
-            <card.icon aria-hidden="true" className="text-primary" size={18} />
-            <p className="mt-4 text-2xl font-semibold">{card.value}</p>
-            <p className="text-xs text-muted-foreground">{card.label}</p>
-          </button>
+          />
         ))}
       </div>
       <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
