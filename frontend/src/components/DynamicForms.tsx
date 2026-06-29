@@ -233,6 +233,7 @@ import {
   type FormReadinessItem,
 } from "@/lib/forms";
 import {
+  ApiError,
   createForm,
   createPublicCollectionLink,
   exportFormXlsForm,
@@ -478,7 +479,16 @@ export function DynamicForms({
   });
   const masterDataQuery = useQuery({
     queryKey: ["master-data-categories", token],
-    queryFn: () => listMasterDataEntries(token ?? ""),
+    queryFn: async () => {
+      try {
+        return await listMasterDataEntries(token ?? "");
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 403) {
+          return [];
+        }
+        throw error;
+      }
+    },
     enabled: Boolean(token && !isPreview),
   });
   const choiceListCategories = useMemo(
