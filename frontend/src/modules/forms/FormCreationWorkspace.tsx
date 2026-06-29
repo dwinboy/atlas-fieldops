@@ -1521,6 +1521,40 @@ function slugFromText(value: string, fallback: string): string {
   );
 }
 
+function entityCategoryKeys(value: string): Set<string> {
+  const raw = value.trim().toLowerCase();
+  const slug = slugFromText(value, "");
+  const keys = new Set<string>();
+  if (raw) keys.add(raw);
+  if (slug) keys.add(slug);
+  const variants = [raw, slug].filter(Boolean);
+  for (const variant of variants) {
+    if (variant.endsWith("ies") && variant.length > 3) {
+      keys.add(`${variant.slice(0, -3)}y`);
+    }
+    if (variant.endsWith("es") && variant.length > 2) {
+      keys.add(variant.slice(0, -2));
+    }
+    if (variant.endsWith("s") && variant.length > 1) {
+      keys.add(variant.slice(0, -1));
+    }
+  }
+  return keys;
+}
+
+function entityCategoryMatches(
+  category: Pick<EntityCategoryRead, "name" | "slug">,
+  entityType: string,
+): boolean {
+  const requestedKeys = entityCategoryKeys(entityType);
+  if (!requestedKeys.size) return false;
+  const categoryKeys = new Set([
+    ...entityCategoryKeys(category.name),
+    ...entityCategoryKeys(category.slug),
+  ]);
+  return Array.from(requestedKeys).some((key) => categoryKeys.has(key));
+}
+
 function entityCodeExample(entityType: string): string {
   const compact = entityType.replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase() || "ENT";
   return `${compact.padEnd(3, "X")}-${new Date().getFullYear()}-000001`;
@@ -5927,10 +5961,10 @@ export function FormCreationWorkspace({
   const selectedEntityCategory = useMemo<EntityCategoryRead | null>(
     () =>
       (entityCategoriesQuery.data ?? []).find(
-        (category) =>
-          category.status !== "archived" &&
-          (category.id === controlsDraft.entityCategoryId ||
-            category.name.toLowerCase() === controlsDraft.entityType.trim().toLowerCase()),
+      (category) =>
+        category.status !== "archived" &&
+        (category.id === controlsDraft.entityCategoryId ||
+            entityCategoryMatches(category, controlsDraft.entityType)),
       ) ?? null,
     [controlsDraft.entityCategoryId, controlsDraft.entityType, entityCategoriesQuery.data],
   );
@@ -5946,12 +5980,18 @@ export function FormCreationWorkspace({
       (category) => category.status !== "archived",
     );
     if (!activeCategories.length) return;
-    const current = controlsDraft.entityType.trim().toLowerCase();
-    const currentExists = activeCategories.some(
-      (category) => category.name.toLowerCase() === current,
+    const current = controlsDraft.entityType.trim();
+    const currentExists = activeCategories.some((category) =>
+      entityCategoryMatches(category, current),
     );
     if (currentExists) return;
-    if (current && current !== defaultControlsDraft.entityType.toLowerCase()) return;
+    const defaultEntityKeys = entityCategoryKeys(defaultControlsDraft.entityType);
+    if (
+      current &&
+      !Array.from(entityCategoryKeys(current)).some((key) => defaultEntityKeys.has(key))
+    ) {
+      return;
+    }
     const firstCategory = activeCategories[0];
     updateControlsDraft({
       entityCategoryId: firstCategory?.id ?? "",
