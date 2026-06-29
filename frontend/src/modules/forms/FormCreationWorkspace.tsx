@@ -8396,7 +8396,6 @@ export function FormCreationWorkspace({
             }
             icon={ShieldCheck}
             title="Controls & Governance"
-            route="/forms/:formId/governance"
             lines={[
               "Review permissions, workflow, data quality, governance, reference data, and mapping controls before publishing.",
               "These are form-level settings; platform-wide policies remain in Governance and Administration.",
@@ -10839,7 +10838,6 @@ export function FormCreationWorkspace({
             }
             icon={MonitorSmartphone}
             title="Preview & Test"
-            route="/forms/:formId/preview"
             lines={[
               "Test-only previews should validate required fields, skip logic, references, repeat groups, calculations, consent behavior, and GPS placeholders.",
               "Preview submissions are not counted as real submissions.",
@@ -10914,7 +10912,6 @@ export function FormCreationWorkspace({
               </div>
             }
             icon={ListChecks}
-            route="/forms/:formId/review"
             title="Review Before Publish"
             lines={[
               `Publishing is allowed at ${MINIMUM_PUBLISH_READINESS_SCORE}% readiness when hard blockers are resolved.`,
@@ -11312,13 +11309,11 @@ function StagePanel({
   action,
   icon: Icon,
   lines,
-  route,
   title,
 }: {
   action?: ReactNode;
   icon: LucideIcon;
   lines: string[];
-  route: string;
   title: string;
 }) {
   return (
@@ -11331,7 +11326,6 @@ function StagePanel({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="font-semibold">{title}</h2>
-              <Badge tone="neutral">{route}</Badge>
               <HelpHint label={`About ${title}`} title={title}>
                 {lines.join(" ")}
               </HelpHint>
