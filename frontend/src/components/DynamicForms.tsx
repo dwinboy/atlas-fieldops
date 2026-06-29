@@ -74,6 +74,7 @@ import {
 } from "@/components/forms/ChoiceOptionsEditor";
 import { CrossFieldRuleBuilder } from "@/components/forms/CrossFieldRuleBuilder";
 import { checkFormHealth } from "@/lib/formHealth";
+import { codebookToCsv } from "@/lib/codebook";
 import { FieldInputPreview } from "@/components/forms/FieldInputPreview";
 import { FieldInsightCard } from "@/components/forms/FieldInsightCard";
 import { FormPreviewTester } from "@/components/forms/FormPreviewTester";
@@ -2649,6 +2650,30 @@ export function DynamicForms({
             >
               <FileDown aria-hidden="true" />
               Export
+            </Button>
+            <Button
+              disabled={!selectedForm}
+              onClick={() => {
+                if (!selectedForm) return;
+                const csv = codebookToCsv(selectedForm);
+                const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                const url = URL.createObjectURL(blob);
+                const anchor = document.createElement("a");
+                anchor.href = url;
+                anchor.download = `${selectedForm.name || "form"}-codebook.csv`;
+                anchor.click();
+                URL.revokeObjectURL(url);
+                pushToast({
+                  title: "Codebook downloaded",
+                  description: "A data dictionary (variables, codes, labels, validation) was saved as CSV.",
+                  tone: "success",
+                });
+              }}
+              type="button"
+              variant="secondary"
+            >
+              <FileDown aria-hidden="true" />
+              Codebook
             </Button>
             <Button
               onClick={() => {
