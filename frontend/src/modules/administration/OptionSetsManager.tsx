@@ -16,6 +16,7 @@ import {
 } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyMini } from "@/components/ui/empty-mini";
 import { Input } from "@/components/ui/input";
 import { useWorkspaceStore } from "@/stores/workspace";
 
@@ -107,9 +108,7 @@ export function OptionSetsManager({ token, canManage }: OptionSetsManagerProps) 
 
   if (!enabled) {
     return (
-      <div className="rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground">
-        Sign in to manage your organization&apos;s option sets.
-      </div>
+      <EmptyMini label="Sign in to manage your organization's option sets." />
     );
   }
 

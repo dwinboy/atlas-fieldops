@@ -33,6 +33,7 @@ import { useContextualBack } from "@/hooks/useContextualBack";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyMini } from "@/components/ui/empty-mini";
 import { ActionMenu } from "@/components/ui/dropdown-menu";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
@@ -2069,11 +2070,15 @@ function RoleSpecificProfileWorkspace({
                 </div>
               </div>
             ) : (
-              <p className="mt-3 rounded-lg border border-dashed bg-muted/20 px-3 py-2.5 text-sm text-muted-foreground">
-                {fieldOfficerDetail
-                  ? "QR login appears once the officer account, membership, and field officer profile are all active."
-                  : "Mobile QR login is available for field officers. This user does not have a field officer profile."}
-              </p>
+              <EmptyMini
+                className="mt-3"
+                icon={QrCode}
+                label={
+                  fieldOfficerDetail
+                    ? "QR login appears once the officer account, membership, and field officer profile are all active."
+                    : "Mobile QR login is available for field officers. This user does not have a field officer profile."
+                }
+              />
             )}
           </div>
 
