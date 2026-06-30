@@ -2053,7 +2053,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
                 "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
                 activeSection === section.id
                   ? "border-primary bg-primary text-primary-foreground"
-                  : "bg-panel hover:bg-muted",
+                  : "bg-surface-container-lowest hover:bg-muted",
               )}
               key={section.id}
               onClick={() => openFormsSection(section.id)}
@@ -2272,7 +2272,7 @@ function FormsDashboard({
         ))}
       </div>
       <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+        <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
           <h2 className="font-semibold">Most Used Forms</h2>
           <div className="mt-4 space-y-3">
             {mostUsed.map((form, index) => (
@@ -2302,7 +2302,7 @@ function FormsDashboard({
             ))}
           </div>
         </div>
-        <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+        <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
           <h2 className="font-semibold">Governance Alerts</h2>
           <div className="mt-4 space-y-3">
             <Signal
@@ -2390,7 +2390,7 @@ function FormsAnalyticsSection({
         <MetricCard icon={ShieldCheck} label="High quality forms" value={highQualityForms} />
       </div>
       <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+        <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
           <div className="flex items-center gap-2">
             <BarChart3 aria-hidden="true" className="text-primary" size={18} />
             <h3 className="font-semibold">Most active forms</h3>
@@ -2432,7 +2432,7 @@ function FormsAnalyticsSection({
             </table>
           </div>
         </section>
-        <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+        <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
           <div className="flex items-center gap-2">
             <Gauge aria-hidden="true" className="text-primary" size={18} />
             <h3 className="font-semibold">Operational signals</h3>
@@ -2494,7 +2494,7 @@ function FormsGovernanceDashboard({
       </div>
       <div className="grid gap-3 xl:grid-cols-2">
         {groups.map((group) => (
-          <section className="rounded-xl border bg-panel p-3.5 shadow-line" key={group.label}>
+          <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card" key={group.label}>
             <div className="flex items-center justify-between gap-3">
               <h3 className="font-semibold">{group.label}</h3>
               <Badge tone={group.forms.length ? "warning" : "success"}>{group.forms.length}</Badge>
@@ -2554,7 +2554,7 @@ function FormsViewToggle({
             className={cn(
               "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition",
               active
-                ? "bg-panel text-foreground shadow-sm"
+                ? "bg-surface-container-lowest text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
             )}
             key={option.id}
@@ -2725,7 +2725,7 @@ function FormStatusCards({
         };
         return (
           <article
-            className="rounded-lg border bg-panel p-2.5 shadow-line transition hover:border-primary/35 hover:shadow-soft"
+            className="rounded-lg border border-border-subtle bg-surface-container-lowest p-2.5 shadow-card transition hover:border-primary/35 hover:shadow-soft"
             key={`${form.id}-card-${index}`}
             onClick={(event) => {
               if ((event.target as HTMLElement).closest("button, a, input, select, textarea")) return;
@@ -2902,7 +2902,7 @@ function DataDictionaryPanel({ onExport, questions }: { onExport: () => void; qu
   const sensitiveCount = questions.filter((question) => question.sensitivityLevel && question.sensitivityLevel !== "standard").length;
   const mappedCount = questions.filter((question) => question.indicatorMapping).length;
   return (
-    <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+    <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -5734,7 +5734,7 @@ function FormDataGridWorkspace({
 
   return (
     <section className="space-y-3">
-      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -5776,7 +5776,7 @@ function FormDataGridWorkspace({
             {canUploadData ? (
               <>
                 <Button
-                  className="border-border/80 bg-background text-muted-foreground hover:border-primary/25 hover:bg-panel hover:text-foreground"
+                  className="border-border/80 bg-background text-muted-foreground hover:border-primary/25 hover:bg-surface-container-lowest hover:text-foreground"
                   onClick={downloadTemplate}
                   variant="secondary"
                 >
@@ -5832,7 +5832,7 @@ function FormDataGridWorkspace({
               </>
             ) : null}
             <Button
-              className="border-border/80 bg-background text-muted-foreground hover:border-primary/25 hover:bg-panel hover:text-foreground"
+              className="border-border/80 bg-background text-muted-foreground hover:border-primary/25 hover:bg-surface-container-lowest hover:text-foreground"
               disabled={!canExport || !filteredSubmissions.length}
               onClick={exportGrid}
               variant="secondary"
@@ -5854,7 +5854,7 @@ function FormDataGridWorkspace({
         </div>
       </div>
 
-      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
         <div className="grid gap-3 xl:grid-cols-[1fr_180px_180px]">
           <label className="relative">
             <Database aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
@@ -5876,7 +5876,7 @@ function FormDataGridWorkspace({
       </div>
 
       {pendingUploadReview ? (
-        <div className="rounded-xl border border-primary/25 bg-panel p-3.5 shadow-line">
+        <div className="rounded-xl border border-primary/25 bg-surface-container-lowest p-3.5 shadow-line">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-2">
@@ -5924,7 +5924,7 @@ function FormDataGridWorkspace({
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {pendingUploadReview.matchedColumns.slice(0, 10).map((match) => (
                   <span
-                    className="rounded-full border border-border/80 bg-panel px-2 py-1 text-[11px] text-muted-foreground"
+                    className="rounded-full border border-border/80 bg-surface-container-lowest px-2 py-1 text-[11px] text-muted-foreground"
                     key={`${match.header}-${match.question.key}`}
                     title={`${match.header} -> ${match.question.label}`}
                   >
@@ -5934,7 +5934,7 @@ function FormDataGridWorkspace({
                   </span>
                 ))}
                 {pendingUploadReview.matchedColumns.length > 10 ? (
-                  <span className="rounded-full border border-border/80 bg-panel px-2 py-1 text-[11px] text-muted-foreground">
+                  <span className="rounded-full border border-border/80 bg-surface-container-lowest px-2 py-1 text-[11px] text-muted-foreground">
                     + {pendingUploadReview.matchedColumns.length - 10} more
                   </span>
                 ) : null}
@@ -6329,7 +6329,7 @@ function FormDataGridWorkspace({
       {visibleStagedImportRows.length ? (
         <div
           className={cn(
-            "rounded-xl border bg-panel p-2.5 shadow-line",
+            "rounded-2xl border border-border-subtle bg-surface-container-lowest p-2.5 shadow-card",
             cleaningFullscreen ? "shrink-0" : "sticky top-3 z-30",
           )}
         >
@@ -6822,7 +6822,7 @@ function FormDataGridWorkspace({
                         </p>
                       </div>
                     ) : (
-                      <div className="min-w-[14rem] rounded-md border bg-panel px-2 py-1.5 text-[11px]">
+                      <div className="min-w-[14rem] rounded-md border bg-surface-container-lowest px-2 py-1.5 text-[11px]">
                         <p className="font-medium text-foreground">
                           {activeEditingQuestion.label}
                         </p>
@@ -6832,7 +6832,7 @@ function FormDataGridWorkspace({
                       </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 rounded-md border bg-panel px-2 py-1.5">
+                  <div className="flex items-center gap-2 rounded-md border bg-surface-container-lowest px-2 py-1.5">
                     <span className="rounded border border-border/80 bg-background px-2 py-1 font-mono text-[11px] font-semibold text-muted-foreground">
                       fx
                     </span>
@@ -6980,7 +6980,7 @@ function FormDataGridWorkspace({
 
       <div
         className={cn(
-          "rounded-xl border bg-panel shadow-line",
+          "rounded-xl border bg-surface-container-lowest shadow-line",
           cleaningFullscreen && visibleStagedImportRows.length && "flex min-h-0 flex-1 flex-col",
         )}
       >
@@ -7548,7 +7548,7 @@ function FormDetailWorkspace({
   tab: FormDetailTab;
 }) {
   return (
-    <section className="space-y-4 rounded-xl border bg-panel p-3.5 shadow-line">
+    <section className="space-y-4 rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -7944,7 +7944,7 @@ function FormRelationshipsPanel({
           {related.map((candidate, index) => (
             <div
               className={cn(
-                "rounded-lg border bg-panel p-3",
+                "rounded-lg border bg-surface-container-lowest p-3",
                 candidate.id === form.id && "border-primary bg-primary/5",
               )}
               key={candidate.id}
@@ -7984,7 +7984,7 @@ function FormRelationshipsPanel({
         </div>
         <div className="mt-4 space-y-2">
           {triggerRules.map((rule) => (
-            <div className="rounded-lg border bg-panel p-2 text-sm" key={`${rule.condition}-${rule.action}`}>
+            <div className="rounded-lg border bg-surface-container-lowest p-2 text-sm" key={`${rule.condition}-${rule.action}`}>
               <p className="font-medium">{rule.condition}</p>
               <p className="text-xs text-muted-foreground">
                 Then {rule.action.toLowerCase()} for {rule.target} · {rule.delay}
@@ -8012,7 +8012,7 @@ function FormTranslationsPanel({ form }: { form: FormListItem }) {
         {languages.map((language) => {
           const completeness = language === "English" ? 100 : translationCompleteness(form, language);
           return (
-            <div className="rounded-lg border bg-panel p-3" key={language}>
+            <div className="rounded-lg border bg-surface-container-lowest p-3" key={language}>
               <div className="flex items-center justify-between gap-2">
                 <p className="font-medium">{language}</p>
                 <Badge tone={completeness === 100 ? "success" : completeness >= 75 ? "accent" : "warning"}>
@@ -8096,7 +8096,7 @@ function FormComparisonPanel({ form }: { form: FormListItem }) {
           <Signal key={label} label={label} value={String(value)} tone={value === 0 || value === "N/A" ? "success" : "warning"} />
         ))}
       </div>
-      <div className="mt-4 rounded-lg border bg-panel p-3 text-sm text-muted-foreground">
+      <div className="mt-4 rounded-lg border bg-surface-container-lowest p-3 text-sm text-muted-foreground">
         Current comparison: v{Math.max(1, form.version - 1)} to v{form.version}. Detailed schema comparison will use saved form version records when the backend comparison endpoint is connected.
       </div>
     </section>
@@ -8126,7 +8126,7 @@ function TemplatesSection({
         description="Reusable baseline, endline, monitoring, assessment, registration, case management, training, and feedback forms."
         title="Form Templates"
       />
-      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="text-sm font-semibold">Sector-aware form design</p>
@@ -8153,7 +8153,7 @@ function TemplatesSection({
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {templates.map((template) => (
           <div
-            className="rounded-xl border bg-panel p-3.5 shadow-line"
+            className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card"
             key={template.id}
           >
             <Badge tone={template.is_featured ? "accent" : "neutral"}>
@@ -8228,7 +8228,7 @@ function ReferenceDataSection({
       <div className="grid gap-4 md:grid-cols-2">
         {lists.map(([name, description, status]) => (
           <div
-            className="rounded-xl border bg-panel p-3.5 shadow-line"
+            className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card"
             key={name}
           >
             <div className="flex items-start justify-between gap-3">
@@ -8423,7 +8423,7 @@ function SectionHeader({
   title: string;
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border bg-panel p-3.5 shadow-line md:flex-row md:items-start md:justify-between">
+    <div className="flex flex-col gap-3 rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card md:flex-row md:items-start md:justify-between">
       <div>
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-lg font-semibold">{title}</h2>
@@ -8447,7 +8447,7 @@ function MetricCard({
   value: string | number;
 }) {
   return (
-    <div className="rounded-xl border bg-panel p-3 shadow-line">
+    <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3 shadow-card">
       <Icon aria-hidden="true" className="text-primary" size={17} />
       <p className="mt-3 text-xl font-semibold leading-tight">{value}</p>
       <p className="mt-0.5 text-xs text-muted-foreground">{label}</p>
@@ -8491,7 +8491,7 @@ function InsightCard({
   title: string;
 }) {
   return (
-    <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+    <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
       <div className="flex items-center gap-2">
         <Icon aria-hidden="true" className="text-primary" size={18} />
         <h3 className="font-semibold">{title}</h3>

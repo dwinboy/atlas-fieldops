@@ -417,7 +417,7 @@ function MobileFormPreview({
               );
               return (
                 <div
-                  className="rounded-xl border bg-panel p-3"
+                  className="rounded-xl border bg-surface-container-lowest p-3"
                   key={section.id}
                 >
                   <h4 className="text-sm font-semibold">{section.title}</h4>
@@ -468,12 +468,12 @@ function MobileFormPreview({
   if (isWeb) {
     return (
       <div className="w-full overflow-hidden rounded-xl border bg-background shadow-elevated">
-        <div className="flex items-center justify-between border-b bg-panel px-4 py-2.5 text-xs font-semibold">
+        <div className="flex items-center justify-between border-b bg-surface-container-lowest px-4 py-2.5 text-xs font-semibold">
           <span>{form.name}</span>
           <span className="text-muted-foreground">Preview</span>
         </div>
         <div className="max-h-[72vh] overflow-y-auto bg-muted/30 p-4 product-scrollbar">
-          <div className="rounded-xl border bg-panel p-3">
+          <div className="rounded-xl border bg-surface-container-lowest p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
               Draft form
             </p>
@@ -506,7 +506,7 @@ function MobileFormPreview({
         <span>Preview</span>
       </div>
       <div className="max-h-[72vh] overflow-y-auto bg-muted/30 p-3 product-scrollbar">
-        <div className="rounded-xl border bg-panel p-3">
+        <div className="rounded-xl border bg-surface-container-lowest p-3">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
             Draft form
           </p>
@@ -528,7 +528,7 @@ function MobilePreviewInput({ field }: { field: FormField }) {
       <div className="mt-2 space-y-1.5">
         {field.options.slice(0, 4).map((option) => (
           <span
-            className="block rounded-lg border bg-panel px-3 py-2 text-[11px]"
+            className="block rounded-lg border bg-surface-container-lowest px-3 py-2 text-[11px]"
             key={option}
           >
             {option}
@@ -544,7 +544,7 @@ function MobilePreviewInput({ field }: { field: FormField }) {
     )
   ) {
     return (
-      <div className="mt-2 rounded-lg border border-dashed bg-panel px-3 py-3 text-center text-[11px] text-muted-foreground">
+      <div className="mt-2 rounded-lg border border-dashed bg-surface-container-lowest px-3 py-3 text-center text-[11px] text-muted-foreground">
         Capture {field.type.replace("_", " ")}
       </div>
     );
@@ -553,16 +553,16 @@ function MobilePreviewInput({ field }: { field: FormField }) {
   if (["gps", "geolocation", "map", "geofence"].includes(field.type)) {
     return (
       <div className="mt-2 grid grid-cols-2 gap-1.5 text-[11px] text-muted-foreground">
-        <span className="rounded-lg border bg-panel px-2 py-2">Latitude</span>
-        <span className="rounded-lg border bg-panel px-2 py-2">Longitude</span>
-        <span className="rounded-lg border bg-panel px-2 py-2">Accuracy</span>
-        <span className="rounded-lg border bg-panel px-2 py-2">Timestamp</span>
+        <span className="rounded-lg border bg-surface-container-lowest px-2 py-2">Latitude</span>
+        <span className="rounded-lg border bg-surface-container-lowest px-2 py-2">Longitude</span>
+        <span className="rounded-lg border bg-surface-container-lowest px-2 py-2">Accuracy</span>
+        <span className="rounded-lg border bg-surface-container-lowest px-2 py-2">Timestamp</span>
       </div>
     );
   }
 
   return (
-    <span className="mt-2 block rounded-lg border bg-panel px-3 py-2 text-[11px] text-muted-foreground">
+    <span className="mt-2 block rounded-lg border bg-surface-container-lowest px-3 py-2 text-[11px] text-muted-foreground">
       {field.appearance?.placeholder ?? field.hint ?? "Answer"}
     </span>
   );
@@ -7496,7 +7496,7 @@ export function FormCreationWorkspace({
   if (initialForm && !preview && formSchemaQuery.isLoading && !draftForm) {
     return (
       <section className="space-y-3">
-        <div className="rounded-xl border bg-panel p-4 shadow-line">
+        <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <Badge tone="collect">FORMS</Badge>
@@ -7514,7 +7514,7 @@ export function FormCreationWorkspace({
             </Button>
           </div>
         </div>
-        <div className="rounded-xl border bg-panel p-8 text-center text-sm text-muted-foreground">
+        <div className="rounded-xl border bg-surface-container-lowest p-8 text-center text-sm text-muted-foreground">
           Fetching form questions, response types, validation, logic, and data
           controls...
         </div>
@@ -7525,7 +7525,7 @@ export function FormCreationWorkspace({
   if (initialForm && !preview && formSchemaQuery.isError && !draftForm) {
     return (
       <section className="space-y-3">
-        <div className="rounded-xl border bg-panel p-4 shadow-line">
+        <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <Badge tone="danger">SCHEMA ERROR</Badge>
@@ -7565,7 +7565,7 @@ export function FormCreationWorkspace({
     <section className={cn("space-y-3", compactBuilderMode && "space-y-1.5")}>
       <div
         className={cn(
-          "rounded-xl border bg-panel p-3 shadow-line",
+          "rounded-2xl border border-border-subtle bg-surface-container-lowest p-3 shadow-card",
           compactBuilderMode && "rounded-lg px-2 py-1.5",
         )}
       >
@@ -7691,7 +7691,7 @@ export function FormCreationWorkspace({
         </div>
       </div>
 
-      <section className="rounded-xl border bg-panel p-3 shadow-line">
+      <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3 shadow-card">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -7877,7 +7877,7 @@ export function FormCreationWorkspace({
 
       {stage === "setup" ? (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(320px,0.55fr)]">
-          <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+          <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
             <div>
               <Badge tone="accent">Step 1</Badge>
               <h2 className="mt-3 text-lg font-semibold">Basic Information</h2>
@@ -8057,7 +8057,7 @@ export function FormCreationWorkspace({
               </div>
             ) : null}
           </section>
-          <aside className="rounded-xl border bg-panel p-3.5 shadow-line">
+          <aside className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
             <h3 className="font-semibold">Draft shell will contain</h3>
             <div className="mt-4 space-y-3">
               <Signal label="Initial Status" value="Draft" />
@@ -8073,7 +8073,7 @@ export function FormCreationWorkspace({
       ) : null}
 
       {stage === "start" ? (
-        <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+        <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
           <Badge tone="accent">Step 2</Badge>
           <h2 className="mt-3 text-lg font-semibold">Start Method</h2>
           <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -8126,7 +8126,7 @@ export function FormCreationWorkspace({
                   return (
                     <button
                       className={cn(
-                        "rounded-lg border bg-panel p-3 text-left transition hover:border-primary/40",
+                        "rounded-lg border bg-surface-container-lowest p-3 text-left transition hover:border-primary/40",
                         selectedTemplateId === template.id &&
                           "border-primary/50 bg-primary/10",
                       )}
@@ -8201,7 +8201,7 @@ export function FormCreationWorkspace({
                     ))}
                   </Select>
                 </div>
-                <div className="rounded-lg border bg-panel px-3 py-2 text-xs text-muted-foreground md:w-72">
+                <div className="rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs text-muted-foreground md:w-72">
                   {existingForms.find(
                     (form) => form.id === selectedDuplicateFormId,
                   ) ? (
@@ -8224,7 +8224,7 @@ export function FormCreationWorkspace({
                 </div>
               </div>
               {importMessage ? (
-                <div className="mt-3 rounded-lg border bg-panel px-3 py-2 text-sm text-muted-foreground">
+                <div className="mt-3 rounded-lg border bg-surface-container-lowest px-3 py-2 text-sm text-muted-foreground">
                   {importMessage}
                 </div>
               ) : null}
@@ -8270,12 +8270,12 @@ export function FormCreationWorkspace({
                 </Button>
               </div>
               {importMessage ? (
-                <div className="mt-3 rounded-lg border bg-panel px-3 py-2 text-sm text-muted-foreground">
+                <div className="mt-3 rounded-lg border bg-surface-container-lowest px-3 py-2 text-sm text-muted-foreground">
                   {importMessage}
                 </div>
               ) : null}
               {importPreview?.length ? (
-                <div className="mt-3 rounded-lg border bg-panel p-3">
+                <div className="mt-3 rounded-lg border bg-surface-container-lowest p-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                     Questions detected from the first row
                   </p>
@@ -8399,7 +8399,7 @@ export function FormCreationWorkspace({
             ]}
           />
           <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
-            <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm font-semibold">Field Readiness</p>
                 <Badge tone={readinessTone}>{readinessLabel}</Badge>
@@ -8411,7 +8411,7 @@ export function FormCreationWorkspace({
                 {criticalFailures.length} failure(s), {readinessWarnings.length} warning(s)
               </p>
             </section>
-            <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
               <p className="text-sm font-semibold">Publishing rule</p>
               <p className="mt-2 text-sm text-muted-foreground">
                 A form can be saved at any time. Publishing requires project
@@ -8437,7 +8437,7 @@ export function FormCreationWorkspace({
               </div>
             </section>
           </div>
-          <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+          <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase text-muted-foreground">
@@ -8526,7 +8526,7 @@ export function FormCreationWorkspace({
               </div>
             </div>
           </section>
-          <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+          <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase text-muted-foreground">
@@ -8628,7 +8628,7 @@ export function FormCreationWorkspace({
               <div className="mt-2 grid gap-2 md:grid-cols-3">
                 {activeControlStepConfig.decisions.map((decision) => (
                   <div
-                    className="rounded-md border bg-panel px-3 py-2 text-xs text-muted-foreground"
+                    className="rounded-md border bg-surface-container-lowest px-3 py-2 text-xs text-muted-foreground"
                     key={decision}
                   >
                     {decision}
@@ -8637,7 +8637,7 @@ export function FormCreationWorkspace({
               </div>
             </div>
           </section>
-          <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+          <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
             <div className="flex items-center gap-2">
               <Sparkles aria-hidden="true" className="text-primary" size={18} />
               <h3 className="font-semibold">Operational Form Management</h3>
@@ -8882,7 +8882,7 @@ export function FormCreationWorkspace({
                       <option value="evidence">Supporting evidence</option>
                     </Select>
                   </label>
-                  <div className="sm:col-span-2 rounded-lg border bg-panel p-2">
+                  <div className="sm:col-span-2 rounded-lg border bg-surface-container-lowest p-2">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs font-semibold">Dictionary preview</p>
                       <Badge tone="neutral">
@@ -9368,7 +9368,7 @@ export function FormCreationWorkspace({
                       value={controlsDraft.caseEscalationRule}
                     />
                   </label>
-                  <div className="rounded-lg border bg-panel p-3 text-xs text-muted-foreground">
+                  <div className="rounded-lg border bg-surface-container-lowest p-3 text-xs text-muted-foreground">
                     AI-ready metadata stores clean labels, variable names,
                     indicators, dictionary definitions, dependencies, and
                     translation status. No AI generation is run now.
@@ -9380,7 +9380,7 @@ export function FormCreationWorkspace({
           <div className="grid gap-3 lg:grid-cols-2">
             <section
               className={cn(
-                "rounded-xl border bg-panel p-3.5 shadow-line",
+                "rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card",
                 activeControlStep !== "access" && "hidden",
               )}
             >
@@ -9482,13 +9482,13 @@ export function FormCreationWorkspace({
                     </div>
                     <div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1 product-scrollbar">
                       {fieldOfficersQuery.isLoading && !preview ? (
-                        <div className="rounded-md border border-dashed bg-panel/70 p-3 text-sm text-muted-foreground">
+                        <div className="rounded-md border border-dashed bg-surface-container-lowest/70 p-3 text-sm text-muted-foreground">
                           Loading field officers...
                         </div>
                       ) : fieldOfficerOptions.length ? (
                         fieldOfficerOptions.map((officer) => (
                           <label
-                            className="flex cursor-pointer items-start gap-3 rounded-md border bg-panel px-3 py-2 transition hover:border-primary/40 hover:bg-primary/5"
+                            className="flex cursor-pointer items-start gap-3 rounded-md border bg-surface-container-lowest px-3 py-2 transition hover:border-primary/40 hover:bg-primary/5"
                             key={officer.id}
                           >
                             <input
@@ -9557,13 +9557,13 @@ export function FormCreationWorkspace({
                     </div>
                     <div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1 product-scrollbar">
                       {teamsQuery.isLoading && !preview ? (
-                        <div className="rounded-md border border-dashed bg-panel/70 p-3 text-sm text-muted-foreground">
+                        <div className="rounded-md border border-dashed bg-surface-container-lowest/70 p-3 text-sm text-muted-foreground">
                           Loading teams...
                         </div>
                       ) : teamOptions.length ? (
                         teamOptions.map((team) => (
                           <label
-                            className="flex cursor-pointer items-start gap-3 rounded-md border bg-panel px-3 py-2 transition hover:border-primary/40 hover:bg-primary/5"
+                            className="flex cursor-pointer items-start gap-3 rounded-md border bg-surface-container-lowest px-3 py-2 transition hover:border-primary/40 hover:bg-primary/5"
                             key={team.id}
                           >
                             <input
@@ -9598,7 +9598,7 @@ export function FormCreationWorkspace({
 
             <section
               className={cn(
-                "rounded-xl border bg-panel p-3.5 shadow-line",
+                "rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card",
                 activeControlStep !== "access" && "hidden",
               )}
             >
@@ -9721,7 +9721,7 @@ export function FormCreationWorkspace({
 
             <section
               className={cn(
-                "rounded-xl border bg-panel p-3.5 shadow-line",
+                "rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card",
                 activeControlStep !== "governance" && "hidden",
               )}
             >
@@ -9944,7 +9944,7 @@ export function FormCreationWorkspace({
 
             <section
               className={cn(
-                "rounded-xl border bg-panel p-3.5 shadow-line",
+                "rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card",
                 activeControlStep !== "beneficiaries" && "hidden",
               )}
             >
@@ -10183,7 +10183,7 @@ export function FormCreationWorkspace({
 
             <section
               className={cn(
-                "rounded-xl border bg-panel p-3.5 shadow-line",
+                "rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card",
                 activeControlStep !== "beneficiaries" && "hidden",
               )}
             >
@@ -10270,7 +10270,7 @@ export function FormCreationWorkspace({
 
             <section
               className={cn(
-                "rounded-xl border bg-panel p-3.5 shadow-line",
+                "rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card",
                 activeControlStep !== "instrument" && "hidden",
               )}
             >
@@ -10352,7 +10352,7 @@ export function FormCreationWorkspace({
 
             <section
               className={cn(
-                "rounded-xl border bg-panel p-3.5 shadow-line",
+                "rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card",
                 activeControlStep !== "instrument" && "hidden",
               )}
             >
@@ -10461,7 +10461,7 @@ export function FormCreationWorkspace({
 
             <section
               className={cn(
-                "rounded-xl border bg-panel p-3.5 shadow-line",
+                "rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card",
                 activeControlStep !== "instrument" && "hidden",
               )}
             >
@@ -10568,7 +10568,7 @@ export function FormCreationWorkspace({
 
             <section
               className={cn(
-                "rounded-xl border bg-panel p-3.5 shadow-line",
+                "rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card",
                 activeControlStep !== "governance" && "hidden",
               )}
             >
@@ -10661,7 +10661,7 @@ export function FormCreationWorkspace({
 
             <section
               className={cn(
-                "rounded-xl border bg-panel p-3.5 shadow-line",
+                "rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card",
                 activeControlStep !== "governance" && "hidden",
               )}
             >
@@ -10762,7 +10762,7 @@ export function FormCreationWorkspace({
               </div>
             </section>
           </div>
-          <section className="flex flex-col gap-3 rounded-xl border bg-panel p-3.5 shadow-line md:flex-row md:items-center md:justify-between">
+          <section className="flex flex-col gap-3 rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-sm font-semibold">
                 {activeControlStepIndex + 1 < controlSteps.length
@@ -10839,7 +10839,7 @@ export function FormCreationWorkspace({
               "Preview submissions are not counted as real submissions.",
             ]}
           />
-          <div className="flex flex-wrap gap-1.5 rounded-lg border bg-panel p-1.5">
+          <div className="flex flex-wrap gap-1.5 rounded-lg border bg-surface-container-lowest p-1.5">
             {(
               [
                 ["web", MonitorSmartphone, "Web"],
@@ -10913,7 +10913,7 @@ export function FormCreationWorkspace({
             ]}
           />
           <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
-            <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm font-semibold">Readiness Score</p>
                 <Badge tone={readinessTone}>{readinessLabel}</Badge>
@@ -10925,7 +10925,7 @@ export function FormCreationWorkspace({
                 {readinessPassedCount} of {checklist.length} checks passed.
               </p>
             </section>
-            <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
               <p className="text-sm font-semibold">Publish decision</p>
               <p className="mt-2 text-sm text-muted-foreground">
                 {criticalFailures.length
@@ -10955,7 +10955,7 @@ export function FormCreationWorkspace({
               </div>
             </section>
           </div>
-          <section className="overflow-hidden rounded-xl border bg-panel shadow-line">
+          <section className="overflow-hidden rounded-xl border bg-surface-container-lowest shadow-line">
             <div className="flex flex-col gap-2 border-b bg-background/70 px-3 py-2 md:flex-row md:items-center md:justify-between">
               <div>
                 <h3 className="text-sm font-semibold">Readiness review list</h3>
@@ -11311,7 +11311,7 @@ function StagePanel({
   title: string;
 }) {
   return (
-    <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+    <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="flex min-w-0 gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-primary/10 text-primary">
