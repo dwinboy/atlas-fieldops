@@ -874,7 +874,7 @@ export function BeneficiariesModule({
 
   return (
     <section className="space-y-3">
-      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -948,7 +948,7 @@ export function BeneficiariesModule({
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {summaryCards.map(({ icon: Icon, label, value }) => (
-          <div className="rounded-xl border bg-panel p-3 shadow-line" key={label}>
+          <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3 shadow-card" key={label}>
             <Icon aria-hidden="true" className="text-primary" size={18} />
             <p className="mt-3 text-2xl font-semibold">{value}</p>
             <p className="text-xs text-muted-foreground">{label}</p>
@@ -956,7 +956,7 @@ export function BeneficiariesModule({
         ))}
       </div>
 
-      <div className="flex flex-col gap-2 rounded-xl border bg-panel p-3 shadow-line md:flex-row md:items-end">
+      <div className="flex flex-col gap-2 rounded-2xl border border-border-subtle bg-surface-container-lowest p-3 shadow-card md:flex-row md:items-end">
         <label className="text-sm font-medium md:w-64">
           Entity category
           <Select
@@ -1302,7 +1302,7 @@ function EntitySidePanel({
 
   return (
     <aside className="space-y-3">
-      <div className="rounded-xl border bg-panel p-4 shadow-line">
+      <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -1403,7 +1403,7 @@ function EntitySidePanel({
           />
         ) : null}
       </div>
-      <div className="rounded-xl border bg-panel p-4 shadow-line">
+      <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold">Entity-linked collection</h2>
           <HelpHint label="About entity-linked collection" title="Entity-linked collection">
@@ -1430,7 +1430,7 @@ function EntitySidePanel({
           ))}
         </div>
       </div>
-      <div className="rounded-xl border bg-panel p-4 shadow-line">
+      <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold">Duplicate review queue</h2>
@@ -1649,7 +1649,7 @@ function BeneficiaryProfile({
           </div>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {customProfileRows.map(([key, value]) => (
-              <div className="rounded-md border bg-panel/60 p-2" key={key}>
+              <div className="rounded-md border bg-surface-container-lowest/60 p-2" key={key}>
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
                   {humanizeProfileKey(key)}
                 </p>
@@ -1835,7 +1835,7 @@ function HierarchyGroup({
           <EmptyMini label={emptyLabel} />
         ) : null}
         {items.map((item) => (
-          <div className="flex items-start justify-between gap-3 rounded-lg border bg-panel/40 p-3" key={item.id}>
+          <div className="flex items-start justify-between gap-3 rounded-lg border bg-surface-container-lowest/40 p-3" key={item.id}>
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{item.related_beneficiary.display_name}</p>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -2654,7 +2654,7 @@ function Signal({ label, value }: { label: string; value: string }) {
 
 export function EntityLinkedFlowPreview() {
   return (
-    <div className="rounded-xl border bg-panel p-4 shadow-line">
+    <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
       <div className="flex items-center gap-2">
         <Link2 aria-hidden="true" className="text-primary" size={18} />
         <h3 className="text-sm font-semibold">Entity-linked collection flow</h3>
@@ -2722,7 +2722,7 @@ export function ProjectBeneficiariesPanel({
           ["Duplicates Flagged", rows.filter((entity) => entity.duplicateStatus !== "Clear").length],
           ["Follow-up Due", rows.filter((entity) => !entity.lastVisit).length],
         ].map(([label, value]) => (
-          <div className="rounded-xl border bg-panel p-3" key={label}>
+          <div className="rounded-xl border bg-surface-container-lowest p-3" key={label}>
             <p className="text-xl font-semibold">{value}</p>
             <p className="text-xs text-muted-foreground">{label}</p>
           </div>
@@ -2730,7 +2730,7 @@ export function ProjectBeneficiariesPanel({
       </div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {rows.length ? rows.map((entity) => (
-          <div className="rounded-xl border bg-panel p-4" key={entity.id}>
+          <div className="rounded-xl border bg-surface-container-lowest p-4" key={entity.id}>
             <div className="flex items-center justify-between gap-2">
               <Badge tone={statusTone(entity.status)}>{entity.status}</Badge>
               <Badge tone={statusTone(entity.duplicateStatus)}>

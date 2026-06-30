@@ -1631,7 +1631,7 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
                 "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
                 activeSection === section.id
                   ? "border-primary bg-primary text-primary-foreground"
-                  : "bg-panel hover:bg-muted",
+                  : "bg-surface-container-lowest hover:bg-muted",
               )}
               key={section.id}
               onClick={() => selectSection(section.id)}
@@ -1751,7 +1751,7 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
                   "shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition",
                   statusGroup === chip.id
                     ? "border-primary bg-primary text-primary-foreground"
-                    : "bg-panel hover:bg-muted",
+                    : "bg-surface-container-lowest hover:bg-muted",
                 )}
                 key={chip.id || "all"}
                 onClick={() => selectStatusGroup(chip.id)}
@@ -2052,7 +2052,7 @@ function ProjectDetailWorkspace({
   token: string | null;
 }) {
   return (
-    <section className="space-y-4 rounded-xl border bg-panel p-3.5 shadow-line">
+    <section className="space-y-4 rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -2386,7 +2386,7 @@ function ProjectOverview({
             ["Mobile", detail.active_assignments && detail.active_forms ? "Ready" : "Assign work", Boolean(detail.active_assignments && detail.active_forms), "Linked work"],
           ].map(([label, value, ready, target]) => (
             <button
-              className="rounded-xl border bg-panel p-3 text-left transition hover:border-primary hover:bg-primary/5"
+              className="rounded-xl border bg-surface-container-lowest p-3 text-left transition hover:border-primary hover:bg-primary/5"
               key={String(label)}
               onClick={() => onSelectTab(target as ProjectTab)}
               type="button"
@@ -2708,7 +2708,7 @@ function RelatedTab({
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {records.map((record) => (
-          <div className="rounded-xl border bg-panel p-4" key={record.id}>
+          <div className="rounded-xl border bg-surface-container-lowest p-4" key={record.id}>
             <Badge tone={statusTone(record.status)}>{record.status}</Badge>
             <p className="mt-3 font-medium">{record.label}</p>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -2828,7 +2828,7 @@ function ProjectSettings({
 
         <div className="mt-4 grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
           <div className="space-y-3">
-            <div className="rounded-xl border bg-panel p-3">
+            <div className="rounded-xl border bg-surface-container-lowest p-3">
               <h4 className="text-sm font-semibold">Terminology</h4>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
                 Set the words this project uses so agriculture, health, education,
@@ -2914,7 +2914,7 @@ function ProjectSettings({
               </div>
             </div>
 
-            <div className="rounded-xl border bg-panel p-3">
+            <div className="rounded-xl border bg-surface-container-lowest p-3">
               <h4 className="text-sm font-semibold">Entity controls</h4>
               <div className="mt-3 grid gap-2">
                 <FieldInput
@@ -3092,7 +3092,7 @@ function BeneficiaryCodeFormatDesigner({
             ))}
           </Select>
         </label>
-        <label className="flex items-center gap-2 rounded-lg border bg-panel px-3 py-2 text-xs font-medium text-muted-foreground">
+        <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs font-medium text-muted-foreground">
           <input
             checked={parts.includeYear}
             disabled={disabled}
@@ -3203,7 +3203,7 @@ function EntityCategoryManager({
   });
 
   return (
-    <div className="rounded-xl border bg-panel p-3">
+    <div className="rounded-xl border bg-surface-container-lowest p-3">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h4 className="text-sm font-semibold">Entity Category Manager</h4>
@@ -3356,7 +3356,7 @@ function AuditTrail({ detail }: { detail: ProjectDetailRead }) {
       <h3 className="font-semibold">Project Audit Trail</h3>
       <div className="mt-4 space-y-3">
         {detail.audit_trail.map((event) => (
-          <div className="rounded-xl border bg-panel px-4 py-3" key={event.id}>
+          <div className="rounded-xl border bg-surface-container-lowest px-4 py-3" key={event.id}>
             <p className="font-medium">{event.action.replace(/\./g, " ")}</p>
             <p className="mt-1 text-xs text-muted-foreground">
               {event.user ?? "System"} · {formatDate(event.created_at)} ·{" "}
@@ -3400,7 +3400,7 @@ function TemplatesSection({
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {templates.map((template) => (
           <div
-            className="rounded-xl border bg-panel p-3.5 shadow-line"
+            className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card"
             key={template.id}
           >
             <Badge tone="monitor">{template.template_type}</Badge>
@@ -3701,7 +3701,7 @@ function ProjectWizardStepContent({
           </div>
           {activeSectorPack ? (
             <div className="mt-4 grid gap-3 lg:grid-cols-3">
-              <div className="rounded-xl border bg-panel p-3">
+              <div className="rounded-xl border bg-surface-container-lowest p-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   Entities
                 </p>
@@ -3709,7 +3709,7 @@ function ProjectWizardStepContent({
                   {activeSectorPack.entity_types.slice(0, 5).join(", ")}
                 </p>
               </div>
-              <div className="rounded-xl border bg-panel p-3">
+              <div className="rounded-xl border bg-surface-container-lowest p-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   Starter forms
                 </p>
@@ -3717,7 +3717,7 @@ function ProjectWizardStepContent({
                   {activeSectorPack.form_templates.slice(0, 4).join(", ")}
                 </p>
               </div>
-              <div className="rounded-xl border bg-panel p-3">
+              <div className="rounded-xl border bg-surface-container-lowest p-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   Sector controls
                 </p>
@@ -4107,7 +4107,7 @@ function ProjectWizardStepContent({
           <div className="mt-3 grid gap-2 md:grid-cols-3">
             {duplicateFieldChoices.map((choice) => (
               <label
-                className="flex items-center gap-2 rounded-xl border bg-panel px-3 py-2 text-sm"
+                className="flex items-center gap-2 rounded-xl border bg-surface-container-lowest px-3 py-2 text-sm"
                 key={choice.value}
               >
                 <input
@@ -4347,7 +4347,7 @@ function ProjectWizardStepContent({
             })
           }
         />
-        <label className="flex items-center gap-2 rounded-xl border bg-panel px-3 py-2 text-sm">
+        <label className="flex items-center gap-2 rounded-xl border bg-surface-container-lowest px-3 py-2 text-sm">
           <input
             checked={settingBoolean(
               draft,
@@ -4548,7 +4548,7 @@ function ProjectSetupFileCard({
           </span>
         ))}
       </span>
-      <span className="mt-3 block rounded-lg border border-dashed bg-panel px-3 py-2 text-xs text-muted-foreground">
+      <span className="mt-3 block rounded-lg border border-dashed bg-surface-container-lowest px-3 py-2 text-xs text-muted-foreground">
         {fileName ? `Selected: ${fileName}` : "Choose file"}
       </span>
       {statusLine ? (
@@ -4585,7 +4585,7 @@ function ReadinessChecklist({
       <div className="mt-3 grid gap-2 md:grid-cols-2">
         {checks.map((check) => (
           <button
-            className="flex items-center justify-between gap-2 rounded-lg border bg-panel px-3 py-2 text-left text-xs transition hover:border-primary"
+            className="flex items-center justify-between gap-2 rounded-lg border bg-surface-container-lowest px-3 py-2 text-left text-xs transition hover:border-primary"
             key={check.label}
             onClick={() => onSelectStep(check.targetStep)}
             type="button"
@@ -4754,7 +4754,7 @@ function SectionHeader({
   title: string;
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border bg-panel p-3.5 shadow-line md:flex-row md:items-start md:justify-between">
+    <div className="flex flex-col gap-3 rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card md:flex-row md:items-start md:justify-between">
       <div>
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-lg font-semibold">{title}</h2>

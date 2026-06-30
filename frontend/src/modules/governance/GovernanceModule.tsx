@@ -133,7 +133,7 @@ function SectionPanel({
   title: string;
 }) {
   return (
-    <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+    <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
       <div className="mb-4">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-lg font-semibold">{title}</h2>
@@ -550,7 +550,7 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
             <button
               className={cn(
                 "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
-                activeSection === section.id ? "border-primary bg-primary text-primary-foreground" : "bg-panel hover:bg-muted",
+                activeSection === section.id ? "border-primary bg-primary text-primary-foreground" : "bg-surface-container-lowest hover:bg-muted",
               )}
               key={section.id}
               onClick={() => selectSection(section.id)}
@@ -729,7 +729,7 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
         </div>
       ) : null}
 
-      <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <div className="flex items-center gap-2">

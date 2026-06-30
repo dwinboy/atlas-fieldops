@@ -535,7 +535,7 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
       ) : null}
 
       {!preview && qualitySignalsQuery.isLoading ? (
-        <section className="rounded-xl border bg-panel p-4 shadow-line" aria-live="polite">
+        <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card" aria-live="polite">
           <div className="flex items-start gap-3">
             <Gauge aria-hidden="true" className="mt-0.5 text-primary" size={18} />
             <div>
@@ -688,7 +688,7 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
       {!selectedIssue && activeSection === "risk-alerts" ? <RiskAlertsSection alerts={riskAlerts} issues={visibleIssues} onBulkUpdate={bulkUpdateHandler} onOpenGovernance={() => router.push("/governance")} onOpenIssue={openIssue} /> : null}
       {!selectedIssue && activeSection === "rules" ? <QualityRulesSection rules={qualityRules} /> : null}
 
-      <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-sm font-semibold">Module boundaries</h2>
@@ -1239,7 +1239,7 @@ function ImportCleaningSection({
 
   return (
     <div className="space-y-2">
-      <section className="rounded-xl border bg-panel shadow-line">
+      <section className="rounded-xl border bg-surface-container-lowest shadow-line">
         <div className="flex flex-col gap-2 border-b bg-muted/25 px-3 py-2 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-1.5">
@@ -1317,7 +1317,7 @@ function ImportCleaningSection({
         </section>
       ) : null}
       {isLoading ? (
-        <section className="rounded-xl border bg-panel p-4 shadow-line" aria-live="polite">
+        <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card" aria-live="polite">
           <p className="text-sm font-semibold">Loading staged uploaded rows</p>
           <p className="mt-1 text-sm text-muted-foreground">Atlas is checking uploaded form rows that still need cleaning or confirmation.</p>
         </section>
@@ -1426,7 +1426,7 @@ function ProfileChangeCards({
       {changes.map((change) => {
         const sensitivity = profileFieldSensitivity(change.field);
         return (
-          <div className={cn("rounded-md border bg-panel px-3 py-2 text-sm", compact ? "" : "md:min-h-28")} key={change.field}>
+          <div className={cn("rounded-md border bg-surface-container-lowest px-3 py-2 text-sm", compact ? "" : "md:min-h-28")} key={change.field}>
             <div className="flex items-center justify-between gap-2">
               <p className="font-medium">{titleCase(change.field)}</p>
               <Badge tone={sensitivity === "Sensitive" ? "warning" : "neutral"}>{sensitivity}</Badge>
@@ -1739,7 +1739,7 @@ function ReconciliationSection({
                   ? "Open conflict decision"
                   : "Open issue details";
           return (
-            <article className="rounded-xl border bg-panel p-3.5 shadow-line" key={issue.id}>
+            <article className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card" key={issue.id}>
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -2010,7 +2010,7 @@ function IssueDetail({
     })),
   ];
   return (
-    <section className="space-y-3 rounded-xl border bg-panel p-3.5 shadow-line">
+    <section className="space-y-3 rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -2453,7 +2453,7 @@ function MetricCard({
 
 function Panel({ action, children, title }: { action?: ReactNode; children: ReactNode; title: string }) {
   return (
-    <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+    <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
       <div className="mb-4 flex items-start justify-between gap-3">
         <h2 className="text-sm font-semibold">{title}</h2>
         {action}
@@ -2465,7 +2465,7 @@ function Panel({ action, children, title }: { action?: ReactNode; children: Reac
 
 function SectionHeader({ action, description, route, title }: { action?: ReactNode; description: string; route: string; title: string }) {
   return (
-    <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+    <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">

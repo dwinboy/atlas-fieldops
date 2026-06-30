@@ -722,7 +722,7 @@ export function ReportsModule({ token }: ReportsModuleProps) {
         <ExportsSection exports={exportJobs} onExportData={exportReportData} onOpenReport={openReport} reports={reports} />
       ) : null}
 
-      <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-sm font-semibold">Module boundaries</h2>
@@ -1939,7 +1939,7 @@ function ReportDetail({
   }
 
   return (
-    <section className="space-y-3 rounded-xl border bg-panel p-3.5 shadow-line">
+    <section className="space-y-3 rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -2122,7 +2122,7 @@ function MetricCard({ icon: Icon, label, onClick, value }: { icon: LucideIcon; l
 
 function Panel({ action, children, title }: { action?: ReactNode; children: ReactNode; title: string }) {
   return (
-    <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+    <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
       <div className="mb-4 flex items-start justify-between gap-3">
         <h2 className="text-sm font-semibold">{title}</h2>
         {action}
@@ -2134,7 +2134,7 @@ function Panel({ action, children, title }: { action?: ReactNode; children: Reac
 
 function SectionHeader({ action, description, route, title }: { action?: ReactNode; description: string; route: string; title: string }) {
   return (
-    <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+    <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">

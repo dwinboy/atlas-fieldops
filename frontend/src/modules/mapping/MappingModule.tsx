@@ -1329,7 +1329,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
                 "shrink-0 flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition",
                 activeSection === section.id
                   ? "border-primary bg-primary text-primary-foreground"
-                  : "bg-panel hover:bg-muted",
+                  : "bg-surface-container-lowest hover:bg-muted",
               )}
               key={section.id}
               onClick={() => selectSection(section.id)}
@@ -1593,7 +1593,7 @@ function MapAreaAssignmentModal({
             {officers.length ? officers.map((officer) => {
               const checked = draft.officerIds.includes(officer.id);
               return (
-                <label className="flex cursor-pointer items-start gap-2 rounded-lg border bg-panel p-2 text-sm" key={officer.id}>
+                <label className="flex cursor-pointer items-start gap-2 rounded-lg border bg-surface-container-lowest p-2 text-sm" key={officer.id}>
                   <input
                     checked={checked}
                     className="mt-1 accent-primary"
@@ -1911,7 +1911,7 @@ function EnterpriseMapViewer({
 
   return (
     <section className="grid gap-4">
-      <div className="overflow-hidden rounded-2xl border bg-panel shadow-line">
+      <div className="overflow-hidden rounded-2xl border bg-surface-container-lowest shadow-line">
         <div className="flex flex-col gap-3 border-b bg-muted/20 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="flex items-center gap-2">
@@ -1948,7 +1948,7 @@ function EnterpriseMapViewer({
                     "shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition",
                     activeMode === mode.id
                       ? "border-primary bg-primary text-primary-foreground shadow-line"
-                      : "bg-panel text-foreground hover:border-primary/40 hover:bg-primary/5",
+                      : "bg-surface-container-lowest text-foreground hover:border-primary/40 hover:bg-primary/5",
                   )}
                   key={mode.id}
                   onClick={() => changeMode(mode.id)}
@@ -2022,7 +2022,7 @@ function EnterpriseMapViewer({
                 Full screen map
               </Button>
             </div>
-            <div className="pointer-events-auto absolute bottom-4 left-4 rounded-xl border bg-panel/95 p-3 shadow-line">
+            <div className="pointer-events-auto absolute bottom-4 left-4 rounded-xl border bg-surface-container-lowest/95 p-3 shadow-line">
               <p className="text-xs font-semibold">Legend</p>
               <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
                 {legendStatusItems.map((item) => (
@@ -2035,7 +2035,7 @@ function EnterpriseMapViewer({
                 {showBoundaryShapes ? <LegendItem color="border-2 border-primary bg-transparent" label="Project extent (observed boundary)" /> : null}
               </div>
             </div>
-            <div className="pointer-events-auto absolute right-4 top-4 max-w-64 rounded-xl border bg-panel/95 p-3 text-xs shadow-line">
+            <div className="pointer-events-auto absolute right-4 top-4 max-w-64 rounded-xl border bg-surface-container-lowest/95 p-3 text-xs shadow-line">
               <p className="font-semibold">Draw / select area</p>
               {areaBounds ? (
                 <>
@@ -2140,7 +2140,7 @@ function EnterpriseMapViewer({
       </div>
 
       <aside className="grid gap-3 lg:grid-cols-2">
-        <section className="rounded-xl border bg-panel p-3 shadow-line">
+        <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3 shadow-card">
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold">GIS controls</h2>
@@ -2157,7 +2157,7 @@ function EnterpriseMapViewer({
                 </div>
                 <div className="space-y-2">
                   {group.layers.map((layer) => (
-                    <div className={cn("rounded-lg border bg-panel p-2 transition", layerVisibility[layer.id] === false && "opacity-60")} key={layer.id}>
+                    <div className={cn("rounded-lg border bg-surface-container-lowest p-2 transition", layerVisibility[layer.id] === false && "opacity-60")} key={layer.id}>
                       <label className="flex cursor-pointer items-start gap-2">
                         <input
                           checked={layerVisibility[layer.id] !== false}
@@ -2194,7 +2194,7 @@ function EnterpriseMapViewer({
           </div>
         </section>
 
-        <section className="rounded-xl border bg-panel p-3 shadow-line">
+        <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3 shadow-card">
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold">Workspace settings</h2>
@@ -2298,7 +2298,7 @@ function MapInspectorCard({
   privacyVisibility: LayerVisibility;
 }) {
   return (
-    <aside className="pointer-events-auto absolute bottom-4 right-4 max-h-[52%] w-[min(360px,calc(100%-2rem))] overflow-y-auto rounded-2xl border bg-panel/95 p-3 shadow-elevated backdrop-blur product-scrollbar">
+    <aside className="pointer-events-auto absolute bottom-4 right-4 max-h-[52%] w-[min(360px,calc(100%-2rem))] overflow-y-auto rounded-2xl border bg-surface-container-lowest/95 p-3 shadow-elevated backdrop-blur product-scrollbar">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold">{feature.label}</p>
@@ -2484,7 +2484,7 @@ function ProjectOverviewWorkspace({
       {extents.length ? (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {extents.map((extent) => (
-            <article className="rounded-xl border bg-panel p-3 shadow-line" key={extent.project}>
+            <article className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3 shadow-card" key={extent.project}>
               <h2 className="text-sm font-semibold">{extent.project}</h2>
               <div className="mt-3 grid gap-2">
                 <Signal label="GPS-tagged points" value={extent.pointCount.toLocaleString()} />
@@ -3207,7 +3207,7 @@ function IndicatorWorkspace({
 }) {
   if (!indicatorGeography.length) {
     return (
-      <section className="space-y-3 rounded-xl border bg-panel p-4 shadow-line">
+      <section className="space-y-3 rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
         <EmptyMini label="No indicator geography yet. Create active indicators and collect GPS-tagged project data to map indicator progress." />
         <Button onClick={onOpenIndicators} size="sm" variant="secondary">Open Indicators</Button>
       </section>
@@ -3272,7 +3272,7 @@ function IndicatorWorkspace({
       </div>
       <div className="grid gap-4 xl:grid-cols-3">
         {indicatorGeography.map((item) => (
-          <article className="rounded-xl border bg-panel p-3 shadow-line" key={item.id}>
+          <article className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3 shadow-card" key={item.id}>
             <Badge tone={coverageTone(item.achievementPercent)}>Achievement {item.achievementPercent}%</Badge>
             <h2 className="mt-3 text-sm font-semibold">{item.indicator}</h2>
             <p className="mt-1 text-xs text-muted-foreground">{item.project} · {item.location}</p>
@@ -3432,7 +3432,7 @@ function SpatialQualityWorkspace({
 
 function SectionHeader({ action, description, route, title }: { action?: ReactNode; description: string; route: string; title: string }) {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border bg-panel p-3 shadow-line xl:flex-row xl:items-center xl:justify-between">
+    <div className="flex flex-col gap-3 rounded-2xl border border-border-subtle bg-surface-container-lowest p-3 shadow-card xl:flex-row xl:items-center xl:justify-between">
       <div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone="monitor">{route}</Badge>
@@ -3450,7 +3450,7 @@ function SectionHeader({ action, description, route, title }: { action?: ReactNo
 
 function Panel({ action, children, title }: { action?: ReactNode; children: ReactNode; title: string }) {
   return (
-    <section className="rounded-xl border bg-panel p-3 shadow-line">
+    <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3 shadow-card">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold">{title}</h2>
         {action}

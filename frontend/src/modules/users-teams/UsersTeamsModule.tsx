@@ -235,6 +235,9 @@ const accessCenterTabs: { id: AccessCenterTab; label: string; hint: string }[] =
   { id: "permissions", label: "Permission checks", hint: "Confirm who can upload, clean, and review data." },
 ];
 
+const missionPanelClass = "rounded-2xl border border-[#bec9bf]/45 bg-white shadow-sm";
+const missionSubtlePanelClass = "rounded-2xl border border-[#bec9bf]/35 bg-[#f6fbf8] shadow-sm";
+
 const emptyAccessCatalog = { roles: [], permissions: [], scope_types: [], workflow_actions: [] };
 const defaultAccessEditDraft: AccessEditDraft = {
   geography_id: "",
@@ -1193,24 +1196,61 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   ];
 
   return (
-    <section className="space-y-3">
-      <div className="module-header rounded-xl p-3.5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="max-w-3xl">
+    <section className="space-y-5">
+      <div className="relative overflow-hidden rounded-3xl border border-[#bec9bf]/45 bg-[#0c1f1b] p-4 text-white shadow-xl md:p-5">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(6,182,212,0.22),transparent_34%),linear-gradient(135deg,rgba(0,82,50,0.84),rgba(12,31,27,0.96))]" />
+        <div className="relative grid gap-5 xl:grid-cols-[1.1fr_0.9fr] xl:items-end">
+          <div>
             <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="support">PEOPLE</Badge>
+              <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[#93ecb8]">
+                People mission control
+              </span>
               <Badge tone={summary.permission_alerts ? "warning" : "success"}>
                 {summary.permission_alerts ? `${summary.permission_alerts} access alert(s)` : "Access healthy"}
               </Badge>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight">Users & Teams</h1>
-              <HelpHint label="About Users & Teams" title="Users & Teams">
+              <HelpHint label="About" title="Users & Teams">
                 Manage identities, roles, operational teams, organization structure, access boundaries, and user activity from one controlled workspace.
               </HelpHint>
             </div>
+            <h1 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">Users & Teams</h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-white/70">
+              Control who can sign in, what roles they hold, which teams they belong to, and what operational data they can access.
+            </p>
+            <div className="mt-5 flex gap-2 overflow-x-auto product-scrollbar pb-1">
+              {usersTeamsSections.map((section) => (
+                <button
+                  className={cn(
+                    "shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                    activeSection === section.id
+                      ? "border-[#93ecb8] bg-[#93ecb8] text-[#0c1f1b]"
+                      : "border-white/15 bg-white/8 text-white/78 hover:border-white/30 hover:bg-white/14",
+                  )}
+                  key={section.id}
+                  onClick={() => selectSection(section.id)}
+                  type="button"
+                >
+                  {section.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="grid gap-3 sm:grid-cols-2 xl:justify-self-end">
+            <div className="rounded-2xl border border-white/12 bg-white/[0.08] p-4 backdrop-blur">
+              <div className="flex items-center gap-2">
+                <ShieldCheck aria-hidden="true" className="text-[#93ecb8]" size={18} />
+                <p className="text-xs font-semibold uppercase tracking-wide text-white/58">Access readiness</p>
+              </div>
+              <p className="mt-2 text-2xl font-semibold">{summary.access_health_score}%</p>
+              <p className="mt-1 text-xs text-white/58">{summary.pending_invitations} pending invitation(s)</p>
+            </div>
+            <div className="rounded-2xl border border-white/12 bg-white/[0.08] p-4 backdrop-blur">
+              <div className="flex items-center gap-2">
+                <Activity aria-hidden="true" className="text-[#93ecb8]" size={18} />
+                <p className="text-xs font-semibold uppercase tracking-wide text-white/58">Live activity</p>
+              </div>
+              <p className="mt-2 text-2xl font-semibold">{summary.active_sessions || sessions.length}</p>
+              <p className="mt-1 text-xs text-white/58">{summary.recent_activity} audit event(s)</p>
+            </div>
             <Button disabled={!canManageUsers || !roleOptions.length} onClick={openCreateUserModal} variant="primary">
               <Plus aria-hidden="true" />
               Create user
@@ -1220,21 +1260,6 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
               Test access
             </Button>
           </div>
-        </div>
-        <div className="mt-3 flex gap-1.5 overflow-x-auto product-scrollbar">
-          {usersTeamsSections.map((section) => (
-            <button
-              className={cn(
-                "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
-                activeSection === section.id ? "border-primary bg-primary text-primary-foreground" : "bg-panel hover:bg-muted",
-              )}
-              key={section.id}
-              onClick={() => selectSection(section.id)}
-              type="button"
-            >
-              {section.label}
-            </button>
-          ))}
         </div>
       </div>
 
@@ -1310,7 +1335,7 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
               <button
                 className={cn(
                   "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
-                  rolesView === view.id ? "border-primary bg-primary text-primary-foreground" : "bg-panel hover:bg-muted",
+                  rolesView === view.id ? "border-primary bg-primary text-primary-foreground" : "bg-surface-container-lowest hover:bg-muted",
                 )}
                 key={view.id}
                 onClick={() => setRolesView(view.id)}
@@ -1749,7 +1774,7 @@ function RoleSpecificProfileWorkspace({
   return (
     <section className="space-y-4">
       {/* Header: identity, status, and every primary action in one expected place */}
-      <div className="overflow-hidden rounded-2xl border bg-panel shadow-line">
+      <div className="overflow-hidden rounded-2xl border bg-surface-container-lowest shadow-line">
         <div className="bg-gradient-to-r from-primary/12 via-primary/[0.06] to-transparent p-4">
           <button
             className="mb-3 inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-muted-foreground transition hover:text-foreground"
@@ -1825,7 +1850,7 @@ function RoleSpecificProfileWorkspace({
             <button
               className={cn(
                 "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
-                tab === item.id ? "border-primary bg-primary text-primary-foreground" : "bg-panel hover:bg-muted",
+                tab === item.id ? "border-primary bg-primary text-primary-foreground" : "bg-surface-container-lowest hover:bg-muted",
               )}
               key={item.id}
               onClick={() => setTab(item.id)}
@@ -1867,7 +1892,7 @@ function RoleSpecificProfileWorkspace({
             <ProfileFactCard icon={Briefcase} label="Job title" value={workforceProfile?.job_title ?? roleLabel} hint={workforceProfile?.employee_code ? `Employee ${workforceProfile.employee_code}` : "No employee code"} />
           </div>
           <div className="grid gap-3 lg:grid-cols-[1fr_1fr]">
-            <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
               <div className="flex items-center gap-2">
                 <Sparkles aria-hidden="true" className="size-4 text-primary" />
                 <h3 className="text-sm font-semibold">What this user should focus on</h3>
@@ -1881,7 +1906,7 @@ function RoleSpecificProfileWorkspace({
                 ))}
               </div>
             </div>
-            <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
               <h3 className="text-sm font-semibold">At a glance</h3>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 <RoleProfileSignal label="Active role assignments" value={activeAssignments.length} />
@@ -1896,7 +1921,7 @@ function RoleSpecificProfileWorkspace({
 
       {tab === "access" ? (
         <div className="space-y-3">
-          <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+          <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <h3 className="text-sm font-semibold">Default role &amp; scope</h3>
@@ -1917,7 +1942,7 @@ function RoleSpecificProfileWorkspace({
             </div>
           </div>
 
-          <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+          <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <h3 className="text-sm font-semibold">Role assignments</h3>
@@ -1935,7 +1960,7 @@ function RoleSpecificProfileWorkspace({
             </div>
           </div>
 
-          <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+          <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <h3 className="text-sm font-semibold">Permissions</h3>
@@ -1977,7 +2002,7 @@ function RoleSpecificProfileWorkspace({
 
       {tab === "team" ? (
         <div className="space-y-3">
-          <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+          <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <h3 className="text-sm font-semibold">Team &amp; workforce</h3>
@@ -2007,7 +2032,7 @@ function RoleSpecificProfileWorkspace({
       {tab === "login" ? (
         <div className="space-y-3">
           {/* Credentials & password */}
-          <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+          <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <h3 className="text-sm font-semibold">Sign-in credentials</h3>
@@ -2031,7 +2056,7 @@ function RoleSpecificProfileWorkspace({
           </div>
 
           {/* Mobile QR login (field officers) */}
-          <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+          <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
             <div className="flex items-start gap-3">
               <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <QrCode aria-hidden="true" className="size-5" />
@@ -2049,7 +2074,7 @@ function RoleSpecificProfileWorkspace({
                   // eslint-disable-next-line @next/next/no-img-element
                   <img alt={`Mobile login QR for ${user.full_name}`} className="size-44 shrink-0 rounded-lg border bg-white p-2" src={qrImageUrl} />
                 ) : (
-                  <div className="flex size-44 shrink-0 items-center justify-center rounded-lg border bg-panel text-center text-xs text-muted-foreground">Generating QR…</div>
+                  <div className="flex size-44 shrink-0 items-center justify-center rounded-lg border bg-surface-container-lowest text-center text-xs text-muted-foreground">Generating QR…</div>
                 )}
                 <div className="min-w-0 space-y-2 text-sm">
                   <Badge tone={security?.mobile_qr_login_enabled ? "success" : "warning"}>
@@ -2083,7 +2108,7 @@ function RoleSpecificProfileWorkspace({
           </div>
 
           {/* Devices */}
-          <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+          <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
             <h3 className="text-sm font-semibold">Registered devices</h3>
             <p className="mt-0.5 text-xs text-muted-foreground">Phones and tablets this person has signed in from.</p>
             {devices.length ? (
@@ -2166,22 +2191,29 @@ function DashboardSection({
     { icon: Activity, label: "Active Sessions", value: summary.active_sessions || activeSessions, tone: "daily" as const },
   ];
   return (
-    <div className="space-y-3">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+    <div className="space-y-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         {cards.map((card) => (
-          <button className="rounded-xl border bg-panel p-3 text-left shadow-line transition hover:-translate-y-0.5 hover:shadow-elevated" key={card.label} onClick={() => onOpenSection(card.label === "Active Sessions" ? "activity-logs" : "users")} type="button">
-            <card.icon aria-hidden="true" className="text-primary" size={18} />
-            <p className="mt-4 text-2xl font-semibold">{card.value}</p>
-            <p className="text-xs text-muted-foreground">{card.label}</p>
+          <button
+            className="group rounded-2xl border border-[#bec9bf]/45 bg-white p-4 text-left shadow-sm transition duration-300 hover:-translate-y-0.5 hover:border-[#005232]/45 hover:shadow-md"
+            key={card.label}
+            onClick={() => onOpenSection(card.label === "Active Sessions" ? "activity-logs" : "users")}
+            type="button"
+          >
+            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#e7f7f1] text-[#005232] transition duration-300 group-hover:bg-[#005232] group-hover:text-white">
+              <card.icon aria-hidden="true" size={21} />
+            </span>
+            <p className="mt-4 text-2xl font-bold tracking-tight text-[#101e1a]">{card.value}</p>
+            <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-[#3f4942]/70">{card.label}</p>
           </button>
         ))}
       </div>
       <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+        <div className={`${missionPanelClass} p-5`}>
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-base font-semibold">Access health</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{organizationName} workforce and access readiness.</p>
+              <h2 className="text-base font-semibold text-[#101e1a]">Access health</h2>
+              <p className="mt-1 text-sm text-[#3f4942]/75">{organizationName} workforce and access readiness.</p>
             </div>
             <Badge tone={summary.access_health_score >= 80 ? "success" : "warning"}>{summary.access_health_score}% ready</Badge>
           </div>
@@ -2190,18 +2222,18 @@ function DashboardSection({
             <Signal label="Team structure" value={`${teams.length} teams`} />
             <Signal label="User activity" value={`${users.filter((user) => user.is_active).length} active`} />
           </div>
-          <div className="mt-5 h-3 overflow-hidden rounded-full bg-muted">
-            <div className="h-full rounded-full bg-primary" style={{ width: `${summary.access_health_score}%` }} />
+          <div className="mt-5 h-3 overflow-hidden rounded-full bg-[#d6e6e0]">
+            <div className="h-full rounded-full bg-[#005232]" style={{ width: `${summary.access_health_score}%` }} />
           </div>
         </div>
-        <div className="rounded-xl border bg-panel p-3.5 shadow-line">
-          <h2 className="text-base font-semibold">Permission alerts</h2>
+        <div className={`${missionPanelClass} p-5`}>
+          <h2 className="text-base font-semibold text-[#101e1a]">Permission alerts</h2>
           <div className="mt-4 space-y-3">
             <AlertRow label="Pending access requests" value={organizationSummary.pending_access_requests} />
             <AlertRow label="High risk sessions" value={organizationSummary.high_risk_sessions} />
             <AlertRow label="Governance score" value={`${organizationSummary.governance_score}%`} />
           </div>
-          <div className="mt-4 rounded-xl bg-muted/40 p-3 text-sm text-muted-foreground">
+          <div className="mt-4 rounded-xl border border-[#bec9bf]/30 bg-[#f6fbf8] p-3 text-sm text-[#3f4942]">
             {organizationSummary.attention_items[0] ?? "No immediate People-domain actions are waiting."}
           </div>
         </div>
@@ -2496,7 +2528,7 @@ function AccessCenterSection({
     );
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-5">
       <SectionHeader
         action={primaryAction}
         description="Everything a project owner needs for access, roles, teams, and permission checks is grouped here in one guided workspace."
@@ -2504,36 +2536,53 @@ function AccessCenterSection({
       />
       <div className="grid gap-4 xl:grid-cols-[0.78fr_1.22fr]">
         <div className="space-y-4">
-          <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+          <div className={`${missionPanelClass} p-4`}>
             <div className="flex items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold">Recommended order</h3>
+              <h3 className="text-sm font-semibold text-[#101e1a]">Recommended order</h3>
               <Badge tone="support">Owner workflow</Badge>
             </div>
             <div className="mt-3 space-y-2">
               {stepCards.map((step) => (
                 <button
                   className={cn(
-                    "w-full rounded-lg border p-3 text-left transition",
+                    "w-full rounded-xl border p-3 text-left transition duration-200",
                     accessCenterTab === step.id
-                      ? "border-primary bg-primary/5"
-                      : "bg-background hover:bg-muted/40",
+                      ? "border-[#005232] bg-[#e7f7f1]"
+                      : "border-[#bec9bf]/35 bg-[#fafaf8] hover:border-[#005232]/40 hover:bg-[#f6fbf8]",
                   )}
                   key={step.id}
                   onClick={() => onSetAccessCenterTab(step.id)}
                   type="button"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold">{step.label}</p>
+                    <p className="text-sm font-semibold text-[#101e1a]">{step.label}</p>
                     <Badge tone={accessCenterTab === step.id ? "accent" : "neutral"}>{step.badge}</Badge>
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{step.note}</p>
+                  <p className="mt-1 text-xs text-[#3f4942]/75">{step.note}</p>
                 </button>
               ))}
             </div>
           </div>
-          <div className="rounded-xl border bg-panel p-3.5 shadow-line">
-            <h3 className="text-sm font-semibold">What to do here</h3>
-            <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+          <div className="relative overflow-hidden rounded-2xl border border-[#bec9bf]/35 bg-[#0c1f1b] p-4 text-white shadow-sm">
+            <div className="pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full bg-[#06B6D4]/20 blur-2xl" />
+            <div className="relative">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 aria-hidden="true" className="text-[#93ecb8]" size={17} />
+                <h3 className="text-sm font-semibold">Data integrity verified</h3>
+              </div>
+              <div className="mt-4 flex items-end justify-between gap-4">
+                <div className="flex items-end gap-1.5">
+                  {[16, 28, 20, 12, 24].map((height, index) => (
+                    <span className="w-1 rounded-full bg-[#93ecb8]" key={index} style={{ height }} />
+                  ))}
+                </div>
+                <span className="font-mono text-[10px] font-semibold tracking-widest text-[#93ecb8]/70">ACCESS-READY</span>
+              </div>
+            </div>
+          </div>
+          <div className={`${missionSubtlePanelClass} p-4`}>
+            <h3 className="text-sm font-semibold text-[#101e1a]">What to do here</h3>
+            <div className="mt-3 space-y-2 text-sm text-[#3f4942]/78">
               <p>Roles decide what a person is allowed to do.</p>
               <p>Teams decide who works together and who supervises whom.</p>
               <p>Users receive the correct role and scope for their job.</p>
@@ -2558,9 +2607,9 @@ function AccessCenterSection({
             value={accessCenterTab}
           />
           <TabPanel active={accessCenterTab === "users"}>
-            <div className="rounded-xl border bg-panel p-3.5 shadow-line">
-              <p className="text-sm font-semibold">Users and access assignments</p>
-              <p className="mt-1 text-sm text-muted-foreground">
+            <div className={`${missionPanelClass} p-4`}>
+              <p className="text-sm font-semibold text-[#101e1a]">Users and access assignments</p>
+              <p className="mt-1 text-sm text-[#3f4942]/75">
                 Use Manage access for role assignments, sign-in control, password reset, and permission checks. Use Default role and scope only when you need to change the user&apos;s base access record.
               </p>
               <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
@@ -2570,9 +2619,9 @@ function AccessCenterSection({
                   ["Teams", "Group people under the right supervisor or function."],
                   ["Turn off access", "Stop login immediately without removing history."],
                 ].map(([label, detail]) => (
-                  <div className="rounded-lg border bg-background/70 p-3" key={label}>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-                    <p className="mt-1 text-sm text-foreground">{detail}</p>
+                  <div className="rounded-xl border border-[#bec9bf]/35 bg-[#f6fbf8] p-3" key={label}>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[#3f4942]/70">{label}</p>
+                    <p className="mt-1 text-sm text-[#101e1a]">{detail}</p>
                   </div>
                 ))}
               </div>
@@ -2631,9 +2680,9 @@ function AccessCenterSection({
             </div>
           </TabPanel>
           <TabPanel active={accessCenterTab === "roles"}>
-            <div className="rounded-xl border bg-panel p-3.5 shadow-line">
-              <p className="text-sm font-semibold">Role templates</p>
-              <p className="mt-1 text-sm text-muted-foreground">
+            <div className={`${missionPanelClass} p-4`}>
+              <p className="text-sm font-semibold text-[#101e1a]">Role templates</p>
+              <p className="mt-1 text-sm text-[#3f4942]/75">
                 Define the permission bundle once, then assign it many times with the right project, location, team, or own-record scope.
               </p>
               <div className="mt-3">
@@ -2648,9 +2697,9 @@ function AccessCenterSection({
             </div>
           </TabPanel>
           <TabPanel active={accessCenterTab === "teams"}>
-            <div className="rounded-xl border bg-panel p-3.5 shadow-line">
-              <p className="text-sm font-semibold">Operational teams</p>
-              <p className="mt-1 text-sm text-muted-foreground">
+            <div className={`${missionPanelClass} p-4`}>
+              <p className="text-sm font-semibold text-[#101e1a]">Operational teams</p>
+              <p className="mt-1 text-sm text-[#3f4942]/75">
                 Teams keep supervision, field work, and escalation paths understandable before you start assigning forms or project responsibilities.
               </p>
               <div className="mt-3">
@@ -2681,12 +2730,13 @@ function AccessCenterSection({
 
 function SectionHeader({ action, description, title }: { action?: React.ReactNode; description: string; title: string }) {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border bg-panel p-3.5 shadow-line md:flex-row md:items-start md:justify-between">
+    <div className={`${missionPanelClass} flex flex-col gap-3 p-4 md:flex-row md:items-start md:justify-between`}>
       <div>
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-lg font-semibold">{title}</h2>
+          <h2 className="text-lg font-semibold text-[#101e1a]">{title}</h2>
           <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
         </div>
+        <p className="mt-1 max-w-2xl text-sm leading-6 text-[#3f4942]/75">{description}</p>
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>
@@ -2695,9 +2745,9 @@ function SectionHeader({ action, description, title }: { action?: React.ReactNod
 
 function Signal({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border bg-background/50 p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-sm font-semibold">{value}</p>
+    <div className="rounded-xl border border-[#bec9bf]/35 bg-[#f6fbf8] p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[#3f4942]/70">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-[#101e1a]">{value}</p>
     </div>
   );
 }
@@ -2705,8 +2755,8 @@ function Signal({ label, value }: { label: string; value: string }) {
 function AlertRow({ label, value }: { label: string; value: number | string }) {
   const hasIssue = typeof value === "number" ? value > 0 : false;
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border bg-background/50 px-3 py-2">
-      <span className="text-sm">{label}</span>
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-[#bec9bf]/35 bg-[#f6fbf8] px-3 py-2">
+      <span className="text-sm text-[#101e1a]">{label}</span>
       <Badge tone={hasIssue ? "warning" : "success"}>{value}</Badge>
     </div>
   );
@@ -2714,14 +2764,16 @@ function AlertRow({ label, value }: { label: string; value: number | string }) {
 
 function InsightCard({ icon: Icon, items, title }: { icon: typeof UsersRound; items: string[]; title: string }) {
   return (
-    <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+    <div className={`${missionPanelClass} p-4`}>
       <div className="flex items-center gap-2">
-        <Icon aria-hidden="true" className="text-primary" size={18} />
-        <h3 className="font-semibold">{title}</h3>
+        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#e7f7f1] text-[#005232]">
+          <Icon aria-hidden="true" size={17} />
+        </span>
+        <h3 className="font-semibold text-[#101e1a]">{title}</h3>
       </div>
       <div className="mt-4 space-y-2">
         {items.map((item) => (
-          <p className="rounded-lg bg-muted/35 px-3 py-2 text-sm text-muted-foreground" key={item}>{item}</p>
+          <p className="rounded-lg border border-[#bec9bf]/20 bg-[#f6fbf8] px-3 py-2 text-sm text-[#3f4942]" key={item}>{item}</p>
         ))}
       </div>
     </div>
@@ -2730,26 +2782,26 @@ function InsightCard({ icon: Icon, items, title }: { icon: typeof UsersRound; it
 
 function PermissionMatrix({ groups, roles }: { groups: ReturnType<typeof groupPermissions>; roles: RoleRead[] }) {
   return (
-    <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+    <div className={`${missionPanelClass} p-4`}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="font-semibold">Permission Matrix</h3>
-          <p className="mt-1 text-sm text-muted-foreground">Permissions are grouped by module and evaluated server-side.</p>
+          <h3 className="font-semibold text-[#101e1a]">Permission Matrix</h3>
+          <p className="mt-1 text-sm text-[#3f4942]/75">Permissions are grouped by module and evaluated server-side.</p>
         </div>
         <Badge tone="admin">{groups.length} modules</Badge>
       </div>
       <div className="mt-5 overflow-x-auto product-scrollbar">
         <table className="w-full min-w-[720px] text-left text-sm">
-          <thead className="text-xs text-muted-foreground">
-            <tr>
+          <thead className="bg-[#f6fbf8] text-xs text-[#3f4942]/75">
+            <tr className="border-y border-[#bec9bf]/35">
               <th className="py-2 pr-4">Module</th>
               {roles.slice(0, 5).map((role) => <th className="px-3 py-2" key={role.id}>{role.label || normalizeRoleLabel(role.name)}</th>)}
             </tr>
           </thead>
-          <tbody className="divide-y">
+          <tbody className="divide-y divide-[#bec9bf]/25">
             {groups.map((group) => (
-              <tr key={group.group}>
-                <td className="py-3 pr-4 font-medium capitalize">{group.group}</td>
+              <tr className="transition hover:bg-[#f6fbf8]" key={group.group}>
+                <td className="py-3 pr-4 font-medium capitalize text-[#101e1a]">{group.group}</td>
                 {roles.slice(0, 5).map((role) => {
                   const allowed = group.items.filter((item) => role.permissions.includes(item.key)).length;
                   return <td className="px-3 py-3" key={`${group.group}-${role.id}`}><Badge tone={allowed ? "success" : "neutral"}>{allowed}/{group.items.length}</Badge></td>;
@@ -2779,11 +2831,11 @@ function RoleArchitecturePanel({ catalog }: { catalog: AccessCatalog["roles"] })
   if (!groups.length) return null;
 
   return (
-    <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+    <div className={`${missionPanelClass} p-4`}>
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div>
-          <h3 className="font-semibold">Role Architecture</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <h3 className="font-semibold text-[#101e1a]">Role Architecture</h3>
+          <p className="mt-1 text-sm text-[#3f4942]/75">
             Roles are templates. Real access is role plus scope: organization, project, location, team, or own records.
           </p>
         </div>
@@ -2791,16 +2843,16 @@ function RoleArchitecturePanel({ catalog }: { catalog: AccessCatalog["roles"] })
       </div>
       <div className="mt-4 grid gap-3 xl:grid-cols-4">
         {groups.map(([group, rolesInGroup]) => (
-          <div className="rounded-xl border bg-background/60 p-3" key={group}>
+          <div className="rounded-2xl border border-[#bec9bf]/35 bg-[#f6fbf8] p-3" key={group}>
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold">{group}</p>
+              <p className="text-sm font-semibold text-[#101e1a]">{group}</p>
               <Badge tone="neutral">{rolesInGroup.length}</Badge>
             </div>
             <div className="mt-3 space-y-2">
               {rolesInGroup.slice(0, 5).map((role) => (
-                <div className="rounded-lg border bg-panel px-3 py-2" key={role.name}>
-                  <p className="text-sm font-medium">{role.label}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
+                <div className="rounded-xl border border-[#bec9bf]/35 bg-white px-3 py-2 shadow-sm" key={role.name}>
+                  <p className="text-sm font-medium text-[#101e1a]">{role.label}</p>
+                  <p className="mt-1 text-xs text-[#3f4942]/75">
                     {role.common_usage || role.description}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
@@ -2845,19 +2897,24 @@ function OrganizationsSection({
     <section className="space-y-4">
       <SectionHeader description="See how regions, offices, teams, and people fit together — expand a level to drill into the next." title="Organization Structure" />
       <div className="grid gap-4 xl:grid-cols-[0.75fr_1.25fr]">
-        <div className="rounded-xl border bg-panel p-3.5 shadow-line">
-          <Building2 aria-hidden="true" className="text-primary" size={22} />
-          <h3 className="mt-4 text-lg font-semibold">{organizationName}</h3>
-          <p className="mt-1 text-sm text-muted-foreground">Single-tenant organization workspace with multi-organization readiness.</p>
+        <div className="relative overflow-hidden rounded-2xl border border-[#bec9bf]/35 bg-[#0c1f1b] p-5 text-white shadow-sm">
+          <div className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full bg-[#06B6D4]/20 blur-3xl" />
+          <div className="relative">
+            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/10 text-[#93ecb8]">
+              <Building2 aria-hidden="true" size={23} />
+            </span>
+            <h3 className="mt-4 text-xl font-semibold">{organizationName}</h3>
+            <p className="mt-1 text-sm leading-6 text-white/65">Single-tenant organization workspace with multi-organization readiness.</p>
+          </div>
           <div className="mt-3 grid gap-3">
             <Signal label="Users" value={`${summary.total_users}`} />
             <Signal label="Teams" value={`${summary.teams}`} />
             <Signal label="Roles" value={`${summary.roles}`} />
           </div>
         </div>
-        <div className="rounded-xl border bg-panel p-3.5 shadow-line">
-          <h3 className="font-semibold">Hierarchy</h3>
-          <p className="mt-1 text-xs text-muted-foreground">
+        <div className={`${missionPanelClass} p-4`}>
+          <h3 className="font-semibold text-[#101e1a]">Hierarchy</h3>
+          <p className="mt-1 text-xs text-[#3f4942]/70">
             Regions and offices contain teams, and teams contain people. Click a row to expand it.
           </p>
           <div className="mt-4 space-y-2">
@@ -2866,18 +2923,18 @@ function OrganizationsSection({
                 <OrgUnitNode key={unit.id} profiles={profiles} teams={teams} unit={unit} units={units} users={users} />
               ))
             ) : (
-              <p className="rounded-lg border bg-background/50 px-3 py-3 text-xs text-muted-foreground">
+              <p className="rounded-xl border border-[#bec9bf]/35 bg-[#f6fbf8] px-3 py-3 text-xs text-[#3f4942]/75">
                 No regions or offices have been set up yet. Add organizational units to build out your hierarchy.
               </p>
             )}
             {unassignedTeams.length || unassignedUsers.length ? (
-              <details className="rounded-lg border bg-background/50 px-3 py-2">
-                <summary className="cursor-pointer text-sm font-medium">
+              <details className="rounded-xl border border-[#bec9bf]/35 bg-[#f6fbf8] px-3 py-2">
+                <summary className="cursor-pointer text-sm font-medium text-[#101e1a]">
                   Not yet assigned to a region or office
                 </summary>
                 <div className="mt-2 space-y-2 border-l pl-4">
                   {unassignedTeams.length ? (
-                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#bec9bf]/25 bg-white px-3 py-2 text-xs text-[#3f4942]/75">
                       <span>
                         Open a team and choose &quot;Place in organization
                         structure&quot; to move it into the hierarchy above.
@@ -2891,8 +2948,8 @@ function OrganizationsSection({
                     <TeamNode key={team.id} profiles={profiles} team={team} users={users} />
                   ))}
                   {unassignedUsers.length ? (
-                    <div className="rounded-lg border bg-panel/60 px-3 py-2">
-                      <p className="text-sm font-medium">People without a team</p>
+                    <div className="rounded-xl border border-[#bec9bf]/35 bg-white px-3 py-2">
+                      <p className="text-sm font-medium text-[#101e1a]">People without a team</p>
                       <div className="mt-2 space-y-1.5">
                         {unassignedUsers.map((user) => (
                           <div className="flex items-center justify-between gap-3 text-xs" key={user.id}>
@@ -2932,11 +2989,11 @@ function OrgUnitNode({
   const unitTeams = teams.filter((team) => team.organization_unit_id === unit.id);
 
   return (
-    <details className="rounded-lg border bg-background/50 px-3 py-2" open={depth === 0}>
-      <summary className="flex cursor-pointer items-center justify-between gap-3 text-sm font-medium">
+    <details className="rounded-xl border border-[#bec9bf]/35 bg-[#f6fbf8] px-3 py-2" open={depth === 0}>
+      <summary className="flex cursor-pointer items-center justify-between gap-3 text-sm font-medium text-[#101e1a]">
         <span>
           {unit.name}
-          <span className="ml-2 text-xs font-normal text-muted-foreground">
+          <span className="ml-2 text-xs font-normal text-[#3f4942]/70">
             {unit.code} · {unit.unit_type}
             {unit.region ? ` · ${unit.region}` : ""}
           </span>
@@ -2953,7 +3010,7 @@ function OrgUnitNode({
           <OrgUnitNode depth={depth + 1} key={child.id} profiles={profiles} teams={teams} unit={child} units={units} users={users} />
         ))}
         {!unitTeams.length && !childUnits.length ? (
-          <p className="text-xs text-muted-foreground">No teams or sub-units here yet.</p>
+          <p className="text-xs text-[#3f4942]/70">No teams or sub-units here yet.</p>
         ) : null}
       </div>
     </details>
@@ -2963,11 +3020,11 @@ function OrgUnitNode({
 function TeamNode({ profiles, team, users }: { profiles: WorkforceProfileRead[]; team: TeamRead; users: UserRead[] }) {
   const members = profiles.filter((profile) => profile.team_id === team.id);
   return (
-    <details className="rounded-lg border bg-panel/60 px-3 py-2">
-      <summary className="flex cursor-pointer items-center justify-between gap-3 text-sm font-medium">
+    <details className="rounded-xl border border-[#bec9bf]/35 bg-white px-3 py-2 shadow-sm">
+      <summary className="flex cursor-pointer items-center justify-between gap-3 text-sm font-medium text-[#101e1a]">
         <span>
           {team.name}
-          <span className="ml-2 text-xs font-normal text-muted-foreground">
+          <span className="ml-2 text-xs font-normal text-[#3f4942]/70">
             {team.code} · {team.team_type.replaceAll("_", " ")}
             {team.region ? ` · ${team.region}` : ""}
           </span>
@@ -2982,12 +3039,12 @@ function TeamNode({ profiles, team, users }: { profiles: WorkforceProfileRead[];
             const user = users.find((candidate) => candidate.id === profile.user_id);
             const supervisor = profile.supervisor_user_id ? users.find((candidate) => candidate.id === profile.supervisor_user_id) : null;
             return (
-              <div className="flex items-center justify-between gap-3 text-xs" key={profile.id}>
+              <div className="flex items-center justify-between gap-3 rounded-lg bg-[#f6fbf8] px-3 py-2 text-xs" key={profile.id}>
                 <div>
                   <p className="font-medium">
                     <UserProfileLink userId={user?.id}>{user?.full_name ?? "Unknown user"}</UserProfileLink>
                   </p>
-                  <p className="text-muted-foreground">
+                  <p className="text-[#3f4942]/70">
                     {profile.job_title}
                     {supervisor ? (
                       <>
@@ -3004,7 +3061,7 @@ function TeamNode({ profiles, team, users }: { profiles: WorkforceProfileRead[];
             );
           })
         ) : (
-          <p className="text-xs text-muted-foreground">No team members assigned yet.</p>
+          <p className="text-xs text-[#3f4942]/70">No team members assigned yet.</p>
         )}
       </div>
     </details>
@@ -3139,7 +3196,7 @@ function UserPermissionControlPanel({
   ];
 
   return (
-    <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+    <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div>
           <h3 className="text-sm font-semibold">User permission control</h3>
@@ -3277,7 +3334,7 @@ function CreateUserModal({ canManageRoles, canSubmit, draft, onChange, onCreateC
             ) : null}
           </div>
           {selectedRole ? (
-            <div className="mt-3 rounded-lg border bg-panel p-3 text-xs text-muted-foreground">
+            <div className="mt-3 rounded-lg border bg-surface-container-lowest p-3 text-xs text-muted-foreground">
               <p className="font-semibold text-foreground">{selectedRole.label}</p>
               <p className="mt-1">{selectedRole.common_usage || selectedRole.description}</p>
               <div className="mt-2 flex flex-wrap gap-1.5">
@@ -3563,7 +3620,7 @@ function RoleAssignmentsModal({
               <Badge tone="admin">{assignments.filter((assignment) => assignment.is_active).length} active</Badge>
             </div>
           </div>
-          <div className="mt-3 rounded-lg border bg-panel p-3">
+          <div className="mt-3 rounded-lg border bg-surface-container-lowest p-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Default role and sign-in</p>
@@ -3600,7 +3657,7 @@ function RoleAssignmentsModal({
           </div>
           <div className="mt-3 space-y-2">
             {assignments.length ? assignments.map((assignment) => (
-              <div className="rounded-lg border bg-panel p-3" key={assignment.id}>
+              <div className="rounded-lg border bg-surface-container-lowest p-3" key={assignment.id}>
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
                     <p className="text-sm font-semibold">{assignment.role_label || normalizeRoleLabel(assignment.role_name)}</p>
@@ -3661,7 +3718,7 @@ function RoleAssignmentsModal({
             </div>
           </div>
         </section>
-        <section className="rounded-xl border bg-panel p-3">
+        <section className="rounded-xl border bg-surface-container-lowest p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h3 className="text-sm font-semibold">{draft.assignment_id ? "Edit permission access" : "Add permission access"}</h3>

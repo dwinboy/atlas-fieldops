@@ -268,7 +268,7 @@ export function DashboardBuilder({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-col gap-3 rounded-xl border bg-panel p-3.5 shadow-line sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <Button onClick={onBack} type="button" variant="secondary">
             <ArrowLeft aria-hidden="true" /> Back to dashboards
@@ -289,7 +289,7 @@ export function DashboardBuilder({
         </div>
       </div>
 
-      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
           <label className="space-y-1 text-sm lg:col-span-2">
             <span className="font-medium">Name</span>
@@ -338,7 +338,7 @@ export function DashboardBuilder({
         </div>
       </div>
 
-      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
         <p className="mb-2 text-sm font-semibold">Add widget</p>
         <div className="grid gap-2 md:grid-cols-5">
           <label className="space-y-1 text-xs">
@@ -408,7 +408,7 @@ export function DashboardBuilder({
         </div>
       </div>
 
-      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
         <p className="mb-2 text-sm font-semibold">Layout</p>
         {draft.widgets.length ? (
           <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd} sensors={sensors}>

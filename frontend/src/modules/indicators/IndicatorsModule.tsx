@@ -638,7 +638,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
                 "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
                 activeSection === section.id
                   ? "border-primary bg-primary text-primary-foreground"
-                  : "bg-panel hover:bg-muted",
+                  : "bg-surface-container-lowest hover:bg-muted",
               )}
               key={section.id}
               onClick={() => selectIndicatorSection(section.id)}
@@ -1103,7 +1103,7 @@ function CreateIndicatorModal({ canSubmit, draft, editing = false, onChange, onO
                   <button
                     className={cn(
                       "rounded-full border px-2.5 py-1 text-xs font-medium transition",
-                      active ? "border-primary bg-primary text-primary-foreground" : "bg-panel hover:bg-muted",
+                      active ? "border-primary bg-primary text-primary-foreground" : "bg-surface-container-lowest hover:bg-muted",
                     )}
                     key={field.key}
                     onClick={() => toggleDisaggregationField(field.key)}
@@ -1493,7 +1493,7 @@ function IndicatorDetailWorkspace({
     ? () => router.push(`/forms?formId=${indicator.linkedFormId}`)
     : undefined;
   return (
-    <section className="space-y-4 rounded-xl border bg-panel p-3.5 shadow-line">
+    <section className="space-y-4 rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1767,7 +1767,7 @@ function AuditRows({ auditEvents, indicator }: { auditEvents: IndicatorAuditEven
 
 function SectionHeader({ action, description, route, title }: { action?: ReactNode; description: string; route: string; title: string }) {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border bg-panel p-3 shadow-line xl:flex-row xl:items-center xl:justify-between">
+    <div className="flex flex-col gap-3 rounded-2xl border border-border-subtle bg-surface-container-lowest p-3 shadow-card xl:flex-row xl:items-center xl:justify-between">
       <div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone="monitor">{route}</Badge>
@@ -1785,7 +1785,7 @@ function SectionHeader({ action, description, route, title }: { action?: ReactNo
 
 function Panel({ action, children, title }: { action?: ReactNode; children: ReactNode; title: string }) {
   return (
-    <section className="rounded-xl border bg-panel p-3 shadow-line">
+    <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3 shadow-card">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold">{title}</h2>
         {action}

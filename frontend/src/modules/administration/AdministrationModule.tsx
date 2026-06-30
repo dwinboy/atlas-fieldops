@@ -487,7 +487,7 @@ function AdministrationModuleSelector({
   return (
     <section
       aria-label="Administration settings"
-      className="rounded-xl border bg-panel p-3 shadow-line"
+      className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3 shadow-card"
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -515,7 +515,7 @@ function AdministrationModuleSelector({
               type="button"
             >
               <div className="flex items-start gap-3">
-                <span className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg border bg-panel">
+                <span className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg border bg-surface-container-lowest">
                   <Icon aria-hidden="true" size={15} />
                 </span>
                 <span className="min-w-0">
@@ -555,7 +555,7 @@ function FilterBar({
   status: string;
 }) {
   return (
-    <div className="grid gap-3 rounded-xl border bg-panel p-3 shadow-line md:grid-cols-[minmax(0,1fr)_180px_180px_180px]">
+    <div className="grid gap-3 rounded-2xl border border-border-subtle bg-surface-container-lowest p-3 shadow-card md:grid-cols-[minmax(0,1fr)_180px_180px_180px]">
       <label className="relative">
         <span className="sr-only">Search administration records</span>
         <Search
@@ -620,7 +620,7 @@ function ConfigPanel({
   tone?: "accent" | "danger" | "neutral" | "success" | "warning";
 }) {
   return (
-    <section className="rounded-xl border bg-panel p-3 shadow-line">
+    <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3 shadow-card">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold">{title}</h3>
         <span
@@ -2342,7 +2342,7 @@ function AdministrationDashboard({
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
         {metrics.map((metric) => (
           <article
-            className="rounded-xl border bg-panel p-3 shadow-line"
+            className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3 shadow-card"
             key={metric.label}
           >
             <div className="flex items-start justify-between gap-3">
@@ -2656,7 +2656,7 @@ function MobileReadinessView({
           ["Release policy", "Minimum version enforcement ready"],
           ["Support loop", "Crash, feedback, and diagnostics ready"],
         ].map(([label, value]) => (
-          <article className="rounded-xl border bg-panel p-3 shadow-line" key={label}>
+          <article className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3 shadow-card" key={label}>
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               {label}
             </p>
