@@ -2106,9 +2106,35 @@ function OverviewTab({
 
 function humanizeKey(value: string): string {
   return value
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2") // split camelCase (questionId -> question Id)
     .replaceAll("_", " ")
     .replaceAll("-", " ")
+    .replace(/\s+/g, " ")
+    .trim()
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+// Render an evidence/detail value for a human reviewer instead of dumping raw JSON. Enum-like
+// strings (snake_case / kebab / SCREAMING_CASE such as "full_name") become readable labels;
+// booleans/numbers/arrays are formatted; nested objects are summarized as "Key: Value" pairs.
+function humanizeEvidenceValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "number") return value.toLocaleString();
+  if (Array.isArray(value)) {
+    return value.length ? value.map((item) => humanizeEvidenceValue(item)).join(", ") : "—";
+  }
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, nested]) => `${humanizeKey(key)}: ${humanizeEvidenceValue(nested)}`)
+      .join(" · ");
+  }
+  const text = String(value).trim();
+  // Leave opaque/generated identifiers (long digit runs) as-is — humanizing them only adds noise.
+  if (/\d{4,}/.test(text)) return text;
+  // Looks like an enum/field key (alphabetic tokens joined by _ or -, e.g. "full_name"): humanize.
+  if (/[_-]/.test(text) && /^[A-Za-z][A-Za-z0-9_-]*$/.test(text)) return humanizeKey(text);
+  return text;
 }
 
 function describeEntityCategoryTrail(
@@ -3497,9 +3523,14 @@ function MobileIntegrityPanel({
                     <Badge tone={severityTone(signal.severity)}>{humanizeKey(signal.severity)}</Badge>
                   </div>
                   {signal.evidence && Object.keys(signal.evidence).length ? (
-                    <pre className="mt-3 max-h-36 overflow-auto rounded-lg bg-muted/45 p-2 text-xs text-muted-foreground">
-                      {JSON.stringify(signal.evidence, null, 2)}
-                    </pre>
+                    <dl className="mt-3 grid gap-2 rounded-lg bg-muted/45 p-3 text-xs sm:grid-cols-2">
+                      {Object.entries(signal.evidence).map(([key, value]) => (
+                        <div className="flex flex-col gap-0.5" key={key}>
+                          <dt className="font-medium text-foreground">{humanizeKey(key)}</dt>
+                          <dd className="break-words text-muted-foreground">{humanizeEvidenceValue(value)}</dd>
+                        </div>
+                      ))}
+                    </dl>
                   ) : null}
                 </div>
               ))}
