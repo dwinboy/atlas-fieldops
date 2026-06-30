@@ -19,7 +19,7 @@ import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 
 const inputClass =
-  "h-9 w-full rounded-lg border border-input bg-panel/95 px-2.5 text-sm text-foreground shadow-line transition-all duration-150 ease-product placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 disabled:cursor-not-allowed disabled:opacity-50";
+  "h-9 w-full rounded-xl border border-input bg-surface-container-lowest px-3 text-sm text-on-surface shadow-line transition-all duration-150 ease-product placeholder:text-muted-foreground focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50";
 
 export function Input({
   className,
