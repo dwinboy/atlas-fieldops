@@ -57,7 +57,7 @@ import {
   getDashboardQualityScore,
   getFormPerformanceTotals,
 } from "@/lib/dashboard";
-import { getNavigationItemByView } from "@/config/navigation";
+import { getNavigationItemByView, getVisibleNavigationItems } from "@/config/navigation";
 import { cn } from "@/lib/utils";
 import { previewEntities } from "@/modules/beneficiaries/data";
 import { previewForms } from "@/modules/forms/data";
@@ -392,40 +392,65 @@ export function Dashboard({ token, principal }: DashboardProps) {
   const localProjects = useWorkspaceStore((state) => state.localProjects);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const preview = !token || token === "preview-token";
+  // Pure field-collection roles get a focused field workspace (see early return below) and none of
+  // the manager command-center data, so skip these manager-scoped fetches for them — they would
+  // only 403. Declared before the queries so it can gate them (hooks must run unconditionally).
+  const dashboardRoleSet = new Set((principal?.roles ?? []).map((role) => role.toLowerCase()));
+  const isFieldOnlyRole =
+    !preview &&
+    !principal?.platform_admin &&
+    (dashboardRoleSet.has("field_officer") ||
+      dashboardRoleSet.has("collector") ||
+      dashboardRoleSet.has("enumerator")) &&
+    ![
+      "organization_admin",
+      "organization_owner",
+      "org_admin",
+      "system_admin",
+      "national_admin",
+      "regional_manager",
+      "district_supervisor",
+      "me_manager",
+      "project_manager",
+      "data_reviewer",
+      "data_analyst",
+      "data_manager",
+    ].some((role) => dashboardRoleSet.has(role));
+  const managerDataEnabled = Boolean(token && !preview) && !isFieldOnlyRole;
   const summaryQuery = useQuery({
     queryKey: ["operations-summary", token],
     queryFn: () => getOperationsSummary(token ?? ""),
-    enabled: Boolean(token && !preview),
+    enabled: managerDataEnabled,
   });
   const formsQuery = useQuery({
     queryKey: ["dashboard-forms", token],
     queryFn: () => listForms(token ?? ""),
-    enabled: Boolean(token && !preview),
+    enabled: managerDataEnabled,
   });
   const submissionsQuery = useQuery({
     queryKey: ["dashboard-submissions", token],
     queryFn: () => listSubmissions(token ?? ""),
-    enabled: Boolean(token && !preview),
+    enabled: managerDataEnabled,
   });
   const usersQuery = useQuery({
     queryKey: ["dashboard-users", token],
     queryFn: () => listUsers(token ?? ""),
-    enabled: Boolean(token && !preview),
+    enabled: managerDataEnabled,
   });
   const fieldOfficersQuery = useQuery({
     queryKey: ["dashboard-field-officers", token],
     queryFn: () => listFieldOfficers(token ?? ""),
-    enabled: Boolean(token && !preview),
+    enabled: managerDataEnabled,
   });
   const visitRequestsQuery = useQuery({
     queryKey: ["dashboard-visit-requests", token],
     queryFn: () => listFieldVisitRequests(token ?? ""),
-    enabled: Boolean(token && !preview),
+    enabled: managerDataEnabled,
   });
   const qualitySignalsQuery = useQuery({
     queryKey: ["dashboard-quality-signals", token],
     queryFn: () => listDataQualitySignals(token ?? "", { status: "open" }),
-    enabled: Boolean(token && !preview),
+    enabled: managerDataEnabled,
   });
   const dashboardForms = preview
     ? ([
@@ -635,6 +660,10 @@ export function Dashboard({ token, principal }: DashboardProps) {
     setupSteps[setupSteps.length - 1];
   const roleGuidance = getRoleGuidance(principal);
   const RoleGuidanceIcon = roleGuidance.icon;
+  // Focused field workspace for pure field-collection roles (see managerDataEnabled above).
+  const fieldModules = getVisibleNavigationItems(principal).filter(
+    (item) => !item.hiddenFromSidebar && item.id !== "dashboard" && item.id !== "help",
+  );
   const accountLabel =
     principal?.full_name?.trim() ||
     principal?.email?.trim() ||
@@ -1243,6 +1272,103 @@ export function Dashboard({ token, principal }: DashboardProps) {
       tone: "neutral",
     });
     navigateToView(step.view, step.route);
+  }
+
+  if (isFieldOnlyRole) {
+    return (
+      <section aria-labelledby="dashboard-title" className="space-y-6">
+        <section
+          className="surface-hero rounded-2xl p-5 md:p-6"
+          aria-labelledby="dashboard-title"
+        >
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex gap-4">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border bg-background text-primary shadow-sm">
+                <RoleGuidanceIcon aria-hidden="true" size={20} />
+              </span>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                  Field workspace
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <h1 id="dashboard-title" className="text-3xl font-semibold tracking-tight">
+                    {roleGuidance.title}
+                  </h1>
+                  <Badge tone="accent">{roleGuidance.badge}</Badge>
+                  <HelpHint label="About your role focus" title={roleGuidance.title}>
+                    {roleGuidance.description}
+                  </HelpHint>
+                </div>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                  {roleGuidance.description}
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Signed in as <span className="font-medium">{accountLabel}</span>
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {roleGuidance.actions.map((action) => (
+                <Button
+                  key={action.label}
+                  onClick={() => openView(action)}
+                  type="button"
+                  variant="primary"
+                >
+                  {action.label}
+                  <ArrowUpRight aria-hidden="true" />
+                </Button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {fieldModules.length ? (
+          <section aria-label="Your tools" className="space-y-3">
+            <h2 className="text-sm font-semibold text-muted-foreground">Your tools</h2>
+            <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+              {fieldModules.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    className="group flex flex-col rounded-xl border border-border-subtle bg-surface-container-lowest p-6 text-left shadow-[0_1px_3px_0_rgba(0,0,0,0.05)] transition-all duration-200 hover:border-primary/40 hover:shadow-[0_8px_24px_-12px_rgba(0,82,50,0.25)]"
+                    key={item.id}
+                    onClick={() => navigateToView(item.id, item.route)}
+                    type="button"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-on-surface">{item.label}</p>
+                      <Icon aria-hidden="true" className="shrink-0 text-primary" size={20} strokeWidth={1.5} />
+                    </div>
+                    <p className="mt-2 line-clamp-2 text-xs leading-5 text-on-surface-variant">
+                      {item.description}
+                    </p>
+                    <span className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-primary">
+                      Open
+                      <ArrowUpRight aria-hidden="true" size={14} />
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
+
+        <section className="surface-premium rounded-2xl p-5" aria-label="Field focus">
+          <h2 className="text-sm font-semibold">Keep your work clean</h2>
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            {roleGuidance.focus.map((item) => (
+              <div className="rounded-xl border bg-background/80 p-3" key={item}>
+                <div className="flex gap-2">
+                  <CheckCircle2 aria-hidden="true" className="mt-0.5 shrink-0 text-success" size={15} />
+                  <p className="text-xs leading-5 text-muted-foreground">{item}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      </section>
+    );
   }
 
   return (
