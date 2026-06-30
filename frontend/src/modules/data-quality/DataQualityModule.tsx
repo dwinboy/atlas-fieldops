@@ -32,6 +32,7 @@ import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { KpiShard } from "@/components/ui/kpi-shard";
 import { Button } from "@/components/ui/button";
+import { EmptyMini } from "@/components/ui/empty-mini";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Textarea } from "@/components/ui/input";
 import { Modal, ModalBody, ModalFooter } from "@/components/ui/modal";
@@ -1390,10 +1391,10 @@ function ImportCleaningSection({
           </table>
         </div>
       ) : (
-        <div className="rounded-xl border border-dashed bg-muted/20 p-5 text-sm text-muted-foreground">
-          <Table2 aria-hidden="true" className="mb-2" size={18} />
-          Choose a form with staged uploaded rows to edit values in bulk.
-        </div>
+        <EmptyMini
+          icon={Table2}
+          label="Choose a form with staged uploaded rows to edit values in bulk."
+        />
       )}
     </div>
   );
@@ -2483,7 +2484,7 @@ function SectionHeader({ action, description, route, title }: { action?: ReactNo
 }
 
 function Timeline({ records }: { records: { badge: string; label: string; meta: string; onClick?: () => void; tone: BadgeProps["tone"] }[] }) {
-  if (!records.length) return <div className="rounded-xl border border-dashed bg-muted/20 p-5 text-sm text-muted-foreground">No records yet.</div>;
+  if (!records.length) return <EmptyMini label="No records yet." />;
   return (
     <div className="space-y-3">
       {records.map((record, index) => {
@@ -2513,7 +2514,7 @@ function RankingPanel({ rows, title }: { rows: [string, number][]; title: string
   if (!rows.length) {
     return (
       <Panel title={title}>
-        <div className="rounded-xl border border-dashed bg-muted/20 p-5 text-sm text-muted-foreground">No records yet.</div>
+        <EmptyMini label="No records yet." />
       </Panel>
     );
   }

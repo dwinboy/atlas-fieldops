@@ -37,6 +37,7 @@ import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { KpiShard } from "@/components/ui/kpi-shard";
 import { Button } from "@/components/ui/button";
+import { EmptyMini } from "@/components/ui/empty-mini";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal, ModalBody, ModalFooter } from "@/components/ui/modal";
@@ -1598,9 +1599,10 @@ function DashboardsSection({
           ))}
         </div>
       ) : (
-        <div className="rounded-xl border border-dashed bg-background p-6 text-center text-sm text-muted-foreground">
-          No dashboards yet. Create one to combine indicators, submissions, donor metrics, and data quality signals into a single view.
-        </div>
+        <EmptyMini
+          icon={LayoutDashboard}
+          label="No dashboards yet. Create one to combine indicators, submissions, donor metrics, and data quality signals into a single view."
+        />
       )}
       <Panel action={<Button onClick={onOpenReports} size="sm" variant="secondary">Open reports</Button>} title="Dashboard builder capabilities">
         <div className="grid gap-3 md:grid-cols-4">
@@ -2037,9 +2039,10 @@ function ComputedMetricsPanel({ report }: { report: ReportRecord }) {
   if (!metrics) {
     return (
       <Panel title="Computed metrics">
-        <div className="rounded-xl border border-dashed bg-muted/20 p-5 text-sm text-muted-foreground">
-          Generate this report to compute metrics from approved submissions.
-        </div>
+        <EmptyMini
+          icon={BarChart3}
+          label="Generate this report to compute metrics from approved submissions."
+        />
       </Panel>
     );
   }
@@ -2151,7 +2154,7 @@ function SectionHeader({ action, description, route, title }: { action?: ReactNo
 
 function Timeline({ records }: { records: { badge: string; label: string; meta: string; tone: BadgeProps["tone"] }[] }) {
   if (!records.length) {
-    return <div className="rounded-xl border border-dashed bg-muted/20 p-5 text-sm text-muted-foreground">No records yet.</div>;
+    return <EmptyMini label="No records yet." />;
   }
   return (
     <div className="space-y-3">
