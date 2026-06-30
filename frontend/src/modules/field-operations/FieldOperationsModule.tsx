@@ -27,7 +27,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { AccessDenied, isPermissionError } from "@/components/ui/access-denied";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
-import { KpiShard } from "@/components/ui/kpi-shard";
 import { Button } from "@/components/ui/button";
 import { EmptyMini } from "@/components/ui/empty-mini";
 import { ActionMenu, type ActionMenuItem } from "@/components/ui/dropdown-menu";
@@ -161,6 +160,9 @@ const defaultAssignmentDraft: Omit<FieldAssignment, "id" | "completedCount"> = {
   supervisor: "",
   targetCount: 0,
 };
+
+const fieldOpsPanelClass = "rounded-2xl border border-emerald-900/10 bg-white shadow-[0_16px_40px_-34px_rgba(12,31,27,0.55)]";
+const fieldOpsSoftPanelClass = "rounded-2xl border border-emerald-900/10 bg-[#F7FBF8] shadow-[0_12px_32px_-30px_rgba(12,31,27,0.45)]";
 
 const defaultInviteDraft: FieldOfficerInvite = {
   email: "",
@@ -470,19 +472,76 @@ function downloadCsv(
   URL.revokeObjectURL(url);
 }
 
+type MetricCardTone = "danger" | "neutral" | "success" | "warning";
+
 function MetricCard({
   icon,
   label,
   onClick,
+  tone = "neutral",
   value,
 }: {
   icon: ReactNode;
   label: string;
   onClick?: () => void;
-  tone?: "danger" | "neutral" | "success" | "warning";
+  tone?: MetricCardTone;
   value: string | number;
 }) {
-  return <KpiShard icon={icon} label={label} onClick={onClick} value={value} />;
+  const toneStyles: Record<MetricCardTone, { icon: string; ring: string; text: string }> = {
+    danger: {
+      icon: "bg-red-50 text-red-700",
+      ring: "hover:border-red-300",
+      text: "text-red-700",
+    },
+    neutral: {
+      icon: "bg-slate-100 text-slate-700",
+      ring: "hover:border-slate-300",
+      text: "text-slate-700",
+    },
+    success: {
+      icon: "bg-emerald-50 text-emerald-700",
+      ring: "hover:border-emerald-300",
+      text: "text-emerald-700",
+    },
+    warning: {
+      icon: "bg-amber-50 text-amber-700",
+      ring: "hover:border-amber-300",
+      text: "text-amber-700",
+    },
+  };
+  const styles = toneStyles[tone];
+  const cardClassName = cn(
+    "group min-h-[116px] rounded-2xl border border-emerald-900/10 bg-white p-4 text-left shadow-[0_14px_34px_-30px_rgba(12,31,27,0.6)] transition duration-200",
+    "hover:-translate-y-0.5 hover:shadow-[0_22px_44px_-32px_rgba(12,31,27,0.72)]",
+    styles.ring,
+    onClick ? "cursor-pointer" : "",
+  );
+  const content = (
+    <>
+      <div className="flex items-center justify-between gap-3">
+        <span className={cn("flex size-10 items-center justify-center rounded-xl transition group-hover:scale-105", styles.icon)}>
+          {icon}
+        </span>
+        <span className={cn("text-[10px] font-bold uppercase tracking-[0.18em]", styles.text)}>
+          Live
+        </span>
+      </div>
+      <div className="mt-5">
+        <p className="text-2xl font-extrabold tracking-tight text-[#101E1A]">{value}</p>
+        <p className="mt-1 text-xs font-semibold text-slate-600">{label}</p>
+      </div>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button className={cardClassName} onClick={onClick} type="button">
+        {content}
+      </button>
+    );
+  }
+
+  return <div className={cardClassName}>{content}</div>;
 }
 
 function caseStatusTone(status: EntityStatus): BadgeProps["tone"] {
@@ -558,9 +617,9 @@ function TargetProgressEditor({
 
 function SectionHeader({ action, description, title }: { action?: ReactNode; description: string; title: string }) {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border bg-panel p-3.5 shadow-line md:flex-row md:items-start md:justify-between">
+    <div className={cn(fieldOpsPanelClass, "flex flex-col gap-3 p-4 md:flex-row md:items-start md:justify-between")}>
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-lg font-semibold">{title}</h2>
+        <h2 className="text-lg font-bold tracking-tight text-[#101E1A]">{title}</h2>
         <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
@@ -578,10 +637,10 @@ function SectionPanel({
   title: string;
 }) {
   return (
-    <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+    <section className={cn(fieldOpsPanelClass, "p-4")}>
       <div className="mb-4">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-lg font-semibold">{title}</h2>
+          <h2 className="text-lg font-bold tracking-tight text-[#101E1A]">{title}</h2>
           <HelpHint label={`About ${title}`} title={title}>
             {description}
           </HelpHint>
@@ -675,7 +734,7 @@ function OperationalActivityDetail({
   const canMakeOutcomeDecision = canReviewOutcome && ["checked_in", "completed", "flagged", "change_requested"].includes(activity.status);
   const outcomeStatus = typeof activity.metadata_json.outcomeStatus === "string" ? activity.metadata_json.outcomeStatus : null;
   return (
-    <section className="rounded-xl border bg-panel p-4 shadow-line">
+    <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -776,25 +835,25 @@ function OperationalActivityDetail({
         <div className="rounded-xl border bg-background p-3">
           <h3 className="text-sm font-semibold">Approval and activity history</h3>
           <div className="mt-3 space-y-2">
-            <div className="rounded-lg border bg-panel p-2.5 text-xs">
+            <div className="rounded-lg border bg-surface-container-lowest p-2.5 text-xs">
               <p className="font-semibold">Requested</p>
               <p className="text-muted-foreground">{formatTime(activity.created_at)} by {officerName}</p>
             </div>
             {reviewHistory.map((review, index) => (
-              <div className="rounded-lg border bg-panel p-2.5 text-xs" key={`${activity.id}-review-${index}`}>
+              <div className="rounded-lg border bg-surface-container-lowest p-2.5 text-xs" key={`${activity.id}-review-${index}`}>
                 <p className="font-semibold">{titleCase(String(review.action ?? "review"))}</p>
                 <p className="text-muted-foreground">{String(review.comment ?? "No comment")}</p>
                 <p className="mt-1 text-muted-foreground">{String(review.reviewedAt ?? "")}</p>
               </div>
             ))}
             {activity.check_in_at ? (
-              <div className="rounded-lg border bg-panel p-2.5 text-xs">
+              <div className="rounded-lg border bg-surface-container-lowest p-2.5 text-xs">
                 <p className="font-semibold">Checked in</p>
                 <p className="text-muted-foreground">{formatTime(activity.check_in_at)} · {titleCase(activity.verification_status)}</p>
               </div>
             ) : null}
             {activity.check_out_at ? (
-              <div className="rounded-lg border bg-panel p-2.5 text-xs">
+              <div className="rounded-lg border bg-surface-container-lowest p-2.5 text-xs">
                 <p className="font-semibold">Completed</p>
                 <p className="text-muted-foreground">{formatTime(activity.check_out_at)} · {activity.check_out_summary ?? "No summary"}</p>
               </div>
@@ -817,7 +876,7 @@ function OperationalActivityDetail({
           <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             {mediaEvidence.map((item) => (
               <a
-                className="rounded-lg border bg-panel p-3 text-sm transition hover:border-primary/40 hover:bg-primary/5"
+                className="rounded-lg border bg-surface-container-lowest p-3 text-sm transition hover:border-primary/40 hover:bg-primary/5"
                 href={item.storage_url}
                 key={item.id}
                 rel="noreferrer"
@@ -975,7 +1034,7 @@ function OfficerProfileWorkspace({
 
   if (!detail) {
     return (
-      <section className="rounded-xl border bg-panel p-4 shadow-line">
+      <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Field officer profile</h2>
@@ -996,7 +1055,7 @@ function OfficerProfileWorkspace({
   });
 
   return (
-    <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+    <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex items-start gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
@@ -1047,7 +1106,7 @@ Password: ${temporaryPassword}`}
           <button
             className={cn(
               "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
-              tab === item.id ? "border-primary bg-primary text-primary-foreground" : "bg-panel hover:bg-muted",
+              tab === item.id ? "border-primary bg-primary text-primary-foreground" : "bg-surface-container-lowest hover:bg-muted",
             )}
             key={item.id}
             onClick={() => setTab(item.id)}
@@ -1246,7 +1305,7 @@ Password: ${temporaryPassword}`}
                       src={mobileQrCodeUrl}
                     />
                   ) : (
-                    <div className="flex h-40 w-40 items-center justify-center rounded-lg border bg-panel text-center text-xs text-muted-foreground">
+                    <div className="flex h-40 w-40 items-center justify-center rounded-lg border bg-surface-container-lowest text-center text-xs text-muted-foreground">
                       QR preview unavailable
                     </div>
                   )}
@@ -3016,21 +3075,33 @@ export function FieldOperationsModule({
   }
 
   return (
-    <section className="space-y-3">
-      <div className="module-header rounded-xl p-3.5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+    <section className="space-y-5 rounded-[1.75rem] bg-[#FAFAF8] p-1 text-[#101E1A]">
+      <div className="relative overflow-hidden rounded-2xl border border-emerald-900/10 bg-[#0C1F1B] p-4 text-white shadow-[0_24px_70px_-48px_rgba(0,82,50,0.75)]">
+        <div className="absolute pointer-events-none hidden h-52 w-52 rounded-full bg-emerald-300/10 blur-3xl xl:block" />
+        <div className="relative flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="collect">OPERATIONS</Badge>
-              <Badge tone={summary.overdueAssignments ? "warning" : "success"}>
+              <span className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-100 ring-1 ring-white/10">
+                Operations
+              </span>
+              <span className={cn(
+                "rounded-full px-3 py-1 text-[11px] font-bold ring-1",
+                summary.overdueAssignments
+                  ? "bg-amber-300/15 text-amber-100 ring-amber-200/20"
+                  : "bg-emerald-300/15 text-emerald-100 ring-emerald-200/20",
+              )}>
                 {summary.overdueAssignments
                   ? `${summary.overdueAssignments} overdue`
                   : "Field work on track"}
-              </Badge>
-              {preview ? <Badge tone="neutral">Preview data</Badge> : null}
+              </span>
+              {preview ? (
+                <span className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-bold text-white/80 ring-1 ring-white/10">
+                  Preview data
+                </span>
+              ) : null}
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight">
+              <h1 className="text-2xl font-extrabold tracking-tight md:text-3xl">
                 Field Operations
               </h1>
               <HelpHint label="About Field Operations" title="Field Operations">
@@ -3039,6 +3110,9 @@ export function FieldOperationsModule({
                 in the field today.
               </HelpHint>
             </div>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-emerald-50/80">
+              Coordinate assignments, supervisors, officer sync, targets, GPS evidence, and daily field execution from one operational command workspace.
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -3078,14 +3152,14 @@ export function FieldOperationsModule({
             </Button>
           </div>
         </div>
-        <div className="mt-3 flex gap-1.5 overflow-x-auto product-scrollbar">
+        <div className="relative mt-5 flex gap-1.5 overflow-x-auto product-scrollbar rounded-2xl bg-white/[0.07] p-1 ring-1 ring-white/10">
           {fieldOperationsSections.map((section) => (
             <button
               className={cn(
-                "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
+                "shrink-0 rounded-xl px-3 py-2 text-xs font-bold transition",
                 activeSection === section.id
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "bg-panel hover:bg-muted",
+                  ? "bg-white text-[#005232] shadow-sm"
+                  : "text-emerald-50/80 hover:bg-white/10 hover:text-white",
               )}
               key={section.id}
               onClick={() => selectSection(section.id)}
@@ -3099,161 +3173,195 @@ export function FieldOperationsModule({
 
       {activeSection === "dashboard" ? (
         <>
-          <div className="space-y-4">
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Field Force</p>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <MetricCard
-                  icon={<UsersRound aria-hidden="true" />}
-                  label="Assigned Field Officers"
-                  onClick={() => selectSection("field-officers")}
-                  tone="success"
-                  value={summary.assignedFieldOfficers}
-                />
-                <MetricCard
-                  icon={<ShieldCheck aria-hidden="true" />}
-                  label="Active Supervisors"
-                  onClick={() => selectSection("supervisors")}
-                  tone="success"
-                  value={summary.activeSupervisors}
-                />
-                <MetricCard
-                  icon={<Route aria-hidden="true" />}
-                  label="Team Productivity"
-                  onClick={() => selectSection("field-officers")}
-                  tone="success"
-                  value={`${summary.teamProductivity}%`}
-                />
-              </div>
-            </div>
-
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Assignments &amp; Targets</p>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <MetricCard
-                  icon={<ClipboardList aria-hidden="true" />}
-                  label="Active Assignments"
-                  onClick={() => selectSection("assignments")}
-                  tone="success"
-                  value={summary.activeAssignments}
-                />
-                <MetricCard
-                  icon={<Target aria-hidden="true" />}
-                  label="Assignment Completion"
-                  onClick={() => selectSection("assignments")}
-                  tone="warning"
-                  value={`${summary.assignmentCompletionRate}%`}
-                />
-                <MetricCard
-                  icon={<AlertTriangle aria-hidden="true" />}
-                  label="Overdue Assignments"
-                  onClick={() => selectSection("assignments")}
-                  tone={summary.overdueAssignments ? "danger" : "success"}
-                  value={summary.overdueAssignments}
-                />
-                <MetricCard
-                  icon={<CalendarDays aria-hidden="true" />}
-                  label="Upcoming Deadlines"
-                  onClick={() => selectSection("work-plans")}
-                  tone={summary.upcomingDeadlines ? "warning" : "success"}
-                  value={summary.upcomingDeadlines}
-                />
-              </div>
-            </div>
-
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Coverage &amp; Activity</p>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <MetricCard
-                  icon={<CalendarDays aria-hidden="true" />}
-                  label="Operational Activities"
-                  onClick={() => selectSection("visit-requests")}
-                  tone={visitRequests.filter((visit) => visit.status === "pending").length ? "warning" : "success"}
-                  value={visitRequests.length}
-                />
-                <MetricCard
-                  icon={<MapPinned aria-hidden="true" />}
-                  label="Coverage Progress"
-                  onClick={() => selectSection("field-monitoring")}
-                  tone={summary.coverageProgress >= 70 ? "success" : "warning"}
-                  value={`${summary.coverageProgress}%`}
-                />
-                <MetricCard
-                  icon={<RadioTower aria-hidden="true" />}
-                  label="Daily Collection Progress"
-                  onClick={() => selectSection("field-monitoring")}
-                  tone="success"
-                  value={`${summary.dailyCollectionProgress}%`}
-                />
-                <MetricCard
-                  icon={<AlertTriangle aria-hidden="true" />}
-                  label="Quality Alerts"
-                  onClick={() => router.push("/data-quality")}
-                  tone={operationsSummary.quality_flags ? "warning" : "success"}
-                  value={operationsSummary.quality_flags}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-            <SectionPanel
-              description="Assignment progress, overdue work, and field workload in one operational view."
-              title="Assignment status"
-            >
-              <div className="space-y-4">
-                {assignments.slice(0, 3).map((assignment) => (
-                  <div
-                    className="rounded-xl border bg-muted/20 p-3"
-                    key={assignment.id}
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <p className="font-medium">{assignment.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {assignment.location} · {assignment.supervisor}
-                        </p>
-                      </div>
-                      <Badge tone={statusTone(assignment.status)}>
-                        {assignment.status}
-                      </Badge>
-                    </div>
-                    <div className="mt-3">
-                      <ProgressBar
-                        value={progressPercent(
-                          assignment.completedCount,
-                          assignment.targetCount,
-                        )}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </SectionPanel>
-            <SectionPanel
-              description="Field Operations consumes map services for assigned areas and coverage previews. GIS analysis remains in Mapping."
-              title="Geographic coverage snapshot"
-            >
-              <div className="rounded-2xl border bg-[linear-gradient(135deg,hsl(var(--primary)/0.14),hsl(var(--muted)))] p-5">
-                <div className="flex items-center gap-3">
-                  <MapPinned aria-hidden="true" className="text-primary" />
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+            <div className="space-y-5">
+              <div className={cn(fieldOpsPanelClass, "p-4")}>
+                <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
                   <div>
-                    <p className="font-medium">
-                      {summary.coverageProgress}% coverage achieved
-                    </p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {
-                        officers.filter(
-                          (officer) =>
-                            officer.last_latitude && officer.last_longitude,
-                        ).length
-                      }{" "}
-                      officers have recent GPS evidence.
+                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">Today&apos;s command board</p>
+                    <h2 className="mt-1 text-xl font-extrabold tracking-tight text-[#101E1A]">Field execution at a glance</h2>
+                  </div>
+                  <p className="max-w-md text-xs font-medium leading-5 text-slate-500">
+                    Live status across teams, assignments, deadlines, quality alerts, GPS evidence, and operational activity.
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <MetricCard
+                    icon={<UsersRound aria-hidden="true" />}
+                    label="Assigned Field Officers"
+                    onClick={() => selectSection("field-officers")}
+                    tone="success"
+                    value={summary.assignedFieldOfficers}
+                  />
+                  <MetricCard
+                    icon={<ShieldCheck aria-hidden="true" />}
+                    label="Active Supervisors"
+                    onClick={() => selectSection("supervisors")}
+                    tone="success"
+                    value={summary.activeSupervisors}
+                  />
+                  <MetricCard
+                    icon={<ClipboardList aria-hidden="true" />}
+                    label="Active Assignments"
+                    onClick={() => selectSection("assignments")}
+                    tone="success"
+                    value={summary.activeAssignments}
+                  />
+                  <MetricCard
+                    icon={<AlertTriangle aria-hidden="true" />}
+                    label="Quality Alerts"
+                    onClick={() => router.push("/data-quality")}
+                    tone={operationsSummary.quality_flags ? "warning" : "success"}
+                    value={operationsSummary.quality_flags}
+                  />
+                  <MetricCard
+                    icon={<Target aria-hidden="true" />}
+                    label="Assignment Completion"
+                    onClick={() => selectSection("assignments")}
+                    tone="warning"
+                    value={`${summary.assignmentCompletionRate}%`}
+                  />
+                  <MetricCard
+                    icon={<MapPinned aria-hidden="true" />}
+                    label="Coverage Progress"
+                    onClick={() => selectSection("field-monitoring")}
+                    tone={summary.coverageProgress >= 70 ? "success" : "warning"}
+                    value={`${summary.coverageProgress}%`}
+                  />
+                  <MetricCard
+                    icon={<RadioTower aria-hidden="true" />}
+                    label="Daily Collection Progress"
+                    onClick={() => selectSection("field-monitoring")}
+                    tone="success"
+                    value={`${summary.dailyCollectionProgress}%`}
+                  />
+                  <MetricCard
+                    icon={<CalendarDays aria-hidden="true" />}
+                    label="Operational Activities"
+                    onClick={() => selectSection("visit-requests")}
+                    tone={visitRequests.filter((visit) => visit.status === "pending").length ? "warning" : "success"}
+                    value={visitRequests.length}
+                  />
+                </div>
+              </div>
+
+              <SectionPanel
+                description="Assignment progress, overdue work, and field workload in one operational view."
+                title="Assignment status"
+              >
+                <div className="grid gap-3 lg:grid-cols-3">
+                  {assignments.slice(0, 3).map((assignment) => (
+                    <button
+                      className="rounded-2xl border border-emerald-900/10 bg-[#FAFAF8] p-4 text-left transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-white"
+                      key={assignment.id}
+                      onClick={() => {
+                        setViewAssignment(assignment);
+                        setModalMode("assignment-view");
+                      }}
+                      type="button"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-bold text-[#101E1A]">{assignment.name}</p>
+                          <p className="mt-1 text-xs font-medium text-slate-500">
+                            {assignment.location || "No location"} · {assignment.supervisor || "No supervisor"}
+                          </p>
+                        </div>
+                        <Badge tone={statusTone(assignment.status)}>
+                          {assignment.status}
+                        </Badge>
+                      </div>
+                      <div className="mt-4">
+                        <ProgressBar
+                          value={progressPercent(
+                            assignment.completedCount,
+                            assignment.targetCount,
+                          )}
+                        />
+                      </div>
+                      <p className="mt-3 text-xs font-semibold text-slate-500">
+                        {assignment.completedCount.toLocaleString()} / {assignment.targetCount.toLocaleString()} collected
+                      </p>
+                    </button>
+                  ))}
+                  {!assignments.length ? (
+                    <EmptyMini label="No assignments yet. Create one to coordinate field work." />
+                  ) : null}
+                </div>
+              </SectionPanel>
+
+              <div className="grid gap-4 xl:grid-cols-2">
+                <DataTable
+                  columns={activityColumns}
+                  emptyLabel="No field activity yet."
+                  rows={activities}
+                  searchLabel="Search activity"
+                  title="Activity timeline"
+                />
+                <DataTable
+                  columns={supervisorColumns}
+                  emptyLabel="No supervisors assigned."
+                  rows={supervisors}
+                  searchLabel="Search supervisors"
+                  title="Performance rankings"
+                />
+              </div>
+            </div>
+
+            <aside className={cn(fieldOpsPanelClass, "overflow-hidden")}>
+              <div className={cn(fieldOpsSoftPanelClass, "rounded-none border-x-0 border-t-0 p-4 shadow-none")}>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="font-extrabold tracking-tight text-[#101E1A]">Live field feed</h2>
+                    <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Operational telemetry</p>
+                  </div>
+                  <span className="relative flex size-3">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-40" />
+                    <span className="relative inline-flex size-3 rounded-full bg-emerald-500" />
+                  </span>
+                </div>
+              </div>
+              <div className="max-h-[560px] space-y-3 overflow-y-auto p-4 product-scrollbar">
+                {activities.slice(0, 6).map((activity) => (
+                  <button
+                    className="flex w-full gap-3 rounded-2xl border border-transparent bg-[#FAFAF8] p-3 text-left transition hover:border-emerald-900/10 hover:bg-white"
+                    key={activity.id}
+                    onClick={() => selectSection("field-monitoring")}
+                    type="button"
+                  >
+                    <span className="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
+                      <RadioTower aria-hidden="true" className="size-4" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="flex items-center justify-between gap-3">
+                        <span className="truncate text-sm font-bold text-[#101E1A]">{activity.actor}</span>
+                        <span className="shrink-0 text-[10px] font-semibold text-slate-500">{formatTime(activity.timestamp)}</span>
+                      </span>
+                      <span className="mt-1 block text-xs font-medium leading-5 text-slate-600">
+                        {activity.activityType} · {activity.assignment}
+                      </span>
+                      <span className="mt-2 inline-flex rounded-full bg-white px-2 py-1 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-900/10">
+                        {activity.status}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+                {!activities.length ? <EmptyMini label="No activity has reached the live feed yet." /> : null}
+              </div>
+              <div className="border-t border-emerald-900/10 bg-[#0C1F1B] p-4 text-white">
+                <div className="flex items-center gap-3">
+                  <span className="flex size-11 items-center justify-center rounded-2xl bg-cyan-400/10 text-cyan-200">
+                    <MapPinned aria-hidden="true" />
+                  </span>
+                  <div>
+                    <p className="font-bold">{summary.coverageProgress}% coverage achieved</p>
+                    <p className="mt-1 text-xs text-emerald-50/70">
+                      {officers.filter((officer) => officer.last_latitude && officer.last_longitude).length} officers have recent GPS evidence.
                     </p>
                   </div>
                 </div>
                 <Button
-                  className="mt-5"
+                  className="mt-4 w-full justify-center"
                   onClick={() => router.push(fieldOperationsMappingRoute())}
                   variant="secondary"
                 >
@@ -3261,24 +3369,7 @@ export function FieldOperationsModule({
                   Open Mapping
                 </Button>
               </div>
-            </SectionPanel>
-          </div>
-
-          <div className="grid gap-4 xl:grid-cols-2">
-            <DataTable
-              columns={activityColumns}
-              emptyLabel="No field activity yet."
-              rows={activities}
-              searchLabel="Search activity"
-              title="Activity timeline"
-            />
-            <DataTable
-              columns={supervisorColumns}
-              emptyLabel="No supervisors assigned."
-              rows={supervisors}
-              searchLabel="Search supervisors"
-              title="Performance rankings"
-            />
+            </aside>
           </div>
         </>
       ) : null}
@@ -3554,7 +3645,7 @@ Password:          ${lastInviteCredentials.password}`}
                 <h3 className="text-sm font-semibold">Activities by type</h3>
                 <div className="mt-3 space-y-2">
                   {(activityAnalytics.byType.length ? activityAnalytics.byType : [["No activity yet", 0] as [string, number]]).slice(0, 6).map(([label, count]) => (
-                    <div className="flex items-center justify-between rounded-lg border bg-panel px-3 py-2 text-sm" key={String(label)}>
+                    <div className="flex items-center justify-between rounded-lg border bg-surface-container-lowest px-3 py-2 text-sm" key={String(label)}>
                       <span className="font-medium">{titleCase(String(label))}</span>
                       <Badge tone="neutral">{count}</Badge>
                     </div>
@@ -3565,7 +3656,7 @@ Password:          ${lastInviteCredentials.password}`}
                 <h3 className="text-sm font-semibold">Activity load by officer</h3>
                 <div className="mt-3 space-y-2">
                   {(activityAnalytics.byOfficer.length ? activityAnalytics.byOfficer : [["No officer activity yet", 0] as [string, number]]).slice(0, 6).map(([label, count]) => (
-                    <div className="flex items-center justify-between rounded-lg border bg-panel px-3 py-2 text-sm" key={String(label)}>
+                    <div className="flex items-center justify-between rounded-lg border bg-surface-container-lowest px-3 py-2 text-sm" key={String(label)}>
                       <span className="font-medium">{label}</span>
                       <Badge tone="neutral">{count}</Badge>
                     </div>
@@ -3676,7 +3767,7 @@ Password:          ${lastInviteCredentials.password}`}
               reviewPending={reviewVisitMutation.isPending}
             />
           ) : null}
-          <div className="rounded-xl border bg-panel p-3">
+          <div className="rounded-xl border bg-surface-container-lowest p-3">
             <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
               <div>
                 <h3 className="text-sm font-semibold">Needs supervisor action</h3>
@@ -3839,7 +3930,7 @@ Password:          ${lastInviteCredentials.password}`}
         </div>
       ) : null}
 
-      <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-sm font-semibold">
@@ -4200,7 +4291,7 @@ Password:          ${lastInviteCredentials.password}`}
                     placeholder={`Search ${selectedAssignmentEntitySettings.entityType.toLowerCase()} by name, code, phone, or location`}
                     value={assignmentEntitySearch}
                   />
-                  <div className="mt-3 max-h-52 overflow-y-auto rounded-lg border bg-panel/40 p-2 product-scrollbar">
+                  <div className="mt-3 max-h-52 overflow-y-auto rounded-lg border bg-surface-container-lowest/40 p-2 product-scrollbar">
                     {filteredAssignmentEntities.length ? (
                       filteredAssignmentEntities.map((entity) => {
                         const checked = assignmentDraft.assignedEntityIds?.includes(entity.id);
