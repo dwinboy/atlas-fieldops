@@ -3631,7 +3631,10 @@ function SubmissionFilters({
     Boolean(filters.dateFrom) ||
     Boolean(filters.dateTo);
   return (
-    <div className="grid gap-3 rounded-xl border bg-panel p-3 shadow-line grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+    <div className="space-y-3 rounded-xl border border-border-subtle bg-surface-container-lowest p-4 shadow-[0_1px_3px_0_rgba(0,0,0,0.05)]">
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+      <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+        <span>Project</span>
       <Select
         onChange={(event) => {
           const nextProjectName = event.target.value;
@@ -3667,6 +3670,9 @@ function SubmissionFilters({
           </option>
         ))}
       </Select>
+      </label>
+      <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+        <span>Form</span>
       <Select
         onChange={(event) => {
           const nextFormName = event.target.value;
@@ -3707,9 +3713,15 @@ function SubmissionFilters({
           </option>
         ))}
       </Select>
+      </label>
+      <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+        <span>Status</span>
       <Select disabled value={activeSection}>
         <option value={activeSection}>{sectionStatusLabel}</option>
       </Select>
+      </label>
+      <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+        <span>Reviewer</span>
       <Select
         onChange={(event) => onChange({ reviewer: event.target.value })}
         value={filters.reviewer}
@@ -3721,30 +3733,38 @@ function SubmissionFilters({
           </option>
         ))}
       </Select>
-      <div className="col-span-2 flex gap-2 md:col-span-1">
-        <Input
-          aria-label="Submitted from"
-          onChange={(event) => onChange({ dateFrom: event.target.value })}
-          type="date"
-          value={filters.dateFrom}
-        />
-        <Input
-          aria-label="Submitted to"
-          onChange={(event) => onChange({ dateTo: event.target.value })}
-          type="date"
-          value={filters.dateTo}
-        />
+      </label>
+      <div className="col-span-2 grid gap-1.5 text-xs font-medium text-muted-foreground md:col-span-3 xl:col-span-2">
+        <span>Submitted date range</span>
+        <div className="flex items-center gap-2">
+          <Input
+            aria-label="Submitted from"
+            onChange={(event) => onChange({ dateFrom: event.target.value })}
+            type="date"
+            value={filters.dateFrom}
+          />
+          <span className="text-muted-foreground">–</span>
+          <Input
+            aria-label="Submitted to"
+            onChange={(event) => onChange({ dateTo: event.target.value })}
+            type="date"
+            value={filters.dateTo}
+          />
+        </div>
       </div>
-      <Button
-        disabled={!hasActiveFilters}
-        onClick={() =>
-          onChange({ dateFrom: "", dateTo: "", formName: "", projectName: "", reviewer: "" })
-        }
-        variant="ghost"
-      >
-        <SlidersHorizontal aria-hidden="true" />
-        Clear filters
-      </Button>
+      </div>
+      <div className="flex justify-end">
+        <Button
+          disabled={!hasActiveFilters}
+          onClick={() =>
+            onChange({ dateFrom: "", dateTo: "", formName: "", projectName: "", reviewer: "" })
+          }
+          variant="ghost"
+        >
+          <SlidersHorizontal aria-hidden="true" />
+          Clear filters
+        </Button>
+      </div>
     </div>
   );
 }
