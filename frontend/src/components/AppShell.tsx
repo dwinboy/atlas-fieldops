@@ -35,6 +35,7 @@ import {
   viewGuidance,
   type ViewTone,
 } from "@/config/navigation";
+import { hasAnyPermission } from "@/config/permissions";
 import { isPendingReviewSubmission } from "@/lib/dashboard";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
@@ -255,16 +256,21 @@ export function AppShell({
   const pathname = usePathname();
   const liveDataEnabled = Boolean(token && token !== "preview-token");
   const previewMode = token === "preview-token";
+  // These power global nav badges + the sync-health footer. Only fetch them when the role can read
+  // the underlying data, otherwise restricted roles (e.g. field officer, viewer) 403 on every page
+  // and trip the global permission toast for data they never asked to see.
+  const canReadOperations = hasAnyPermission(["reports.view"], principal);
+  const canReadSubmissions = hasAnyPermission(["submissions.view"], principal);
   const summaryQuery = useQuery({
     queryKey: ["operations-summary", token],
     queryFn: () => getOperationsSummary(token ?? ""),
-    enabled: liveDataEnabled,
+    enabled: liveDataEnabled && canReadOperations,
     staleTime: 60_000,
   });
   const submissionsQuery = useQuery({
     queryKey: ["dashboard-submissions", token],
     queryFn: () => listSubmissions(token ?? ""),
-    enabled: liveDataEnabled,
+    enabled: liveDataEnabled && canReadSubmissions,
     staleTime: 60_000,
   });
   const pendingReviewCount = useMemo(
