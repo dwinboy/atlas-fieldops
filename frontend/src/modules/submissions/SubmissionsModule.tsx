@@ -477,6 +477,14 @@ export function SubmissionsModule({
     "submissions.approve",
     "submissions.manage",
   ]);
+  // Reading the submission queue needs submissions.view. Collection-only roles (create/edit on
+  // mobile) lack it, so skip the list fetch instead of 403ing the whole review workspace.
+  const canViewSubmissions = hasAnyPermission(principal, [
+    "submissions.view",
+    "submissions.review",
+    "submissions.approve",
+    "submissions.manage",
+  ]);
   const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
   const [bulkComment, setBulkComment] = useState("");
   const [bulkRunning, setBulkRunning] = useState(false);
@@ -575,7 +583,7 @@ export function SubmissionsModule({
   const submissionsQuery = useQuery({
     queryKey: ["submissions-module", token],
     queryFn: () => listSubmissions(token ?? ""),
-    enabled: Boolean(token && !preview),
+    enabled: Boolean(token && !preview) && canViewSubmissions,
   });
   const formsQuery = useQuery({
     queryKey: ["submissions-module", "forms", token],

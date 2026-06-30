@@ -1348,6 +1348,10 @@ export function FieldOperationsModule({
   const canReviewOperationalOutcomes = preview || hasAnyPermission(["operations.activities.review_outcome", "operations.activities.manage"]);
   const canViewOperationalEvidence = preview || hasAnyPermission(["operations.evidence.view", "operations.activities.manage"]);
   const canViewOperationalReports = preview || hasAnyPermission(["operations.reports.view", "operations.activities.manage"]);
+  // Manager-reporting reads (the operations summary KPIs and the indicator roll-up) need their own
+  // permissions; field-collection roles hold neither, so skip the fetches instead of 403ing.
+  const canViewOperationsSummary = preview || hasAnyPermission(["reports.view"]);
+  const canViewOperationsIndicators = preview || hasAnyPermission(["indicators.view"]);
 
   useEffect(() => {
     const routeSection = fieldOperationsSectionFromPath(pathname);
@@ -1384,7 +1388,7 @@ export function FieldOperationsModule({
   const summaryQuery = useQuery({
     queryKey: ["operations", "summary", token],
     queryFn: () => getOperationsSummary(token ?? ""),
-    enabled,
+    enabled: enabled && canViewOperationsSummary,
   });
   const projectsQuery = useQuery({
     queryKey: ["field-operations", "projects", token],
@@ -1414,7 +1418,7 @@ export function FieldOperationsModule({
   const indicatorsQuery = useQuery({
     queryKey: ["field-operations", "indicators", token],
     queryFn: () => listIndicators(token ?? ""),
-    enabled,
+    enabled: enabled && canViewOperationsIndicators,
   });
   const entitiesQuery = useQuery({
     queryKey: ["field-operations", "beneficiaries", token],
