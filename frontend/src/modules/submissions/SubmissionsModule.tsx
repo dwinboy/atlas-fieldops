@@ -1245,7 +1245,7 @@ export function SubmissionsModule({
                 "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
                 activeSection === section.id
                   ? "border-primary bg-primary text-primary-foreground"
-                  : "bg-panel hover:bg-muted",
+                  : "bg-surface-container-lowest hover:bg-muted",
               )}
               key={section.id}
               onClick={() => openSubmissionSection(section.id)}
@@ -1794,7 +1794,7 @@ function SubmissionDetailWorkspace({
   const entityHierarchy = entityHierarchyQuery.data ?? { parents: [], children: [] } satisfies EntityHierarchyRead;
 
   return (
-    <section className="space-y-4 rounded-xl border bg-panel p-3.5 shadow-line">
+    <section className="space-y-4 rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -2062,7 +2062,7 @@ function OverviewTab({
                 />
               </div>
             ) : (
-              <p className="mt-3 rounded-lg border border-dashed bg-panel/40 p-3 text-sm text-muted-foreground">
+              <p className="mt-3 rounded-lg border border-dashed bg-surface-container-lowest/40 p-3 text-sm text-muted-foreground">
                 This submission is linked to one primary entity only. No parent or child entity context is currently attached.
               </p>
             )}
@@ -2086,7 +2086,7 @@ function OverviewTab({
                 .filter((link) => link.link_type !== "primary")
                 .slice(0, 8)
                 .map((link) => (
-                  <div className="rounded-lg border bg-panel px-3 py-2 text-xs" key={link.id}>
+                  <div className="rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs" key={link.id}>
                     <p className="font-mono font-semibold">{link.beneficiary_uid}</p>
                     <p className="mt-1 text-muted-foreground">{link.display_name} · {link.beneficiary_type}</p>
                     <p className="mt-1 text-muted-foreground">
@@ -2161,7 +2161,7 @@ function HierarchyContextGroup({
   title: string;
 }) {
   return (
-    <div className="rounded-lg border bg-panel/40 p-3">
+    <div className="rounded-lg border bg-surface-container-lowest/40 p-3">
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
           {title}
@@ -2525,7 +2525,7 @@ function ResponsesTab({
 
   return (
     <div className="space-y-3">
-      <div className="rounded-xl border bg-panel p-3 shadow-line">
+      <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3 shadow-card">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -2586,7 +2586,7 @@ function ResponsesTab({
               value={searchTerm}
             />
           </label>
-          <div className="flex items-center gap-2 rounded-full border bg-panel px-3 py-2 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2 rounded-full border bg-surface-container-lowest px-3 py-2 text-xs text-muted-foreground">
             <Database aria-hidden="true" size={14} />
             {rows.length} total fields · {editableCount} {approvedLocked ? "change-request fields" : "editable"}
           </div>
@@ -2621,7 +2621,7 @@ function ResponsesTab({
         </div>
       ) : null}
 
-      <div className="rounded-xl border bg-panel shadow-line">
+      <div className="rounded-xl border bg-surface-container-lowest shadow-line">
         <div className="max-h-[72vh] overflow-auto product-scrollbar">
           <table className="min-w-[1280px] border-separate border-spacing-0 text-xs">
             <thead>
@@ -2706,7 +2706,7 @@ function ResponsesTab({
         </div>
       </div>
       {!visibleSections.length ? (
-        <div className="hidden rounded-2xl border bg-panel p-8 text-center">
+        <div className="hidden rounded-2xl border bg-surface-container-lowest p-8 text-center">
           <Search
             aria-hidden="true"
             className="mx-auto text-muted-foreground"
@@ -3011,7 +3011,7 @@ function DataExplorerSection({
                   "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
                   activeView === DATA_EXPLORER_MAIN_VIEW
                     ? "border-primary bg-primary text-primary-foreground"
-                    : "bg-panel hover:bg-muted",
+                    : "bg-surface-container-lowest hover:bg-muted",
                 )}
                 onClick={() => handleViewChange(DATA_EXPLORER_MAIN_VIEW)}
                 role="tab"
@@ -3026,7 +3026,7 @@ function DataExplorerSection({
                     "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
                     activeView === group.id
                       ? "border-primary bg-primary text-primary-foreground"
-                      : "bg-panel hover:bg-muted",
+                      : "bg-surface-container-lowest hover:bg-muted",
                   )}
                   key={group.id}
                   onClick={() => handleViewChange(group.id)}
@@ -3507,7 +3507,7 @@ function MobileIntegrityPanel({
             <div className="mt-3 space-y-2">
               {integrity.signals.map((signal) => (
                 <div
-                  className="rounded-lg border bg-panel p-3"
+                  className="rounded-lg border bg-surface-container-lowest p-3"
                   key={`${signal.code}-${signal.detectedAt ?? signal.message}`}
                 >
                   <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
@@ -3615,7 +3615,7 @@ function LocationTab({ submission }: { submission: SubmissionRecord }) {
       </Panel>
       <Panel title="Mini Map">
         <div className="flex min-h-72 items-center justify-center rounded-2xl border bg-[radial-gradient(circle_at_35%_35%,rgba(34,197,94,0.18),transparent_30%),linear-gradient(135deg,rgba(14,165,233,0.12),rgba(34,197,94,0.1))]">
-          <div className="rounded-2xl border bg-panel/90 p-4 text-center shadow-line">
+          <div className="rounded-2xl border bg-surface-container-lowest/90 p-4 text-center shadow-line">
             <MapPin
               aria-hidden="true"
               className="mx-auto text-primary"
@@ -3820,7 +3820,7 @@ function SectionHeader({
   title: string;
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border bg-panel p-3.5 shadow-line xl:flex-row xl:items-start xl:justify-between">
+    <div className="flex flex-col gap-3 rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card xl:flex-row xl:items-start xl:justify-between">
       <div>
         <Badge tone="neutral">{route}</Badge>
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -3845,7 +3845,7 @@ function Panel({
   title: string;
 }) {
   return (
-    <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+    <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
       <div className="mb-4 flex items-start justify-between gap-3">
         <h2 className="font-semibold">{title}</h2>
         {action}
