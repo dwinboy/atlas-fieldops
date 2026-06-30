@@ -353,6 +353,41 @@ function getRoleGuidance(principal?: CurrentPrincipal | null): RoleGuidance {
     };
   }
 
+  if (
+    roles.has("donor_viewer") ||
+    roles.has("viewer") ||
+    roles.has("donor") ||
+    roles.has("external_reviewer") ||
+    roles.has("readonly")
+  ) {
+    return {
+      title: "Results viewer",
+      badge: "Read-only",
+      description:
+        "Review published results, reports, metrics, and project coverage for the programs shared with you. Access is read-only — explore and export, but operational data stays managed by the delivery team.",
+      focus: [
+        "Start with Reports and Metrics for the latest published results.",
+        "Open a project to see its scope, coverage, and indicators.",
+        "Ask your organization owner if an expected report is missing.",
+      ],
+      icon: BarChart3,
+      actions: [
+        {
+          label: "Open reports",
+          view: "analytics",
+          result:
+            "Opening reports so you can review published results and export the datasets shared with your account.",
+        },
+        {
+          label: "View metrics",
+          view: "indicators",
+          result:
+            "Opening metrics so you can see indicator performance against targets for the programs shared with you.",
+        },
+      ],
+    };
+  }
+
   return {
     title: "Workspace user",
     badge: "Role-based",
@@ -392,31 +427,41 @@ export function Dashboard({ token, principal }: DashboardProps) {
   const localProjects = useWorkspaceStore((state) => state.localProjects);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const preview = !token || token === "preview-token";
-  // Pure field-collection roles get a focused field workspace (see early return below) and none of
-  // the manager command-center data, so skip these manager-scoped fetches for them — they would
-  // only 403. Declared before the queries so it can gate them (hooks must run unconditionally).
+  // Non-manager roles (pure field-collection or read-only viewer/donor) get a focused workspace
+  // (see early return below) and none of the manager command-center data, so skip these
+  // manager-scoped fetches for them — they would only 403. Declared before the queries so it can
+  // gate them (hooks must run unconditionally).
   const dashboardRoleSet = new Set((principal?.roles ?? []).map((role) => role.toLowerCase()));
+  const hasElevatedRole = [
+    "organization_admin",
+    "organization_owner",
+    "org_admin",
+    "system_admin",
+    "national_admin",
+    "regional_manager",
+    "district_supervisor",
+    "me_manager",
+    "project_manager",
+    "data_reviewer",
+    "data_analyst",
+    "data_manager",
+  ].some((role) => dashboardRoleSet.has(role));
   const isFieldOnlyRole =
-    !preview &&
-    !principal?.platform_admin &&
     (dashboardRoleSet.has("field_officer") ||
       dashboardRoleSet.has("collector") ||
       dashboardRoleSet.has("enumerator")) &&
-    ![
-      "organization_admin",
-      "organization_owner",
-      "org_admin",
-      "system_admin",
-      "national_admin",
-      "regional_manager",
-      "district_supervisor",
-      "me_manager",
-      "project_manager",
-      "data_reviewer",
-      "data_analyst",
-      "data_manager",
-    ].some((role) => dashboardRoleSet.has(role));
-  const managerDataEnabled = Boolean(token && !preview) && !isFieldOnlyRole;
+    !hasElevatedRole;
+  const isViewerOnlyRole =
+    (dashboardRoleSet.has("donor_viewer") ||
+      dashboardRoleSet.has("viewer") ||
+      dashboardRoleSet.has("donor") ||
+      dashboardRoleSet.has("external_reviewer") ||
+      dashboardRoleSet.has("readonly")) &&
+    !hasElevatedRole;
+  // Focused workspace replaces the manager command center for these roles.
+  const isFocusedWorkspaceRole =
+    !preview && !principal?.platform_admin && (isFieldOnlyRole || isViewerOnlyRole);
+  const managerDataEnabled = Boolean(token && !preview) && !isFocusedWorkspaceRole;
   const summaryQuery = useQuery({
     queryKey: ["operations-summary", token],
     queryFn: () => getOperationsSummary(token ?? ""),
@@ -1274,7 +1319,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
     navigateToView(step.view, step.route);
   }
 
-  if (isFieldOnlyRole) {
+  if (isFocusedWorkspaceRole) {
     return (
       <section aria-labelledby="dashboard-title" className="space-y-6">
         <section
@@ -1288,7 +1333,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
               </span>
               <div>
                 <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                  Field workspace
+                  {isViewerOnlyRole ? "Results workspace" : "Field workspace"}
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <h1 id="dashboard-title" className="text-3xl font-semibold tracking-tight">
@@ -1354,8 +1399,10 @@ export function Dashboard({ token, principal }: DashboardProps) {
           </section>
         ) : null}
 
-        <section className="surface-premium rounded-2xl p-5" aria-label="Field focus">
-          <h2 className="text-sm font-semibold">Keep your work clean</h2>
+        <section className="surface-premium rounded-2xl p-5" aria-label="Focus areas">
+          <h2 className="text-sm font-semibold">
+            {isViewerOnlyRole ? "How to get the most from this view" : "Keep your work clean"}
+          </h2>
           <div className="mt-3 grid gap-3 md:grid-cols-3">
             {roleGuidance.focus.map((item) => (
               <div className="rounded-xl border bg-background/80 p-3" key={item}>
