@@ -608,38 +608,44 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
   const preview = !token || token === "preview-token";
   const terminology = useSectorTerminology(token);
 
+  // Each map layer reads a different resource; only fetch the layers the role can read so
+  // restricted roles (e.g. a read-only viewer) don't 403 on every overlay they lack. Preview and
+  // platform admins always pass.
+  const liveData = Boolean(token && !preview);
+  const canRead = (permission: string): boolean =>
+    preview || Boolean(principal?.platform_admin || principal?.permissions?.includes(permission));
   const submissionsQuery = useQuery({
-    enabled: Boolean(token && !preview),
+    enabled: liveData && canRead("submissions.view"),
     queryFn: () => listSubmissions(token ?? ""),
     queryKey: ["mapping", "submissions", token],
   });
   const beneficiariesQuery = useQuery({
-    enabled: Boolean(token && !preview),
+    enabled: liveData && canRead("beneficiaries.view"),
     queryFn: () => listBeneficiaries(token ?? ""),
     queryKey: ["mapping", "beneficiaries", token],
   });
   const projectsQuery = useQuery({
-    enabled: Boolean(token && !preview),
+    enabled: liveData && canRead("projects.view"),
     queryFn: () => listProjects(token ?? ""),
     queryKey: ["mapping", "projects", token],
   });
   const indicatorsQuery = useQuery({
-    enabled: Boolean(token && !preview),
+    enabled: liveData && canRead("indicators.view"),
     queryFn: () => listIndicators(token ?? ""),
     queryKey: ["mapping", "indicators", token],
   });
   const formsQuery = useQuery({
-    enabled: Boolean(token && !preview),
+    enabled: liveData && canRead("forms.view"),
     queryFn: () => listForms(token ?? ""),
     queryKey: ["mapping", "forms", token],
   });
   const fieldOfficersQuery = useQuery({
-    enabled: Boolean(token && !preview),
+    enabled: liveData && canRead("officers.view"),
     queryFn: () => listFieldOfficers(token ?? ""),
     queryKey: ["mapping", "field-officers", token],
   });
   const fieldWorkAssignmentsQuery = useQuery({
-    enabled: Boolean(token && !preview),
+    enabled: liveData && canRead("officers.view"),
     queryFn: () => listFieldWorkAssignments(token ?? ""),
     queryKey: ["mapping", "field-work-assignments", token],
   });
