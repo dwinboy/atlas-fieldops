@@ -24,6 +24,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { GovernanceCommandCenter } from "@/components/GovernanceCommandCenter";
+import { AccessDenied } from "@/components/ui/access-denied";
 import { Badge } from "@/components/ui/badge";
 import { KpiShard } from "@/components/ui/kpi-shard";
 import { Button } from "@/components/ui/button";
@@ -249,6 +250,13 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
         ["governance.manage", "workflow.manage", "audit.read"].includes(permission),
       ),
   );
+  // Every governance read endpoint requires the audit.view permission. Without it the queries 403,
+  // so only fetch when the role allows it — and show an honest access notice instead of the mock
+  // fallback data the dashboard would otherwise render. Preview/demo mode bypasses the gate.
+  const canViewGovernance = Boolean(
+    principal?.platform_admin || principal?.permissions?.includes("audit.view"),
+  );
+  const governanceReadEnabled = enabled && canViewGovernance;
   const queryClient = useQueryClient();
   const [policyModalOpen, setPolicyModalOpen] = useState(false);
   const [policyDraft, setPolicyDraft] = useState({
@@ -322,15 +330,15 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
     },
   });
 
-  const summaryQuery = useQuery({ queryKey: ["governance", "summary", token], queryFn: () => getGovernanceSummary(token ?? ""), enabled });
-  const policiesQuery = useQuery({ queryKey: ["governance", "policies", token], queryFn: () => listGovernancePolicies(token ?? ""), enabled });
-  const retentionQuery = useQuery({ queryKey: ["governance", "retention", token], queryFn: () => listRetentionPolicies(token ?? ""), enabled });
-  const rulesQuery = useQuery({ queryKey: ["governance", "rules", token], queryFn: () => listValidationRules(token ?? ""), enabled });
-  const versionsQuery = useQuery({ queryKey: ["governance", "versions", token], queryFn: () => listDataVersions(token ?? ""), enabled });
-  const lineageQuery = useQuery({ queryKey: ["governance", "lineage", token], queryFn: () => listLineageEvents(token ?? ""), enabled });
-  const exportsQuery = useQuery({ queryKey: ["governance", "exports", token], queryFn: () => listExportLogs(token ?? ""), enabled });
-  const consentQuery = useQuery({ queryKey: ["governance", "consent", token], queryFn: () => listConsentRecords(token ?? ""), enabled });
-  const masterDataQuery = useQuery({ queryKey: ["governance", "master-data", token], queryFn: () => listMasterDataEntries(token ?? ""), enabled });
+  const summaryQuery = useQuery({ queryKey: ["governance", "summary", token], queryFn: () => getGovernanceSummary(token ?? ""), enabled: governanceReadEnabled });
+  const policiesQuery = useQuery({ queryKey: ["governance", "policies", token], queryFn: () => listGovernancePolicies(token ?? ""), enabled: governanceReadEnabled });
+  const retentionQuery = useQuery({ queryKey: ["governance", "retention", token], queryFn: () => listRetentionPolicies(token ?? ""), enabled: governanceReadEnabled });
+  const rulesQuery = useQuery({ queryKey: ["governance", "rules", token], queryFn: () => listValidationRules(token ?? ""), enabled: governanceReadEnabled });
+  const versionsQuery = useQuery({ queryKey: ["governance", "versions", token], queryFn: () => listDataVersions(token ?? ""), enabled: governanceReadEnabled });
+  const lineageQuery = useQuery({ queryKey: ["governance", "lineage", token], queryFn: () => listLineageEvents(token ?? ""), enabled: governanceReadEnabled });
+  const exportsQuery = useQuery({ queryKey: ["governance", "exports", token], queryFn: () => listExportLogs(token ?? ""), enabled: governanceReadEnabled });
+  const consentQuery = useQuery({ queryKey: ["governance", "consent", token], queryFn: () => listConsentRecords(token ?? ""), enabled: governanceReadEnabled });
+  const masterDataQuery = useQuery({ queryKey: ["governance", "master-data", token], queryFn: () => listMasterDataEntries(token ?? ""), enabled: governanceReadEnabled });
 
   const summary: GovernanceSummary = preview
     ? previewSummary
@@ -498,9 +506,11 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="governance">GOVERNANCE</Badge>
-              <Badge tone={toneFromHealth(health.category)}>
-                {health.score}% {health.category}
-              </Badge>
+              {canViewGovernance || preview ? (
+                <Badge tone={toneFromHealth(health.category)}>
+                  {health.score}% {health.category}
+                </Badge>
+              ) : null}
               {preview ? <Badge tone="neutral">Preview data</Badge> : null}
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -510,28 +520,30 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
               </HelpHint>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={() => setWorkbenchOpen(true)} variant="primary">
-              <ShieldCheck aria-hidden="true" />
-              Open workbench
-            </Button>
-            <Button
-              onClick={() =>
-                downloadCsv("atlas-governance-audit.csv", auditEvents.map((event) => ({
-                  action: event.action,
-                  module: event.module,
-                  user: event.user,
-                  timestamp: event.timestamp,
-                  severity: event.severity,
-                  reason: event.reason,
-                })))
-              }
-              variant="secondary"
-            >
-              <Download aria-hidden="true" />
-              Export audit
-            </Button>
-          </div>
+          {canViewGovernance || preview ? (
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => setWorkbenchOpen(true)} variant="primary">
+                <ShieldCheck aria-hidden="true" />
+                Open workbench
+              </Button>
+              <Button
+                onClick={() =>
+                  downloadCsv("atlas-governance-audit.csv", auditEvents.map((event) => ({
+                    action: event.action,
+                    module: event.module,
+                    user: event.user,
+                    timestamp: event.timestamp,
+                    severity: event.severity,
+                    reason: event.reason,
+                  })))
+                }
+                variant="secondary"
+              >
+                <Download aria-hidden="true" />
+                Export audit
+              </Button>
+            </div>
+          ) : null}
         </div>
         <div className="mt-3 flex gap-1.5 overflow-x-auto product-scrollbar">
           {governanceSections.map((section) => (
@@ -550,6 +562,13 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
         </div>
       </div>
 
+      {!canViewGovernance && !preview ? (
+        <AccessDenied
+          resource="governance"
+          detail="Governance requires the Audit view permission. Ask your organization owner to grant audit access in Users & Teams → Roles."
+        />
+      ) : (
+        <>
       {activeSection === "dashboard" ? (
         <>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -726,6 +745,8 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
           <Badge tone="governance">{governanceSections.find((section) => section.id === activeSection)?.route}</Badge>
         </div>
       </section>
+        </>
+      )}
 
       <Modal
         contentClassName="max-w-xl"
