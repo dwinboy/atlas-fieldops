@@ -54,6 +54,7 @@ import {
   getDashboardApprovalOverview,
   getDashboardCommandMetrics,
   getDashboardCoverageOverview,
+  getDashboardMode,
   getDashboardQualityScore,
   getFormPerformanceTotals,
 } from "@/lib/dashboard";
@@ -431,36 +432,9 @@ export function Dashboard({ token, principal }: DashboardProps) {
   // (see early return below) and none of the manager command-center data, so skip these
   // manager-scoped fetches for them — they would only 403. Declared before the queries so it can
   // gate them (hooks must run unconditionally).
-  const dashboardRoleSet = new Set((principal?.roles ?? []).map((role) => role.toLowerCase()));
-  const hasElevatedRole = [
-    "organization_admin",
-    "organization_owner",
-    "org_admin",
-    "system_admin",
-    "national_admin",
-    "regional_manager",
-    "district_supervisor",
-    "me_manager",
-    "project_manager",
-    "data_reviewer",
-    "data_analyst",
-    "data_manager",
-  ].some((role) => dashboardRoleSet.has(role));
-  const isFieldOnlyRole =
-    (dashboardRoleSet.has("field_officer") ||
-      dashboardRoleSet.has("collector") ||
-      dashboardRoleSet.has("enumerator")) &&
-    !hasElevatedRole;
-  const isViewerOnlyRole =
-    (dashboardRoleSet.has("donor_viewer") ||
-      dashboardRoleSet.has("viewer") ||
-      dashboardRoleSet.has("donor") ||
-      dashboardRoleSet.has("external_reviewer") ||
-      dashboardRoleSet.has("readonly")) &&
-    !hasElevatedRole;
-  // Focused workspace replaces the manager command center for these roles.
-  const isFocusedWorkspaceRole =
-    !preview && !principal?.platform_admin && (isFieldOnlyRole || isViewerOnlyRole);
+  const dashboardMode = getDashboardMode(principal, { preview });
+  const isViewerOnlyRole = dashboardMode === "viewer";
+  const isFocusedWorkspaceRole = dashboardMode !== "command";
   const managerDataEnabled = Boolean(token && !preview) && !isFocusedWorkspaceRole;
   const summaryQuery = useQuery({
     queryKey: ["operations-summary", token],

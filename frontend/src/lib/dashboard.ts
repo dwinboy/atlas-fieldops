@@ -1,4 +1,49 @@
-import type { DataFormRead, OperationsSummary, SubmissionRead } from "@/lib/api";
+import type { CurrentPrincipal, DataFormRead, OperationsSummary, SubmissionRead } from "@/lib/api";
+
+/**
+ * Which dashboard a principal should land on. The default "command" dashboard is built for
+ * managers/admins; pure field-collection and read-only viewer/donor roles get a focused workspace
+ * instead (the command center only 403s and shows zeros for them). A role mix that includes any
+ * elevated role keeps the command center, and platform admins / preview always get "command".
+ */
+export type DashboardMode = "command" | "field" | "viewer";
+
+const ELEVATED_ROLES = [
+  "organization_admin",
+  "organization_owner",
+  "org_admin",
+  "system_admin",
+  "national_admin",
+  "regional_manager",
+  "district_supervisor",
+  "me_manager",
+  "project_manager",
+  "data_reviewer",
+  "data_analyst",
+  "data_manager",
+];
+const FIELD_ROLES = ["field_officer", "collector", "enumerator"];
+const VIEWER_ROLES = ["donor_viewer", "viewer", "donor", "external_reviewer", "readonly"];
+
+export function getDashboardMode(
+  principal?: CurrentPrincipal | null,
+  options?: { preview?: boolean },
+): DashboardMode {
+  if (options?.preview || principal?.platform_admin) {
+    return "command";
+  }
+  const roles = new Set((principal?.roles ?? []).map((role) => role.toLowerCase()));
+  if (ELEVATED_ROLES.some((role) => roles.has(role))) {
+    return "command";
+  }
+  if (FIELD_ROLES.some((role) => roles.has(role))) {
+    return "field";
+  }
+  if (VIEWER_ROLES.some((role) => roles.has(role))) {
+    return "viewer";
+  }
+  return "command";
+}
 
 export type FormPerformance = {
   approved: number;

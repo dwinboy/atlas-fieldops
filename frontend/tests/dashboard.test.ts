@@ -1,15 +1,30 @@
 import { describe, expect, it } from "vitest";
 
-import type { DataFormRead, SubmissionRead } from "@/lib/api";
+import type { CurrentPrincipal, DataFormRead, SubmissionRead } from "@/lib/api";
 import { workspaceRouteForView } from "@/components/Dashboard";
 import {
   getActiveFormPerformance,
   getDashboardApprovalOverview,
   getDashboardCommandMetrics,
   getDashboardCoverageOverview,
+  getDashboardMode,
   getDashboardQualityScore,
   getFormPerformanceTotals,
 } from "@/lib/dashboard";
+
+function makePrincipal(
+  roles: string[],
+  extra: Partial<CurrentPrincipal> = {},
+): CurrentPrincipal {
+  return {
+    email: "user@example.com",
+    full_name: "Test User",
+    organization_id: "org-1",
+    permissions: [],
+    roles,
+    ...extra,
+  } as CurrentPrincipal;
+}
 
 function makeForm(
   id: string,
@@ -190,5 +205,43 @@ describe("dashboard form activity", () => {
       "/administration/reference-data",
     );
     expect(workspaceRouteForView("help")).toBe("/app/help");
+  });
+});
+
+describe("getDashboardMode", () => {
+  it("gives managers and admins the command dashboard", () => {
+    expect(getDashboardMode(makePrincipal(["me_manager"]))).toBe("command");
+    expect(getDashboardMode(makePrincipal(["system_admin"]))).toBe("command");
+    expect(getDashboardMode(makePrincipal(["district_supervisor"]))).toBe("command");
+    expect(getDashboardMode(makePrincipal(["data_manager"]))).toBe("command");
+  });
+
+  it("routes pure field-collection roles to the field workspace", () => {
+    expect(getDashboardMode(makePrincipal(["field_officer"]))).toBe("field");
+    expect(getDashboardMode(makePrincipal(["collector"]))).toBe("field");
+    expect(getDashboardMode(makePrincipal(["enumerator"]))).toBe("field");
+  });
+
+  it("routes pure read-only roles to the viewer workspace", () => {
+    expect(getDashboardMode(makePrincipal(["donor_viewer"]))).toBe("viewer");
+    expect(getDashboardMode(makePrincipal(["viewer"]))).toBe("viewer");
+    expect(getDashboardMode(makePrincipal(["external_reviewer"]))).toBe("viewer");
+  });
+
+  it("keeps the command center when a restricted role is mixed with an elevated one", () => {
+    expect(getDashboardMode(makePrincipal(["field_officer", "me_manager"]))).toBe("command");
+    expect(getDashboardMode(makePrincipal(["donor_viewer", "district_supervisor"]))).toBe("command");
+  });
+
+  it("always gives platform admins and preview mode the command dashboard", () => {
+    expect(getDashboardMode(makePrincipal(["field_officer"], { platform_admin: true }))).toBe("command");
+    expect(getDashboardMode(makePrincipal(["field_officer"]), { preview: true })).toBe("command");
+  });
+
+  it("falls back to the command dashboard for unknown or missing roles", () => {
+    expect(getDashboardMode(makePrincipal([]))).toBe("command");
+    expect(getDashboardMode(makePrincipal(["some_custom_role"]))).toBe("command");
+    expect(getDashboardMode(null)).toBe("command");
+    expect(getDashboardMode(undefined)).toBe("command");
   });
 });
