@@ -1529,7 +1529,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
 
         <section
           aria-labelledby="manager-command-center-title"
-          className="mt-5 rounded-2xl border bg-panel p-4 shadow-line"
+          className="mt-5 rounded-2xl border border-border-subtle bg-surface-container-lowest p-5 shadow-card"
         >
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
@@ -1625,7 +1625,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
         </section>
 
         <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px_360px]">
-          <section className="rounded-2xl border bg-panel p-4 shadow-line">
+          <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-5 shadow-card">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-sm font-semibold">Recent alerts</h2>
@@ -1666,7 +1666,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
             </div>
           </section>
 
-          <section className="rounded-2xl border bg-panel p-4 shadow-line">
+          <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-5 shadow-card">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-sm font-semibold">Approval queue</h2>
@@ -1743,7 +1743,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
             </Button>
           </section>
 
-          <section className="rounded-2xl border bg-panel p-4 shadow-line">
+          <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-5 shadow-card">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-sm font-semibold">Map overview</h2>
@@ -2049,7 +2049,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
             </div>
 
             {selectedForm ? (
-              <aside className="rounded-2xl border bg-panel p-4 shadow-line xl:sticky xl:top-20 xl:self-start">
+              <aside className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-5 shadow-card xl:sticky xl:top-20 xl:self-start">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <Badge tone={selectedForm.statusTone}>
@@ -2242,7 +2242,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
           return (
             <button
               key={action.label}
-              className="group rounded-2xl border bg-panel p-4 text-left shadow-line transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/5 hover:shadow-elevated"
+              className="group rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 text-left shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/5 hover:shadow-card-hover"
               onClick={() => openView(action)}
               type="button"
             >
@@ -2761,7 +2761,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
           <ActivityTimeline />
         </div>
       ) : (
-        <section className="rounded-2xl border bg-panel p-5">
+        <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-5 shadow-card">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <h2 className="text-sm font-semibold">

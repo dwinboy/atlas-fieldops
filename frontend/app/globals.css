@@ -144,11 +144,11 @@ h3 {
 }
 
 .surface-premium {
-  border: 1px solid hsl(var(--border) / 0.82);
-  background: hsl(var(--panel));
+  border: 1px solid hsl(var(--border-subtle));
+  background: hsl(var(--surface-container-lowest));
   box-shadow:
-    0 1px 0 hsl(var(--panel-foreground) / 0.03),
-    0 24px 60px -46px rgb(13 38 28 / 0.34);
+    0 1px 3px 0 rgba(16, 30, 26, 0.06),
+    0 1px 2px -1px rgba(16, 30, 26, 0.08);
 }
 
 .surface-hero {
