@@ -1,38 +1,20 @@
 "use client";
 
-import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 
 import { ApiError } from "@/lib/api";
-import { useWorkspaceStore } from "@/stores/workspace";
 
-// One clear, friendly message whenever the backend blocks a request for lack of
-// permission — so a 403 is never a silent empty screen anywhere in the app.
-let lastPermissionToastAt = 0;
-function notifyPermissionDenied(): void {
-  const now = Date.now();
-  if (now - lastPermissionToastAt < 4000) return;
-  lastPermissionToastAt = now;
-  useWorkspaceStore.getState().pushToast({
-    title: "You don't have permission",
-    description:
-      "Your role can't access this. Ask your organization owner to grant the permission in Users & Teams → Roles.",
-    tone: "warning",
-  });
-}
-
+// Permission feedback for background reads is handled at the section level (AccessDenied / empty
+// states), not globally: many pages prefetch several resources, so a single role without one of
+// them would otherwise trip a global "no permission" toast on every navigation. Read 403s now
+// degrade quietly to the section's own empty/denied state; explicit actions (mutations) still
+// surface their own error toasts via their per-mutation handlers.
 export function AppProviders({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
-        queryCache: new QueryCache({
-          onError: (error) => {
-            if (error instanceof ApiError && error.status === 403) {
-              notifyPermissionDenied();
-            }
-          },
-        }),
         defaultOptions: {
           queries: {
             retry: (failureCount, error) => {
