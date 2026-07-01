@@ -31,6 +31,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useContextualBack } from "@/hooks/useContextualBack";
 import { DataTable, type TableColumn } from "@/components/DataTable";
+import { ModuleHeader } from "@/components/shared/ModuleHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyMini } from "@/components/ui/empty-mini";
@@ -1196,60 +1197,34 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   ];
 
   return (
-    <section className="space-y-5">
-      <div className="relative overflow-hidden rounded-3xl border border-[#bec9bf]/45 bg-[#0c1f1b] p-4 text-white shadow-xl md:p-5">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(6,182,212,0.22),transparent_34%),linear-gradient(135deg,rgba(0,82,50,0.84),rgba(12,31,27,0.96))]" />
-        <div className="relative grid gap-5 xl:grid-cols-[1.1fr_0.9fr] xl:items-end">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[#93ecb8]">
-                People mission control
-              </span>
-              <Badge tone={summary.permission_alerts ? "warning" : "success"}>
-                {summary.permission_alerts ? `${summary.permission_alerts} access alert(s)` : "Access healthy"}
-              </Badge>
-              <HelpHint label="About" title="Users & Teams">
-                Manage identities, roles, operational teams, organization structure, access boundaries, and user activity from one controlled workspace.
-              </HelpHint>
-            </div>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">Users & Teams</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-white/70">
-              Control who can sign in, what roles they hold, which teams they belong to, and what operational data they can access.
-            </p>
-            <div className="mt-5 flex gap-2 overflow-x-auto product-scrollbar pb-1">
-              {usersTeamsSections.map((section) => (
-                <button
-                  className={cn(
-                    "shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition",
-                    activeSection === section.id
-                      ? "border-[#93ecb8] bg-[#93ecb8] text-[#0c1f1b]"
-                      : "border-white/15 bg-white/8 text-white/78 hover:border-white/30 hover:bg-white/14",
-                  )}
-                  key={section.id}
-                  onClick={() => selectSection(section.id)}
-                  type="button"
-                >
-                  {section.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:justify-self-end">
-            <div className="rounded-2xl border border-white/12 bg-white/[0.08] p-4 backdrop-blur">
+    <section className="space-y-5 rounded-[1.75rem] bg-surface-bg p-1 text-on-surface">
+      <ModuleHeader
+        activeTab={activeSection}
+        badges={
+          <>
+            <Badge tone="admin">People mission control</Badge>
+            <Badge tone={summary.permission_alerts ? "warning" : "success"}>
+              {summary.permission_alerts ? `${summary.permission_alerts} access alert(s)` : "Access healthy"}
+            </Badge>
+          </>
+        }
+        actions={
+          <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[28rem]">
+            <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest/80 p-4 backdrop-blur dark:border-white/12 dark:bg-white/[0.08]">
               <div className="flex items-center gap-2">
-                <ShieldCheck aria-hidden="true" className="text-[#93ecb8]" size={18} />
-                <p className="text-xs font-semibold uppercase tracking-wide text-white/58">Access readiness</p>
+                <ShieldCheck aria-hidden="true" className="text-primary dark:text-[#93ecb8]" size={18} />
+                <p className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant dark:text-white/58">Access readiness</p>
               </div>
               <p className="mt-2 text-2xl font-semibold">{summary.access_health_score}%</p>
-              <p className="mt-1 text-xs text-white/58">{summary.pending_invitations} pending invitation(s)</p>
+              <p className="mt-1 text-xs text-on-surface-variant dark:text-white/58">{summary.pending_invitations} pending invitation(s)</p>
             </div>
-            <div className="rounded-2xl border border-white/12 bg-white/[0.08] p-4 backdrop-blur">
+            <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest/80 p-4 backdrop-blur dark:border-white/12 dark:bg-white/[0.08]">
               <div className="flex items-center gap-2">
-                <Activity aria-hidden="true" className="text-[#93ecb8]" size={18} />
-                <p className="text-xs font-semibold uppercase tracking-wide text-white/58">Live activity</p>
+                <Activity aria-hidden="true" className="text-primary dark:text-[#93ecb8]" size={18} />
+                <p className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant dark:text-white/58">Live activity</p>
               </div>
               <p className="mt-2 text-2xl font-semibold">{summary.active_sessions || sessions.length}</p>
-              <p className="mt-1 text-xs text-white/58">{summary.recent_activity} audit event(s)</p>
+              <p className="mt-1 text-xs text-on-surface-variant dark:text-white/58">{summary.recent_activity} audit event(s)</p>
             </div>
             <Button disabled={!canManageUsers || !roleOptions.length} onClick={openCreateUserModal} variant="primary">
               <Plus aria-hidden="true" />
@@ -1260,8 +1235,16 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
               Test access
             </Button>
           </div>
-        </div>
-      </div>
+        }
+        description="Control who can sign in, what roles they hold, which teams they belong to, and what operational data they can access."
+        helpLabel="About"
+        helpText="Manage identities, roles, operational teams, organization structure, access boundaries, and user activity from one controlled workspace."
+        helpTitle="Users & Teams"
+        onSelectTab={selectSection}
+        tabs={usersTeamsSections}
+        tabsLabel="Users and teams sections"
+        title="Users & Teams"
+      />
 
       {selectedRoleProfileUser ? (
         <RoleSpecificProfileWorkspace

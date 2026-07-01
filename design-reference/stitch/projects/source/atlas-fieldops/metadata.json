@@ -1,0 +1,6 @@
+{
+  "name": "Atlas FieldOps",
+  "description": "A mission-critical enterprise field operations dashboard for managing and monitoring field initiatives with audited precision.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

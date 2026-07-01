@@ -27,6 +27,7 @@ import { useContextualBack } from "@/hooks/useContextualBack";
 import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
+import { ModuleHeader } from "@/components/shared/ModuleHeader";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { KpiShard } from "@/components/ui/kpi-shard";
 import { EmptyMini } from "@/components/ui/empty-mini";
@@ -605,22 +606,17 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
 
   return (
     <section className="space-y-3">
-      <div className="module-header rounded-xl p-3.5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="max-w-3xl">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="monitor">ANALYTICS</Badge>
-              <Badge tone={summary.behindTarget ? "warning" : "success"}>{summary.behindTarget} behind target</Badge>
-              <Badge tone={summary.withoutDataSource ? "danger" : "accent"}>{summary.withoutDataSource} without data source</Badge>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight">Metrics & Results</h1>
-              <HelpHint label="About Metrics & Results" title="Metrics & Results">
-                Manage operational metrics, KPIs, optional M&E indicators, results frameworks, baselines, targets, calculations, form links, breakdowns, and progress tracking.
-              </HelpHint>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
+      <ModuleHeader
+        activeTab={activeSection}
+        badges={
+          <>
+            <Badge tone="monitor">ANALYTICS</Badge>
+            <Badge tone={summary.behindTarget ? "warning" : "success"}>{summary.behindTarget} behind target</Badge>
+            <Badge tone={summary.withoutDataSource ? "danger" : "accent"}>{summary.withoutDataSource} without data source</Badge>
+          </>
+        }
+        actions={
+          <>
             <Button disabled={!canManageIndicators} onClick={openCreateIndicator} variant="primary">
               <BookOpenCheck aria-hidden="true" />
               Create metric
@@ -629,26 +625,16 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
               <Download aria-hidden="true" />
               Export
             </Button>
-          </div>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Metrics sections">
-          {indicatorSections.map((section) => (
-            <button
-              className={cn(
-                "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
-                activeSection === section.id
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "bg-surface-container-lowest hover:bg-muted",
-              )}
-              key={section.id}
-              onClick={() => selectIndicatorSection(section.id)}
-              type="button"
-            >
-              {section.label}
-            </button>
-          ))}
-        </div>
-      </div>
+          </>
+        }
+        helpLabel="About Metrics & Results"
+        helpText="Manage operational metrics, KPIs, optional M&E indicators, results frameworks, baselines, targets, calculations, form links, breakdowns, and progress tracking."
+        helpTitle="Metrics & Results"
+        onSelectTab={selectIndicatorSection}
+        tabs={indicatorSections}
+        tabsLabel="Metrics sections"
+        title="Metrics & Results"
+      />
 
       {actionResult ? (
         <section className="rounded-2xl border border-success/30 bg-success/10 p-4" aria-live="polite">
@@ -1830,4 +1816,3 @@ function ProgressBar({ value }: { value: number }) {
     </div>
   );
 }
-

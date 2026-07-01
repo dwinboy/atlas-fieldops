@@ -1,0 +1,6 @@
+{
+  "name": "FieldOps Precision Intelligence",
+  "description": "Enterprise-grade data capture workflows, form management, and governance protocols for FieldOps Mission Control.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

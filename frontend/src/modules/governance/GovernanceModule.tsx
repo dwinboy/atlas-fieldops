@@ -24,6 +24,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { GovernanceCommandCenter } from "@/components/GovernanceCommandCenter";
+import { ModuleHeader } from "@/components/shared/ModuleHeader";
 import { AccessDenied } from "@/components/ui/access-denied";
 import { Badge } from "@/components/ui/badge";
 import { KpiShard } from "@/components/ui/kpi-shard";
@@ -113,6 +114,7 @@ function downloadCsv(filename: string, rows: Record<string, string | number | bo
 function MetricCard({
   icon,
   label,
+  tone,
   value,
 }: {
   icon: ReactNode;
@@ -120,7 +122,7 @@ function MetricCard({
   tone?: "danger" | "neutral" | "success" | "warning";
   value: string | number;
 }) {
-  return <KpiShard icon={icon} label={label} value={value} />;
+  return <KpiShard icon={icon} label={label} tone={tone} value={value} />;
 }
 
 function SectionPanel({
@@ -477,23 +479,19 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
   if (workbenchOpen) {
     return (
       <section className="space-y-3">
-        <div className="module-header rounded-xl p-3.5">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <Badge tone="governance">Governance workbench</Badge>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <h1 className="text-2xl font-semibold tracking-tight">Policy and control operations</h1>
-                <HelpHint label="About policy and control operations" title="Policy and control operations">
-                  Use this focused workbench for creating policies, retention controls, validation rules, export governance, and master data controls.
-                </HelpHint>
-              </div>
-            </div>
+        <ModuleHeader
+          badges={<Badge tone="governance">Governance workbench</Badge>}
+          actions={
             <Button onClick={() => setWorkbenchOpen(false)} variant="secondary">
               <Eye aria-hidden="true" />
               Return to overview
             </Button>
-          </div>
-        </div>
+          }
+          helpLabel="About policy and control operations"
+          helpText="Use this focused workbench for creating policies, retention controls, validation rules, export governance, and master data controls."
+          helpTitle="Policy and control operations"
+          title="Policy and control operations"
+        />
         <GovernanceCommandCenter token={token ?? "preview-token"} />
       </section>
     );
@@ -501,27 +499,22 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
 
   return (
     <section className="space-y-3">
-      <div className="module-header rounded-xl p-3.5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="max-w-3xl">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="governance">GOVERNANCE</Badge>
-              {canViewGovernance || preview ? (
-                <Badge tone={toneFromHealth(health.category)}>
-                  {health.score}% {health.category}
-                </Badge>
-              ) : null}
-              {preview ? <Badge tone="neutral">Preview data</Badge> : null}
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight">Governance</h1>
-              <HelpHint label="About Governance" title="Governance">
-                Centralize auditability, policies, approvals, retention, consent, compliance, data stewardship, risk, and export controls without mixing them into project or form operations.
-              </HelpHint>
-            </div>
-          </div>
-          {canViewGovernance || preview ? (
-            <div className="flex flex-wrap gap-2">
+      <ModuleHeader
+        activeTab={activeSection}
+        badges={
+          <>
+            <Badge tone="governance">GOVERNANCE</Badge>
+            {canViewGovernance || preview ? (
+              <Badge tone={toneFromHealth(health.category)}>
+                {health.score}% {health.category}
+              </Badge>
+            ) : null}
+            {preview ? <Badge tone="neutral">Preview data</Badge> : null}
+          </>
+        }
+        actions={
+          canViewGovernance || preview ? (
+            <>
               <Button onClick={() => setWorkbenchOpen(true)} variant="primary">
                 <ShieldCheck aria-hidden="true" />
                 Open workbench
@@ -542,25 +535,17 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
                 <Download aria-hidden="true" />
                 Export audit
               </Button>
-            </div>
-          ) : null}
-        </div>
-        <div className="mt-3 flex gap-1.5 overflow-x-auto product-scrollbar">
-          {governanceSections.map((section) => (
-            <button
-              className={cn(
-                "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
-                activeSection === section.id ? "border-primary bg-primary text-primary-foreground" : "bg-surface-container-lowest hover:bg-muted",
-              )}
-              key={section.id}
-              onClick={() => selectSection(section.id)}
-              type="button"
-            >
-              {section.label}
-            </button>
-          ))}
-        </div>
-      </div>
+            </>
+          ) : null
+        }
+        helpLabel="About Governance"
+        helpText="Centralize auditability, policies, approvals, retention, consent, compliance, data stewardship, risk, and export controls without mixing them into project or form operations."
+        helpTitle="Governance"
+        onSelectTab={selectSection}
+        tabs={governanceSections}
+        tabsLabel="Governance sections"
+        title="Governance"
+      />
 
       {!canViewGovernance && !preview ? (
         <AccessDenied

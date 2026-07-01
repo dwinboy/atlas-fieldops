@@ -39,6 +39,7 @@ import { useContextualBack } from "@/hooks/useContextualBack";
 import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
+import { ModuleHeader } from "@/components/shared/ModuleHeader";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { KpiShard } from "@/components/ui/kpi-shard";
 import { EmptyMini } from "@/components/ui/empty-mini";
@@ -1192,32 +1193,23 @@ export function SubmissionsModule({
 
   return (
     <section className="space-y-3">
-      <div className="module-header rounded-xl p-3.5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="max-w-3xl">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="collect">OPERATIONS</Badge>
-              <Badge tone={summary.quality_alerts ? "warning" : "success"}>
-                {summary.quality_alerts
-                  ? `${summary.quality_alerts} quality alerts`
-                  : "Quality clear"}
-              </Badge>
-              <Badge tone={summary.pending_review ? "warning" : "neutral"}>
-                {summary.pending_review} pending review
-              </Badge>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight">
-                Submissions
-              </h1>
-              <HelpHint label="About Submissions" title="Submissions">
-                Review collected records, manage approval workflows, return
-                corrections, inspect quality flags, track SLA bottlenecks, and
-                preserve submission audit history.
-              </HelpHint>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
+      <ModuleHeader
+        activeTab={activeSection}
+        badges={
+          <>
+            <Badge tone="collect">OPERATIONS</Badge>
+            <Badge tone={summary.quality_alerts ? "warning" : "success"}>
+              {summary.quality_alerts
+                ? `${summary.quality_alerts} quality alerts`
+                : "Quality clear"}
+            </Badge>
+            <Badge tone={summary.pending_review ? "warning" : "neutral"}>
+              {summary.pending_review} pending review
+            </Badge>
+          </>
+        }
+        actions={
+          <>
             <Button
               onClick={() => openSubmissionSection("pending-review")}
               variant="primary"
@@ -1233,29 +1225,16 @@ export function SubmissionsModule({
               <Download aria-hidden="true" />
               Export
             </Button>
-          </div>
-        </div>
-        <div
-          className="mt-3 flex gap-1.5 overflow-x-auto product-scrollbar"
-          aria-label="Submissions sections"
-        >
-          {submissionSections.map((section) => (
-            <button
-              className={cn(
-                "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
-                activeSection === section.id
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "bg-surface-container-lowest hover:bg-muted",
-              )}
-              key={section.id}
-              onClick={() => openSubmissionSection(section.id)}
-              type="button"
-            >
-              {section.label}
-            </button>
-          ))}
-        </div>
-      </div>
+          </>
+        }
+        helpLabel="About Submissions"
+        helpText="Review collected records, manage approval workflows, return corrections, inspect quality flags, track SLA bottlenecks, and preserve submission audit history."
+        helpTitle="Submissions"
+        onSelectTab={openSubmissionSection}
+        tabs={submissionSections}
+        tabsLabel="Submissions sections"
+        title="Submissions"
+      />
 
       {selectedSubmission ? (
         <SubmissionDetailWorkspace
@@ -4118,4 +4097,3 @@ function TimelineRows({
     </Panel>
   );
 }
-

@@ -34,6 +34,7 @@ import { useContextualBack } from "@/hooks/useContextualBack";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
+import { ModuleHeader } from "@/components/shared/ModuleHeader";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { KpiShard } from "@/components/ui/kpi-shard";
 import { Button } from "@/components/ui/button";
@@ -601,22 +602,17 @@ export function ReportsModule({ token }: ReportsModuleProps) {
 
   return (
     <section className="space-y-3">
-      <div className="module-header rounded-xl p-3.5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="max-w-3xl">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="monitor">ANALYTICS</Badge>
-              <Badge tone={summary.failedReportJobs ? "warning" : "success"}>{summary.failedReportJobs} failed jobs</Badge>
-              <Badge tone="accent">Route /reports</Badge>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight">Reports</h1>
-              <HelpHint label="About Reports" title="Reports">
-                Central reporting and analytics hub for standard reports, custom reports, dashboards, schedules, governed exports, donor packages, executive KPIs, and reusable visualizations.
-              </HelpHint>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
+      <ModuleHeader
+        activeTab={activeSection}
+        badges={
+          <>
+            <Badge tone="monitor">ANALYTICS</Badge>
+            <Badge tone={summary.failedReportJobs ? "warning" : "success"}>{summary.failedReportJobs} failed jobs</Badge>
+            <Badge tone="accent">Route /reports</Badge>
+          </>
+        }
+        actions={
+          <>
             <Button disabled={preview} onClick={openCreateReport} type="button" variant="primary">
               <FileText aria-hidden="true" /> Create report
             </Button>
@@ -626,27 +622,16 @@ export function ReportsModule({ token }: ReportsModuleProps) {
             <Button onClick={exportReports} type="button" variant="secondary">
               <Download aria-hidden="true" /> Export index
             </Button>
-          </div>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-1.5 pb-1">
-          {reportsSections.map((section) => (
-            <button
-              className={cn(
-                "min-w-36 rounded-lg border px-2.5 py-1.5 text-left transition hover:border-primary/40 hover:bg-primary/5",
-                activeSection === section.id ? "border-primary/50 bg-primary/10 shadow-line" : "bg-background",
-              )}
-              key={section.id}
-              onClick={() => selectReportSection(section.id)}
-              type="button"
-            >
-              <span className="flex items-center gap-1.5 text-xs font-semibold">
-                {section.label}
-              </span>
-              <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">{section.route}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+          </>
+        }
+        helpLabel="About Reports"
+        helpText="Central reporting and analytics hub for standard reports, custom reports, dashboards, schedules, governed exports, donor packages, executive KPIs, and reusable visualizations."
+        helpTitle="Reports"
+        onSelectTab={selectReportSection}
+        tabs={reportsSections}
+        tabsLabel="Reports sections"
+        title="Reports"
+      />
 
       {actionResult ? (
         <section className="rounded-2xl border border-success/30 bg-success/10 p-4" aria-live="polite">
@@ -2116,8 +2101,8 @@ function DashboardCard({ dashboard }: { dashboard: DashboardRecord }) {
   );
 }
 
-function MetricCard({ icon: Icon, label, onClick, value }: { icon: LucideIcon; label: string; onClick: () => void; tone: BadgeProps["tone"]; value: number }) {
-  return <KpiShard icon={Icon} label={label} onClick={onClick} value={value.toLocaleString()} />;
+function MetricCard({ icon: Icon, label, onClick, tone, value }: { icon: LucideIcon; label: string; onClick: () => void; tone: BadgeProps["tone"]; value: number }) {
+  return <KpiShard icon={Icon} label={label} onClick={onClick} tone={tone} value={value.toLocaleString()} />;
 }
 
 function Panel({ action, children, title }: { action?: ReactNode; children: ReactNode; title: string }) {

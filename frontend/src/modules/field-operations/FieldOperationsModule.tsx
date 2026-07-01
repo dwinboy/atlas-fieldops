@@ -4,9 +4,12 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CalendarDays,
+  CheckCircle2,
+  ChevronRight,
   ClipboardList,
   Download,
   FileText,
+  HardHat,
   MapPinned,
   Plus,
   QrCode,
@@ -161,8 +164,8 @@ const defaultAssignmentDraft: Omit<FieldAssignment, "id" | "completedCount"> = {
   targetCount: 0,
 };
 
-const fieldOpsPanelClass = "rounded-2xl border border-emerald-900/10 bg-white shadow-[0_16px_40px_-34px_rgba(12,31,27,0.55)]";
-const fieldOpsSoftPanelClass = "rounded-2xl border border-emerald-900/10 bg-[#F7FBF8] shadow-[0_12px_32px_-30px_rgba(12,31,27,0.45)]";
+const fieldOpsPanelClass = "rounded-2xl border border-border-subtle bg-surface-container-lowest shadow-card";
+const fieldOpsSoftPanelClass = "rounded-2xl border border-border-subtle bg-surface-container-low shadow-card";
 
 const defaultInviteDraft: FieldOfficerInvite = {
   email: "",
@@ -489,30 +492,30 @@ function MetricCard({
 }) {
   const toneStyles: Record<MetricCardTone, { icon: string; ring: string; text: string }> = {
     danger: {
-      icon: "bg-red-50 text-red-700",
-      ring: "hover:border-red-300",
-      text: "text-red-700",
+      icon: "bg-danger/10 text-danger",
+      ring: "hover:border-danger/30",
+      text: "text-danger",
     },
     neutral: {
-      icon: "bg-slate-100 text-slate-700",
-      ring: "hover:border-slate-300",
-      text: "text-slate-700",
+      icon: "bg-muted text-muted-foreground",
+      ring: "hover:border-primary/25",
+      text: "text-muted-foreground",
     },
     success: {
-      icon: "bg-emerald-50 text-emerald-700",
-      ring: "hover:border-emerald-300",
-      text: "text-emerald-700",
+      icon: "bg-success/10 text-success",
+      ring: "hover:border-success/30",
+      text: "text-success",
     },
     warning: {
-      icon: "bg-amber-50 text-amber-700",
-      ring: "hover:border-amber-300",
-      text: "text-amber-700",
+      icon: "bg-warning/10 text-warning",
+      ring: "hover:border-warning/30",
+      text: "text-warning",
     },
   };
   const styles = toneStyles[tone];
   const cardClassName = cn(
-    "group min-h-[116px] rounded-2xl border border-emerald-900/10 bg-white p-4 text-left shadow-[0_14px_34px_-30px_rgba(12,31,27,0.6)] transition duration-200",
-    "hover:-translate-y-0.5 hover:shadow-[0_22px_44px_-32px_rgba(12,31,27,0.72)]",
+    "group min-h-[116px] rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 text-left shadow-card transition duration-200",
+    "hover:-translate-y-0.5 hover:shadow-card-hover",
     styles.ring,
     onClick ? "cursor-pointer" : "",
   );
@@ -527,8 +530,8 @@ function MetricCard({
         </span>
       </div>
       <div className="mt-5">
-        <p className="text-2xl font-extrabold tracking-tight text-[#101E1A]">{value}</p>
-        <p className="mt-1 text-xs font-semibold text-slate-600">{label}</p>
+        <p className="text-2xl font-extrabold tracking-tight text-on-surface">{value}</p>
+        <p className="mt-1 text-xs font-semibold text-on-surface-variant">{label}</p>
       </div>
     </>
   );
@@ -619,7 +622,7 @@ function SectionHeader({ action, description, title }: { action?: ReactNode; des
   return (
     <div className={cn(fieldOpsPanelClass, "flex flex-col gap-3 p-4 md:flex-row md:items-start md:justify-between")}>
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-lg font-bold tracking-tight text-[#101E1A]">{title}</h2>
+        <h2 className="text-lg font-bold tracking-tight text-on-surface">{title}</h2>
         <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
@@ -640,13 +643,150 @@ function SectionPanel({
     <section className={cn(fieldOpsPanelClass, "p-4")}>
       <div className="mb-4">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-lg font-bold tracking-tight text-[#101E1A]">{title}</h2>
+          <h2 className="text-lg font-bold tracking-tight text-on-surface">{title}</h2>
           <HelpHint label={`About ${title}`} title={title}>
             {description}
           </HelpHint>
         </div>
       </div>
       {children}
+    </section>
+  );
+}
+
+function FieldOperationsWorkflowProcess({
+  onSelectSection,
+}: {
+  onSelectSection: (section: FieldOperationsSection) => void;
+}) {
+  const steps: {
+    description: string;
+    icon: ReactNode;
+    label: string;
+    section: FieldOperationsSection;
+  }[] = [
+    {
+      description: "Plan objectives, teams, locations, deliverables, and timing before work reaches the field.",
+      icon: <ClipboardList aria-hidden="true" className="size-5" />,
+      label: "Plan work",
+      section: "work-plans",
+    },
+    {
+      description: "Assign published forms, target locations, entity lists, supervisors, and field officers.",
+      icon: <UsersRound aria-hidden="true" className="size-5" />,
+      label: "Dispatch",
+      section: "assignments",
+    },
+    {
+      description: "Field officers collect evidence on mobile or web with GPS, media, and sync status visible.",
+      icon: <HardHat aria-hidden="true" className="size-5" />,
+      label: "Capture",
+      section: "field-officers",
+    },
+    {
+      description: "Supervisors review progress, returned work, quality alerts, routes, and team performance.",
+      icon: <ShieldCheck aria-hidden="true" className="size-5" />,
+      label: "Verify",
+      section: "supervisors",
+    },
+    {
+      description: "Approved and synchronized activity becomes available for monitoring, reporting, and maps.",
+      icon: <CheckCircle2 aria-hidden="true" className="size-5" />,
+      label: "Sync",
+      section: "field-monitoring",
+    },
+  ];
+  const [activeStep, setActiveStep] = useState(1);
+  const active = steps[activeStep];
+
+  return (
+    <section className={cn(fieldOpsPanelClass, "p-4 lg:p-6")}>
+      <div className="mb-5 flex flex-col items-center text-center">
+        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+          Operating flow
+        </p>
+        <h2 className="mt-1 text-xl font-extrabold tracking-tight text-on-surface">
+          From work plan to verified field evidence
+        </h2>
+        <p className="mt-2 max-w-2xl text-xs font-medium leading-5 text-on-surface-variant">
+          A compact field-work path so managers can see where each operational step belongs.
+        </p>
+      </div>
+
+      <div className="grid gap-2 rounded-2xl border border-border-subtle bg-surface-container-low p-2 sm:grid-cols-2 lg:grid-cols-5">
+        {steps.map((step, index) => {
+          const selected = activeStep === index;
+          return (
+            <button
+              className={cn(
+                "group rounded-xl p-3 text-center transition duration-200",
+                selected
+                  ? "bg-surface-container-lowest text-primary shadow-card ring-1 ring-primary/10"
+                  : "text-on-surface-variant hover:bg-surface-container-lowest/70 hover:text-on-surface",
+              )}
+              key={step.label}
+              onClick={() => setActiveStep(index)}
+              type="button"
+            >
+              <span
+                className={cn(
+                  "mx-auto flex size-10 items-center justify-center rounded-xl transition group-hover:scale-105",
+                  selected ? "bg-primary/10 text-primary" : "bg-surface-container-lowest text-on-surface-variant",
+                )}
+              >
+                {step.icon}
+              </span>
+              <span className="mt-2 block text-xs font-extrabold">{step.label}</span>
+              <span className="mt-0.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">
+                Step {index + 1}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="rounded-2xl border border-border-subtle bg-primary/5 p-4">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl bg-surface-container-lowest text-primary ring-1 ring-primary/10">
+              <ChevronRight aria-hidden="true" className="size-4" />
+            </span>
+            <div>
+              <h3 className="text-sm font-extrabold text-on-surface">{active.label}</h3>
+              <p className="mt-1 text-xs font-medium leading-5 text-on-surface-variant">{active.description}</p>
+              <Button
+                className="mt-3"
+                onClick={() => onSelectSection(active.section)}
+                size="sm"
+                type="button"
+                variant="secondary"
+              >
+                Open {active.label}
+              </Button>
+            </div>
+          </div>
+        </div>
+        <div className="relative overflow-hidden rounded-2xl border border-emerald-900/10 bg-[#0C1F1B] p-4 text-white">
+          <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(147,236,184,0.12)_1px,transparent_1px),linear-gradient(to_bottom,rgba(147,236,184,0.12)_1px,transparent_1px)] bg-[size:28px_28px] opacity-50" />
+          <div className="relative">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-200">
+              GIS readiness
+            </p>
+            <div className="mt-5 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-2xl font-extrabold">Live</p>
+                <p className="mt-1 text-xs font-medium text-emerald-50/70">
+                  Assignments, officers, and evidence can be opened on the operational map.
+                </p>
+              </div>
+              <span className="relative flex size-14 items-center justify-center rounded-full border border-cyan-200/20 bg-cyan-400/10 text-cyan-200">
+                <span className="absolute inline-flex size-14 animate-ping rounded-full bg-cyan-400/20" />
+                <MapPinned aria-hidden="true" className="relative size-6" />
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
   );
 }
@@ -3075,27 +3215,27 @@ export function FieldOperationsModule({
   }
 
   return (
-    <section className="space-y-5 rounded-[1.75rem] bg-[#FAFAF8] p-1 text-[#101E1A]">
-      <div className="relative overflow-hidden rounded-2xl border border-emerald-900/10 bg-[#0C1F1B] p-4 text-white shadow-[0_24px_70px_-48px_rgba(0,82,50,0.75)]">
-        <div className="absolute pointer-events-none hidden h-52 w-52 rounded-full bg-emerald-300/10 blur-3xl xl:block" />
+    <section className="space-y-5 rounded-[1.75rem] bg-surface-bg p-1 text-on-surface">
+      <div className="workspace-command-header p-4">
+        <div className="absolute pointer-events-none hidden h-52 w-52 rounded-full bg-primary/10 blur-3xl dark:bg-emerald-300/10 xl:block" />
         <div className="relative flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-100 ring-1 ring-white/10">
+              <span className="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-primary ring-1 ring-primary/15 dark:bg-white/10 dark:text-emerald-100 dark:ring-white/10">
                 Operations
               </span>
               <span className={cn(
                 "rounded-full px-3 py-1 text-[11px] font-bold ring-1",
                 summary.overdueAssignments
-                  ? "bg-amber-300/15 text-amber-100 ring-amber-200/20"
-                  : "bg-emerald-300/15 text-emerald-100 ring-emerald-200/20",
+                  ? "bg-warning/10 text-warning ring-warning/20 dark:bg-amber-300/15 dark:text-amber-100 dark:ring-amber-200/20"
+                  : "bg-success/10 text-success ring-success/20 dark:bg-emerald-300/15 dark:text-emerald-100 dark:ring-emerald-200/20",
               )}>
                 {summary.overdueAssignments
                   ? `${summary.overdueAssignments} overdue`
                   : "Field work on track"}
               </span>
               {preview ? (
-                <span className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-bold text-white/80 ring-1 ring-white/10">
+                <span className="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-bold text-primary ring-1 ring-primary/15 dark:bg-white/10 dark:text-white/80 dark:ring-white/10">
                   Preview data
                 </span>
               ) : null}
@@ -3110,7 +3250,7 @@ export function FieldOperationsModule({
                 in the field today.
               </HelpHint>
             </div>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-emerald-50/80">
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-on-surface-variant dark:text-emerald-50/80">
               Coordinate assignments, supervisors, officer sync, targets, GPS evidence, and daily field execution from one operational command workspace.
             </p>
           </div>
@@ -3152,14 +3292,12 @@ export function FieldOperationsModule({
             </Button>
           </div>
         </div>
-        <div className="relative mt-5 flex gap-1.5 overflow-x-auto product-scrollbar rounded-2xl bg-white/[0.07] p-1 ring-1 ring-white/10">
+        <div className="workspace-command-tabs product-scrollbar">
           {fieldOperationsSections.map((section) => (
             <button
               className={cn(
-                "shrink-0 rounded-xl px-3 py-2 text-xs font-bold transition",
-                activeSection === section.id
-                  ? "bg-white text-[#005232] shadow-sm"
-                  : "text-emerald-50/80 hover:bg-white/10 hover:text-white",
+                "shrink-0 px-3 py-2 text-xs transition",
+                activeSection === section.id && "is-active",
               )}
               key={section.id}
               onClick={() => selectSection(section.id)}
@@ -3178,10 +3316,10 @@ export function FieldOperationsModule({
               <div className={cn(fieldOpsPanelClass, "p-4")}>
                 <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
                   <div>
-                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">Today&apos;s command board</p>
-                    <h2 className="mt-1 text-xl font-extrabold tracking-tight text-[#101E1A]">Field execution at a glance</h2>
+                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">Today&apos;s command board</p>
+                    <h2 className="mt-1 text-xl font-extrabold tracking-tight text-on-surface">Field execution at a glance</h2>
                   </div>
-                  <p className="max-w-md text-xs font-medium leading-5 text-slate-500">
+                  <p className="max-w-md text-xs font-medium leading-5 text-on-surface-variant">
                     Live status across teams, assignments, deadlines, quality alerts, GPS evidence, and operational activity.
                   </p>
                 </div>
@@ -3252,7 +3390,7 @@ export function FieldOperationsModule({
                 <div className="grid gap-3 lg:grid-cols-3">
                   {assignments.slice(0, 3).map((assignment) => (
                     <button
-                      className="rounded-2xl border border-emerald-900/10 bg-[#FAFAF8] p-4 text-left transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-white"
+                      className="rounded-2xl border border-border-subtle bg-surface-container-low p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/30 hover:bg-surface-container-lowest"
                       key={assignment.id}
                       onClick={() => {
                         setViewAssignment(assignment);
@@ -3262,8 +3400,8 @@ export function FieldOperationsModule({
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="font-bold text-[#101E1A]">{assignment.name}</p>
-                          <p className="mt-1 text-xs font-medium text-slate-500">
+                          <p className="font-bold text-on-surface">{assignment.name}</p>
+                          <p className="mt-1 text-xs font-medium text-on-surface-variant">
                             {assignment.location || "No location"} · {assignment.supervisor || "No supervisor"}
                           </p>
                         </div>
@@ -3279,7 +3417,7 @@ export function FieldOperationsModule({
                           )}
                         />
                       </div>
-                      <p className="mt-3 text-xs font-semibold text-slate-500">
+                      <p className="mt-3 text-xs font-semibold text-on-surface-variant">
                         {assignment.completedCount.toLocaleString()} / {assignment.targetCount.toLocaleString()} collected
                       </p>
                     </button>
@@ -3289,6 +3427,8 @@ export function FieldOperationsModule({
                   ) : null}
                 </div>
               </SectionPanel>
+
+              <FieldOperationsWorkflowProcess onSelectSection={selectSection} />
 
               <div className="grid gap-4 xl:grid-cols-2">
                 <DataTable
@@ -3312,8 +3452,8 @@ export function FieldOperationsModule({
               <div className={cn(fieldOpsSoftPanelClass, "rounded-none border-x-0 border-t-0 p-4 shadow-none")}>
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <h2 className="font-extrabold tracking-tight text-[#101E1A]">Live field feed</h2>
-                    <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Operational telemetry</p>
+                    <h2 className="font-extrabold tracking-tight text-on-surface">Live field feed</h2>
+                    <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Operational telemetry</p>
                   </div>
                   <span className="relative flex size-3">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-40" />
@@ -3324,23 +3464,23 @@ export function FieldOperationsModule({
               <div className="max-h-[560px] space-y-3 overflow-y-auto p-4 product-scrollbar">
                 {activities.slice(0, 6).map((activity) => (
                   <button
-                    className="flex w-full gap-3 rounded-2xl border border-transparent bg-[#FAFAF8] p-3 text-left transition hover:border-emerald-900/10 hover:bg-white"
+                    className="flex w-full gap-3 rounded-2xl border border-transparent bg-surface-container-low p-3 text-left transition hover:border-primary/20 hover:bg-surface-container-lowest"
                     key={activity.id}
                     onClick={() => selectSection("field-monitoring")}
                     type="button"
                   >
-                    <span className="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
+                    <span className="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
                       <RadioTower aria-hidden="true" className="size-4" />
                     </span>
                     <span className="min-w-0">
                       <span className="flex items-center justify-between gap-3">
-                        <span className="truncate text-sm font-bold text-[#101E1A]">{activity.actor}</span>
-                        <span className="shrink-0 text-[10px] font-semibold text-slate-500">{formatTime(activity.timestamp)}</span>
+                        <span className="truncate text-sm font-bold text-on-surface">{activity.actor}</span>
+                        <span className="shrink-0 text-[10px] font-semibold text-on-surface-variant">{formatTime(activity.timestamp)}</span>
                       </span>
-                      <span className="mt-1 block text-xs font-medium leading-5 text-slate-600">
+                      <span className="mt-1 block text-xs font-medium leading-5 text-on-surface-variant">
                         {activity.activityType} · {activity.assignment}
                       </span>
-                      <span className="mt-2 inline-flex rounded-full bg-white px-2 py-1 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-900/10">
+                      <span className="mt-2 inline-flex rounded-full bg-surface-container-lowest px-2 py-1 text-[10px] font-bold text-primary ring-1 ring-primary/10">
                         {activity.status}
                       </span>
                     </span>

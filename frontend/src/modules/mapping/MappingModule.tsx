@@ -33,6 +33,7 @@ import type { ChangeEvent, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
+import { ModuleHeader } from "@/components/shared/ModuleHeader";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { KpiShard } from "@/components/ui/kpi-shard";
 import { EmptyMini } from "@/components/ui/empty-mini";
@@ -1282,26 +1283,21 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
 
   return (
     <section className="space-y-3">
-      <div className="module-header rounded-xl p-3.5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="max-w-3xl">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="monitor">ANALYTICS</Badge>
-              <Badge tone={summary.gpsIssues ? "warning" : "success"}>
-                {summary.gpsIssues} GPS issues
-              </Badge>
-              <Badge tone={restricted ? "warning" : "accent"}>
-                {restricted ? "Aggregated coordinates" : "Internal map access"}
-              </Badge>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight">Mapping</h1>
-              <HelpHint label="About Mapping" title="Mapping">
-                Visualize project scope, submission GPS evidence, beneficiaries, facilities, coverage, indicators, spatial data quality, reusable layers, and boundaries from one GIS workspace.
-              </HelpHint>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
+      <ModuleHeader
+        activeTab={activeSection}
+        badges={
+          <>
+            <Badge tone="monitor">ANALYTICS</Badge>
+            <Badge tone={summary.gpsIssues ? "warning" : "success"}>
+              {summary.gpsIssues} GPS issues
+            </Badge>
+            <Badge tone={restricted ? "warning" : "accent"}>
+              {restricted ? "Aggregated coordinates" : "Internal map access"}
+            </Badge>
+          </>
+        }
+        actions={
+          <>
             <Button
               onClick={() => {
                 setActiveSection("layers");
@@ -1320,26 +1316,16 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
               <FileJson aria-hidden="true" />
               Export GeoJSON
             </Button>
-          </div>
-        </div>
-        <div className="mt-3 flex gap-1.5 overflow-x-auto product-scrollbar" aria-label="Mapping sections">
-          {sections.map((section) => (
-            <button
-              className={cn(
-                "shrink-0 flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition",
-                activeSection === section.id
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "bg-surface-container-lowest hover:bg-muted",
-              )}
-              key={section.id}
-              onClick={() => selectSection(section.id)}
-              type="button"
-            >
-              {section.label}
-            </button>
-          ))}
-        </div>
-      </div>
+          </>
+        }
+        helpLabel="About Mapping"
+        helpText="Visualize project scope, submission GPS evidence, beneficiaries, facilities, coverage, indicators, spatial data quality, reusable layers, and boundaries from one GIS workspace."
+        helpTitle="Mapping"
+        onSelectTab={selectSection}
+        tabs={sections}
+        tabsLabel="Mapping sections"
+        title="Mapping"
+      />
 
       {mapResult ? (
         <section className="rounded-2xl border border-success/30 bg-success/10 p-4" aria-live="polite">
@@ -1673,6 +1659,7 @@ function MappingDashboard({
           value={card.value}
           icon={card.icon}
           onClick={() => onOpenSection(card.section)}
+          tone={card.tone}
         />
       ))}
       <Panel title="Recent GPS Activity">

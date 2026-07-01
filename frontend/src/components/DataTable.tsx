@@ -1,11 +1,13 @@
 "use client";
 
-import { ArrowDownUp, ChevronLeft, ChevronRight, Inbox, Maximize2, Minimize2, Search, SearchX, X } from "lucide-react";
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { ArrowDownUp, ChevronLeft, ChevronRight, Inbox, Maximize2, Minimize2, MoreVertical, Search, SearchX, X } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { isValidElement, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { Button } from "@/components/ui/button";
+import { ActionMenu } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +34,57 @@ export type TableSelection<T> = {
   onToggle: (row: T, checked: boolean) => void;
   onToggleAll: (rows: T[], checked: boolean) => void;
 };
+
+function isActionsColumn<T>(column: TableColumn<T>) {
+  return column.key.toLowerCase() === "actions" || column.header.toLowerCase() === "actions";
+}
+
+function containsActionMenu(node: ReactNode): boolean {
+  if (Array.isArray(node)) return node.some(containsActionMenu);
+  if (!isValidElement<{ children?: ReactNode }>(node)) return false;
+  if (node.type === ActionMenu) return true;
+  return containsActionMenu(node.props.children);
+}
+
+function hasVisibleActionContent(node: ReactNode): boolean {
+  if (node === null || node === undefined || typeof node === "boolean") return false;
+  if (Array.isArray(node)) return node.some(hasVisibleActionContent);
+  if (typeof node === "string") return node.trim().length > 0;
+  return true;
+}
+
+function TableActionDropdown({ children }: { children: ReactNode }) {
+  if (!hasVisibleActionContent(children)) return null;
+  if (containsActionMenu(children)) return children;
+  return (
+    <DropdownMenuPrimitive.Root>
+      <DropdownMenuPrimitive.Trigger asChild>
+        <Button
+          aria-label="Open row actions"
+          className="h-8 w-8 px-0"
+          onClick={(event) => event.stopPropagation()}
+          size="icon"
+          title="Open row actions"
+          variant="ghost"
+        >
+          <MoreVertical aria-hidden="true" />
+        </Button>
+      </DropdownMenuPrimitive.Trigger>
+      <DropdownMenuPrimitive.Portal>
+        <DropdownMenuPrimitive.Content
+          align="end"
+          className="z-50 min-w-[190px] overflow-hidden rounded-xl border bg-panel p-1 shadow-elevated data-[state=open]:animate-in data-[state=closed]:animate-out"
+          onClick={(event) => event.stopPropagation()}
+          sideOffset={6}
+        >
+          <div className="flex min-w-44 flex-col gap-1 [&>div]:flex [&>div]:flex-col [&>div]:items-stretch [&>div]:gap-1 [&_button]:w-full [&_button]:justify-start">
+            {children}
+          </div>
+        </DropdownMenuPrimitive.Content>
+      </DropdownMenuPrimitive.Portal>
+    </DropdownMenuPrimitive.Root>
+  );
+}
 
 export function DataTable<T>({
   columns,
@@ -126,7 +179,15 @@ export function DataTable<T>({
   const allPagedSelected =
     selectablePagedRows.length > 0 &&
     selectablePagedRows.every((row) => selection?.isSelected(row));
-  const tableMinWidth = Math.max(920, columns.length * 180 + (selection ? 44 : 0));
+  const smartTableMinWidth = Math.max(
+    920,
+    columns.reduce((width, column) => width + (isActionsColumn(column) ? 92 : 180), selection ? 44 : 0),
+  );
+
+  const renderCellContent = (column: TableColumn<T>, row: T) => {
+    const rendered = column.render(row);
+    return isActionsColumn(column) ? <TableActionDropdown>{rendered}</TableActionDropdown> : rendered;
+  };
 
   const EmptyIcon = query ? SearchX : Inbox;
   const emptyContent = (
@@ -257,8 +318,13 @@ export function DataTable<T>({
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   {column.header}
                 </p>
-                <div className="min-w-0 break-words text-sm text-foreground">
-                  {column.render(row)}
+                <div
+                  className={cn(
+                    "min-w-0 break-words text-sm text-foreground",
+                    isActionsColumn(column) && "flex justify-start",
+                  )}
+                >
+                  {renderCellContent(column, row)}
                 </div>
               </div>
             ))}
@@ -281,7 +347,7 @@ export function DataTable<T>({
           isFullscreen ? "min-h-0 flex-1" : "max-h-[68vh]",
         )}
       >
-        <table className="w-full border-separate border-spacing-0 text-left text-xs" style={{ minWidth: tableMinWidth }}>
+        <table className="w-full border-separate border-spacing-0 text-left text-xs" style={{ minWidth: smartTableMinWidth }}>
           <thead className="sticky top-0 z-20 bg-muted text-muted-foreground shadow-[0_1px_0_hsl(var(--border)),0_8px_12px_-12px_rgba(13,38,28,0.35)]">
             <tr>
               {selection ? (
@@ -302,6 +368,7 @@ export function DataTable<T>({
                   key={column.key}
                   className={cn(
                     "whitespace-nowrap border-b border-r border-border/60 bg-muted px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground",
+                    isActionsColumn(column) && "w-16 px-1.5 text-center",
                     columnIndex === 0 &&
                       !selection &&
                       "sticky left-0 z-20 shadow-[8px_0_12px_-10px_rgba(13,38,28,0.22)]",
@@ -337,6 +404,8 @@ export function DataTable<T>({
                       className={
                         column.align === "right"
                           ? "flex justify-end"
+                          : isActionsColumn(column)
+                            ? "flex justify-center"
                           : "flex items-center"
                       }
                     >
@@ -385,6 +454,7 @@ export function DataTable<T>({
                     key={column.key}
                     className={cn(
                       "max-w-72 border-b border-r border-border/60 px-2.5 py-2 align-top",
+                      isActionsColumn(column) && "w-16 max-w-16 px-1.5 text-center",
                       column.align === "right" && "text-right tabular-nums",
                       columnIndex === 0 &&
                         !selection &&
@@ -400,8 +470,14 @@ export function DataTable<T>({
                         ),
                     )}
                   >
-                    <div className="min-w-0 truncate" title={column.value?.(row)}>
-                      {column.render(row)}
+                    <div
+                      className={cn(
+                        "min-w-0 truncate",
+                        isActionsColumn(column) && "flex justify-center",
+                      )}
+                      title={column.value?.(row)}
+                    >
+                      {renderCellContent(column, row)}
                     </div>
                   </td>
                 ))}

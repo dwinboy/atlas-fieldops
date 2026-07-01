@@ -1,0 +1,6 @@
+{
+  "name": "FieldIntel Pro",
+  "description": "Enterprise-grade operational auditing and submissions review dashboard for field operations management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -27,9 +27,9 @@ import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
+import { ModuleHeader } from "@/components/shared/ModuleHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Tabs } from "@/components/ui/tabs";
@@ -437,32 +437,19 @@ function SectionHeader({
   const Icon = activePage.icon;
 
   return (
-    <div className="module-header rounded-xl p-3.5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="flex gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border bg-primary/10 text-primary">
-            <Icon aria-hidden="true" size={21} />
+    <ModuleHeader
+      badges={
+        <>
+          <Badge tone="platform">SYSTEM</Badge>
+          <Badge tone={canManage ? "success" : "warning"}>
+            {canManage ? "Full access" : "Read only"}
+          </Badge>
+          <span className="rounded-md bg-muted px-2 py-1 font-mono text-[11px] text-muted-foreground">
+            {activePage.route}
           </span>
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="platform">SYSTEM</Badge>
-              <Badge tone={canManage ? "success" : "warning"}>
-                {canManage ? "Full access" : "Read only"}
-              </Badge>
-              <span className="rounded-md bg-muted px-2 py-1 font-mono text-[11px] text-muted-foreground">
-                {activePage.route}
-              </span>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <h2 className="text-xl font-semibold tracking-tight">
-                {activePage.title}
-              </h2>
-              <HelpHint label={`About ${activePage.title}`} title={activePage.title}>
-                {activePage.description}
-              </HelpHint>
-            </div>
-          </div>
-        </div>
+        </>
+      }
+      actions={
         <Button
           disabled={!canManage}
           onClick={onPrimaryAction}
@@ -472,8 +459,13 @@ function SectionHeader({
           <Plus aria-hidden="true" />
           {activePage.primaryAction}
         </Button>
-      </div>
-    </div>
+      }
+      helpLabel={`About ${activePage.title}`}
+      helpText={activePage.description}
+      helpTitle={activePage.title}
+      icon={<Icon aria-hidden="true" size={21} />}
+      title={activePage.title}
+    />
   );
 }
 

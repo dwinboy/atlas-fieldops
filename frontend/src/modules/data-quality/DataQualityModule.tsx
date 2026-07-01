@@ -29,8 +29,8 @@ import { useContextualBack } from "@/hooks/useContextualBack";
 import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
+import { ModuleHeader } from "@/components/shared/ModuleHeader";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
-import { KpiShard } from "@/components/ui/kpi-shard";
 import { Button } from "@/components/ui/button";
 import { EmptyMini } from "@/components/ui/empty-mini";
 import { HelpHint } from "@/components/ui/help-hint";
@@ -128,6 +128,9 @@ type DataQualityModuleProps = {
   principal?: CurrentPrincipal | null;
   token: string | null;
 };
+
+const qualityPanelClass = "rounded-2xl border border-border-subtle bg-surface-container-lowest shadow-card";
+const qualitySoftPanelClass = "rounded-2xl border border-border-subtle bg-surface-container-low shadow-card backdrop-blur";
 
 type ProposalReviewDraft = {
   action: BeneficiaryProfileUpdateProposalReview["action"];
@@ -461,36 +464,35 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
   }
 
   return (
-    <section className="space-y-3">
-      <div className="module-header rounded-xl p-3.5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="max-w-3xl">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="governance">ANALYTICS</Badge>
-              <Badge tone={scoreTone(summary.overallScore)}>{summary.overallScore}/100 · {qualityCategory(summary.overallScore)}</Badge>
-              <Badge tone={summary.criticalIssues ? "danger" : "success"}>{summary.criticalIssues} critical</Badge>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight">Data Quality</h1>
-              <HelpHint label="About Data Quality" title="Data Quality">
-                Monitor trust, detect duplicates, outliers, GPS issues, missing data, validation failures, risk alerts, and manage quality rules before records power indicators, reports, and program decisions.
-              </HelpHint>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">Access context: {roleLabel}</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
+    <section className="space-y-5 rounded-[1.75rem] bg-surface-bg p-1 text-on-surface">
+      <ModuleHeader
+        activeTab={activeSection}
+        badges={
+          <>
+            <Badge tone="monitor">Data Quality Surveillance</Badge>
+            <Badge tone={scoreTone(summary.overallScore)}>{summary.overallScore}/100 · {qualityCategory(summary.overallScore)}</Badge>
+            <Badge tone={summary.criticalIssues ? "danger" : "success"}>{summary.criticalIssues} critical</Badge>
+          </>
+        }
+        actions={
+          <>
             <Button onClick={() => selectSection("rules")} type="button" variant="secondary">
               <ListChecks aria-hidden="true" /> Manage rules
             </Button>
             <Button onClick={exportIssues} type="button">
               <Download aria-hidden="true" /> Export issues
             </Button>
-          </div>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
+          </>
+        }
+        description="Monitor anomalies, duplicates, GPS evidence, validation failures, profile conflicts, import cleaning, and governance-ready investigations."
+        helpLabel="About Data Quality"
+        helpText="Monitor trust, detect duplicates, outliers, GPS issues, missing data, validation failures, risk alerts, and manage quality rules before records power indicators, reports, and program decisions."
+        helpTitle="Data Quality"
+        navigation={
+          <div className="workspace-command-tabs workspace-command-tabs-grid product-scrollbar gap-3 p-3 lg:grid-cols-3">
           {sectionGroups.map((group) => (
             <div key={group.label}>
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{group.label}</p>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant dark:text-emerald-100/70">{group.label}</p>
               <div className="flex flex-wrap gap-1.5">
                 {group.ids.map((id) => {
                   const section = dataQualitySections.find((candidate) => candidate.id === id);
@@ -498,8 +500,8 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
                   return (
                     <button
                       className={cn(
-                        "min-w-36 rounded-lg border px-2.5 py-1.5 text-left transition hover:border-primary/40 hover:bg-primary/5",
-                        activeSection === section.id ? "border-primary/50 bg-primary/10 shadow-line" : "bg-background",
+                        "min-w-36 px-3 py-2 text-left text-xs transition",
+                        activeSection === section.id && "is-active",
                       )}
                       key={section.id}
                       onClick={() => {
@@ -511,7 +513,7 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
                       }}
                       type="button"
                     >
-                      <span className="text-xs font-semibold">{section.label}</span>
+                      <span className="font-bold">{section.label}</span>
                       <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">{section.route}</span>
                     </button>
                   );
@@ -519,8 +521,12 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
               </div>
             </div>
           ))}
-        </div>
-      </div>
+          </div>
+        }
+        title="Data Quality"
+      >
+        <p className="mt-2 text-xs font-semibold text-on-surface-variant dark:text-emerald-100/70">Access context: {roleLabel}</p>
+      </ModuleHeader>
 
       {actionResult ? (
         <section className="rounded-2xl border border-success/30 bg-success/10 p-4" aria-live="polite">
@@ -830,9 +836,20 @@ function QualityLanding({
   ] satisfies { icon: LucideIcon; label: string; onClick?: () => void; tone: BadgeProps["tone"]; value: number | string }[];
 
   return (
-    <div className="space-y-3">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {cards.map((card) => <MetricCard icon={card.icon} key={card.label} label={card.label} onClick={card.onClick} tone={card.tone} value={card.value} />)}
+    <div className="space-y-5">
+      <div className={cn(qualityPanelClass, "p-4")}>
+        <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">Quality command board</p>
+            <h2 className="mt-1 text-xl font-extrabold tracking-tight text-on-surface">Issues, rules, and review pressure</h2>
+          </div>
+          <p className="max-w-md text-xs font-medium leading-5 text-on-surface-variant">
+            Select a shard to open the exact queue for duplicates, GPS, profile conflicts, validation, or import cleaning.
+          </p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {cards.map((card) => <MetricCard icon={card.icon} key={card.label} label={card.label} onClick={card.onClick} tone={card.tone} value={card.value} />)}
+        </div>
       </div>
       <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
         <Panel action={<Button onClick={() => onOpenSection("quality-dashboard")} size="sm" variant="secondary">Open dashboard</Button>} title="Quality Trends">
@@ -2433,6 +2450,7 @@ function MetricCard({
   icon: Icon,
   label,
   onClick,
+  tone,
   value,
 }: {
   icon: LucideIcon;
@@ -2441,21 +2459,48 @@ function MetricCard({
   tone: BadgeProps["tone"];
   value: number | string;
 }) {
-  return (
-    <KpiShard
-      icon={Icon}
-      label={label}
-      onClick={onClick}
-      value={typeof value === "number" ? value.toLocaleString() : value}
-    />
+  const toneStyle =
+    tone === "danger"
+      ? "bg-danger/10 text-danger"
+      : tone === "warning"
+        ? "bg-warning/10 text-warning"
+        : tone === "success"
+          ? "bg-success/10 text-success"
+          : "bg-muted text-muted-foreground";
+  const content = (
+    <>
+      <div className="flex items-start justify-between gap-3">
+        <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">{label}</span>
+        <span className={cn("flex size-10 items-center justify-center rounded-xl transition group-hover:scale-105", toneStyle)}>
+          <Icon aria-hidden="true" size={18} />
+        </span>
+      </div>
+      <p className="mt-5 text-3xl font-black tracking-tight text-on-surface">
+        {typeof value === "number" ? value.toLocaleString() : value}
+      </p>
+      <div className="mt-3 flex items-center gap-2 text-[11px] font-bold text-primary">
+        <span className={cn("size-2 rounded-full", tone === "danger" ? "bg-red-500" : tone === "warning" ? "bg-amber-500" : "bg-emerald-500")} />
+        Live queue
+      </div>
+    </>
   );
+  const className = "group rounded-2xl border border-border-subtle bg-surface-container-lowest p-5 text-left shadow-card transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-card-hover";
+
+  if (onClick) {
+    return (
+      <button className={className} onClick={onClick} type="button">
+        {content}
+      </button>
+    );
+  }
+  return <div className={className}>{content}</div>;
 }
 
 function Panel({ action, children, title }: { action?: ReactNode; children: ReactNode; title: string }) {
   return (
-    <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
+    <section className={cn(qualitySoftPanelClass, "p-4")}>
       <div className="mb-4 flex items-start justify-between gap-3">
-        <h2 className="text-sm font-semibold">{title}</h2>
+        <h2 className="text-sm font-extrabold tracking-tight text-on-surface">{title}</h2>
         {action}
       </div>
       {children}

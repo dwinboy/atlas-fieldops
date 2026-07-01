@@ -22,18 +22,19 @@ import {
   Target,
   UploadCloud,
   UsersRound,
+  type LucideIcon,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
 
 import { useContextualBack } from "@/hooks/useContextualBack";
 import { DataTable, type TableColumn } from "@/components/DataTable";
+import { ModuleHeader } from "@/components/shared/ModuleHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyMini } from "@/components/ui/empty-mini";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
-import { KpiShard } from "@/components/ui/kpi-shard";
 import { Modal } from "@/components/ui/modal";
 import {
   ApiError,
@@ -101,6 +102,9 @@ type ProjectsModuleProps = {
   principal?: CurrentPrincipal | null;
   token: string | null;
 };
+
+const projectsPanelClass = "rounded-2xl border border-border-subtle bg-surface-container-lowest shadow-card";
+const projectsSoftPanelClass = "rounded-2xl border border-border-subtle bg-surface-container-low shadow-card";
 
 const defaultProjectDraft: ProjectCreate = {
   category: "",
@@ -1558,42 +1562,33 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
 
   return (
     <OptionSetsProvider token={token}>
-    <section className="space-y-3">
-      <div className="module-header rounded-xl p-3.5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="max-w-3xl">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="monitor">OPERATIONS</Badge>
-              <button
-                className="rounded-full"
-                onClick={() => {
-                  if (summary.attention_projects) {
-                    openAttentionProject();
-                    return;
-                  }
-                  selectSection("all");
-                }}
-                type="button"
-              >
-                <Badge tone={summary.attention_projects ? "warning" : "success"}>
-                  {summary.attention_projects
-                    ? `${summary.attention_projects} need attention`
-                    : "Projects healthy"}
-                </Badge>
-              </button>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight">
-                Projects
-              </h1>
-              <HelpHint label="About Projects" title="Projects">
-                Plan, monitor, govern, and connect project workspaces to forms,
-                teams, locations, metrics, assignments, submissions, reports,
-                and audit trails.
-              </HelpHint>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
+    <section className="space-y-5 rounded-[1.75rem] bg-surface-bg p-1 text-on-surface">
+      <ModuleHeader
+        activeTab={activeSection}
+        badges={
+          <>
+            <Badge tone="operate">Project Repository</Badge>
+            <button
+              className="rounded-full"
+              onClick={() => {
+                if (summary.attention_projects) {
+                  openAttentionProject();
+                  return;
+                }
+                selectSection("all");
+              }}
+              type="button"
+            >
+              <Badge tone={summary.attention_projects ? "warning" : "success"}>
+                {summary.attention_projects
+                  ? `${summary.attention_projects} need attention`
+                  : "Projects healthy"}
+              </Badge>
+            </button>
+          </>
+        }
+        actions={
+          <>
             <Button
               disabled={!canManageProjects}
               onClick={() => openProjectWizard()}
@@ -1622,26 +1617,17 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
               <Download aria-hidden="true" />
               Export
             </Button>
-          </div>
-        </div>
-        <div className="mt-3 flex gap-1.5 overflow-x-auto product-scrollbar">
-          {projectSections.map((section) => (
-            <button
-              className={cn(
-                "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
-                activeSection === section.id
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "bg-surface-container-lowest hover:bg-muted",
-              )}
-              key={section.id}
-              onClick={() => selectSection(section.id)}
-              type="button"
-            >
-              {section.label}
-            </button>
-          ))}
-        </div>
-      </div>
+          </>
+        }
+        description="Monitor project health, sectors, forms, teams, entities, submissions, deadlines, and readiness from one operational repository."
+        helpLabel="About Projects"
+        helpText="Plan, monitor, govern, and connect project workspaces to forms, teams, locations, metrics, assignments, submissions, reports, and audit trails."
+        helpTitle="Projects"
+        onSelectTab={selectSection}
+        tabs={projectSections}
+        tabsLabel="Project sections"
+        title="Projects"
+      />
 
       {selectedProjectId && detail ? (
         <ProjectDetailWorkspace
@@ -1835,6 +1821,45 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
   );
 }
 
+function ProjectMetricCard({
+  icon: Icon,
+  label,
+  onClick,
+  value,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onClick?: () => void;
+  value: number | string;
+}) {
+  const content = (
+    <>
+      <div className="flex items-start justify-between gap-3">
+        <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">{label}</span>
+        <span className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary transition group-hover:scale-105">
+          <Icon aria-hidden="true" size={18} />
+        </span>
+      </div>
+      <p className="mt-5 text-3xl font-black tracking-tight text-on-surface">
+        {typeof value === "number" ? value.toLocaleString() : value}
+      </p>
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-container-high">
+        <div className="h-full rounded-full bg-primary-container" style={{ width: typeof value === "number" ? `${Math.min(100, Math.max(8, value))}%` : "72%" }} />
+      </div>
+    </>
+  );
+  const className = "group rounded-2xl border border-border-subtle bg-surface-container-lowest p-5 text-left shadow-card transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-card-hover";
+
+  if (onClick) {
+    return (
+      <button className={className} onClick={onClick} type="button">
+        {content}
+      </button>
+    );
+  }
+  return <div className={className}>{content}</div>;
+}
+
 function ProjectsDashboard({
   onOpenEntities,
   onOpenForms,
@@ -1896,9 +1921,19 @@ function ProjectsDashboard({
     .slice(0, 4);
   return (
     <div className="space-y-6">
-      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+      <div className={cn(projectsPanelClass, "p-4")}>
+        <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">Project telemetry</p>
+            <h2 className="mt-1 text-xl font-extrabold tracking-tight text-on-surface">Repository health at a glance</h2>
+          </div>
+          <p className="max-w-md text-xs font-medium leading-5 text-on-surface-variant">
+            Click any shard to open the matching project view, data source, or status group.
+          </p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
-          <KpiShard
+          <ProjectMetricCard
             key={card.label}
             icon={card.icon}
             label={card.label}
@@ -1906,10 +1941,19 @@ function ProjectsDashboard({
             value={card.value}
           />
         ))}
+        </div>
       </div>
       <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="rounded-xl border border-border-subtle bg-surface-container-lowest p-6 shadow-[0_1px_3px_0_rgba(0,0,0,0.05)]">
-          <h2 className="font-semibold">Project Health Overview</h2>
+        <div className={cn(projectsPanelClass, "p-5")}>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-primary">Mission portfolio</p>
+              <h2 className="mt-1 font-extrabold tracking-tight">Project Health Overview</h2>
+            </div>
+            <Badge tone={summary.attention_projects ? "warning" : "success"}>
+              {summary.attention_projects ? `${summary.attention_projects} attention` : "Stable"}
+            </Badge>
+          </div>
           <div className="mt-4 space-y-3">
             {rankedProjects.length === 0 ? (
               <EmptyMini
@@ -1919,14 +1963,14 @@ function ProjectsDashboard({
             ) : null}
             {rankedProjects.map((project) => (
               <button
-                className="w-full rounded-xl border bg-background/50 p-3 text-left transition hover:bg-muted/50"
+                className="group w-full rounded-2xl border border-border-subtle bg-surface-container-low p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/30 hover:bg-surface-container-lowest"
                 key={project.id}
                 onClick={() => onOpenProject(project)}
                 type="button"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="font-medium">{project.name}</p>
+                    <p className="font-bold text-on-surface group-hover:text-primary">{project.name}</p>
                     <p className="text-xs text-muted-foreground">
                       {project.project_code} · {project.region ?? "All regions"}
                     </p>
@@ -1935,9 +1979,9 @@ function ProjectsDashboard({
                     {project.health_score}%
                   </Badge>
                 </div>
-                <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-container-high">
                   <div
-                    className="h-full rounded-full bg-primary"
+                    className="h-full rounded-full bg-primary-container"
                     style={{ width: `${project.health_score}%` }}
                   />
                 </div>
@@ -1945,8 +1989,17 @@ function ProjectsDashboard({
             ))}
           </div>
         </div>
-        <div className="rounded-xl border border-border-subtle bg-surface-container-lowest p-6 shadow-[0_1px_3px_0_rgba(0,0,0,0.05)]">
-          <h2 className="font-semibold">Upcoming Deadlines & Risk Alerts</h2>
+        <div className={cn(projectsSoftPanelClass, "p-5")}>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-primary">Operations pulse</p>
+              <h2 className="mt-1 font-extrabold tracking-tight">Upcoming Deadlines &amp; Risk Alerts</h2>
+            </div>
+            <span className="relative flex size-3">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-40" />
+              <span className="relative inline-flex size-3 rounded-full bg-emerald-500" />
+            </span>
+          </div>
           <div className="mt-4 space-y-3">
             <Signal
               label="Completion rate"

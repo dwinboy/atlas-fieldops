@@ -168,25 +168,80 @@ h3 {
 /* Module command bar: the top header strip that carries the title + primary
    actions. A branded, slightly elevated surface so it reads as the workspace's
    control bar, clearly distinct from the content cards below it. */
-.module-header {
+.module-header,
+.workspace-command-header {
+  --command-foreground: var(--on-surface);
+  --command-muted: var(--on-surface-variant);
+  --command-active-bg: var(--primary-container);
+  --command-active-fg: var(--on-primary);
+  --command-primary-button-fg: 0 0% 100%;
+  --command-rail-bg: var(--surface-container-low);
+  --command-rail-border: var(--border-subtle);
   position: relative;
   isolation: isolate;
-  border: 1px solid hsl(var(--primary) / 0.16);
+  overflow: hidden;
+  border: 1px solid hsl(var(--border-subtle));
+  border-radius: 1.25rem;
   background:
     radial-gradient(
-      140% 150% at 100% -20%,
-      hsl(var(--primary) / 0.14),
-      transparent 56%
+      48rem 24rem at 88% -32%,
+      hsl(var(--primary) / 0.08),
+      transparent 58%
     ),
-    linear-gradient(180deg, hsl(var(--primary) / 0.07), transparent 60%),
-    hsl(var(--panel));
+    radial-gradient(
+      42rem 22rem at 0% 0%,
+      hsl(var(--primary-container) / 0.12),
+      transparent 62%
+    ),
+    hsl(var(--surface-container-lowest));
+  color: hsl(var(--command-foreground));
   box-shadow:
-    inset 0 1px 0 hsl(0 0% 100% / 0.06),
-    0 1px 2px hsl(var(--panel-foreground) / 0.05),
-    0 24px 48px -36px hsl(var(--primary) / 0.6);
+    inset 0 1px 0 hsl(0 0% 100% / 0.2),
+    0 24px 60px -46px hsl(var(--primary) / 0.45);
 }
 
-.module-header::after {
+.dark .module-header,
+.dark .workspace-command-header {
+  --command-foreground: 0 0% 100%;
+  --command-muted: 0 0% 100%;
+  --command-active-bg: 0 0% 100%;
+  --command-active-fg: var(--primary);
+  --command-primary-button-fg: 0 0% 100%;
+  --command-rail-bg: 0 0% 100%;
+  --command-rail-border: 0 0% 100%;
+  border-color: hsl(var(--on-primary-container) / 0.16);
+  background:
+    radial-gradient(
+      48rem 24rem at 88% -32%,
+      hsl(var(--cyan-accent) / 0.18),
+      transparent 58%
+    ),
+    radial-gradient(
+      42rem 22rem at 0% 0%,
+      hsl(var(--primary-container) / 0.32),
+      transparent 62%
+    ),
+    hsl(var(--deep-emerald-dark));
+  box-shadow:
+    inset 0 1px 0 hsl(0 0% 100% / 0.08),
+    0 24px 70px -48px hsl(var(--primary) / 0.86);
+}
+
+.module-header::before,
+.workspace-command-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(hsl(var(--primary) / 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--primary) / 0.08) 1px, transparent 1px);
+  background-size: 30px 30px;
+  mask-image: linear-gradient(110deg, black, transparent 74%);
+}
+
+.module-header::after,
+.workspace-command-header::after {
   content: "";
   position: absolute;
   inset: 0 0 auto 0;
@@ -195,10 +250,117 @@ h3 {
   border-top-right-radius: inherit;
   background: linear-gradient(
     90deg,
-    hsl(var(--primary)),
-    hsl(var(--primary) / 0.35) 58%,
+    hsl(var(--on-primary-container)),
+    hsl(var(--cyan-accent) / 0.65) 58%,
     transparent
   );
+}
+
+.module-header h1,
+.module-header h2,
+.module-header h3,
+.workspace-command-header h1,
+.workspace-command-header h2,
+.workspace-command-header h3 {
+  color: hsl(var(--command-foreground));
+}
+
+.module-header p,
+.module-header [class*="text-muted-foreground"],
+.workspace-command-header p,
+.workspace-command-header [class*="text-muted-foreground"] {
+  color: hsl(var(--command-muted) / 0.72);
+}
+
+.module-header button[class*="bg-surface-container-lowest"],
+.module-header button[class*="bg-background"],
+.workspace-command-header button[class*="bg-surface-container-lowest"],
+.workspace-command-header button[class*="bg-background"] {
+  color: hsl(var(--command-foreground) / 0.78);
+}
+
+.module-header button[class*="hover:bg-muted"]:hover,
+.workspace-command-header button[class*="hover:bg-muted"]:hover {
+  background: hsl(var(--command-foreground) / 0.12);
+  color: hsl(var(--command-foreground));
+}
+
+.module-header > div:first-child button[class*="bg-primary"],
+.workspace-command-header > div:first-child button[class*="bg-primary"] {
+  border-color: hsl(var(--primary-container)) !important;
+  background: hsl(var(--primary-container)) !important;
+  color: hsl(var(--command-primary-button-fg)) !important;
+  box-shadow: 0 16px 32px -24px hsl(var(--primary-container) / 0.9) !important;
+}
+
+.module-header > div:first-child button[class*="bg-panel"],
+.workspace-command-header > div:first-child button[class*="bg-panel"] {
+  border-color: hsl(var(--border-subtle)) !important;
+  background: hsl(var(--surface-container-lowest)) !important;
+  color: hsl(var(--primary)) !important;
+}
+
+.module-header > div:first-child button[class*="bg-panel"]:hover,
+.workspace-command-header > div:first-child button[class*="bg-panel"]:hover {
+  background: hsl(var(--surface-container-low)) !important;
+  color: hsl(var(--primary)) !important;
+}
+
+.module-header [aria-label$="sections"],
+.workspace-command-tabs {
+  margin-top: 1.25rem;
+  display: flex;
+  gap: 0.375rem;
+  overflow-x: auto;
+  padding: 0.25rem;
+  border-radius: 1rem;
+  background: hsl(var(--command-rail-bg) / 0.82);
+  box-shadow: inset 0 0 0 1px hsl(var(--command-rail-border) / 0.5);
+}
+
+.module-header [aria-label$="sections"] button,
+.workspace-command-tabs button {
+  min-height: 2.25rem;
+  border-color: transparent !important;
+  border-radius: 0.75rem !important;
+  background: transparent !important;
+  color: hsl(var(--command-foreground) / 0.78) !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+.module-header [aria-label$="sections"] button:hover,
+.workspace-command-tabs button:hover {
+  background: hsl(var(--command-foreground) / 0.1) !important;
+  color: hsl(var(--command-foreground)) !important;
+}
+
+.module-header [aria-label$="sections"] button[class*="bg-primary"],
+.module-header [aria-label$="sections"] button[class*="shadow-line"],
+.workspace-command-tabs button.is-active {
+  background: hsl(var(--command-active-bg)) !important;
+  color: hsl(var(--command-active-fg)) !important;
+  box-shadow: 0 10px 24px -18px hsl(var(--deep-emerald-dark) / 0.65) !important;
+}
+
+.module-header [aria-label$="sections"] button span[class*="text-muted-foreground"] {
+  color: hsl(var(--command-muted) / 0.62) !important;
+}
+
+.workspace-command-tabs button span[class*="text-muted-foreground"] {
+  color: hsl(var(--command-muted) / 0.62) !important;
+}
+
+.module-header [aria-label$="sections"] button[class*="bg-primary"] span[class*="text-muted-foreground"],
+.module-header [aria-label$="sections"] button[class*="shadow-line"] span[class*="text-muted-foreground"],
+.workspace-command-tabs button.is-active span[class*="text-muted-foreground"] {
+  color: hsl(var(--primary) / 0.68) !important;
+}
+
+.workspace-command-tabs.workspace-command-tabs-grid {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.75rem;
 }
 
 .view-enter {

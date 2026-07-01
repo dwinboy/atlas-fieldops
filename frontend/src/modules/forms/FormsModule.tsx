@@ -45,6 +45,7 @@ import { useContextualBack } from "@/hooks/useContextualBack";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
+import { ModuleHeader } from "@/components/shared/ModuleHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyMini } from "@/components/ui/empty-mini";
@@ -1987,29 +1988,20 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
 
   return (
     <section className="space-y-3">
-      <div className="module-header rounded-xl p-3.5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="max-w-3xl">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="collect">OPERATIONS</Badge>
-              <Badge
-                tone={summary.forms_with_quality_issues ? "warning" : "success"}
-              >
-                {summary.forms_with_quality_issues
-                  ? `${summary.forms_with_quality_issues} quality alerts`
-                  : "Forms healthy"}
-              </Badge>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight">Forms</h1>
-              <HelpHint label="About Forms" title="Forms">
-                Design, publish, version, govern, and manage survey/data
-                collection forms with reference data, workflow, quality,
-                mapping, permissions, and audit controls.
-              </HelpHint>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
+      <ModuleHeader
+        activeTab={activeSection}
+        badges={
+          <>
+            <Badge tone="collect">OPERATIONS</Badge>
+            <Badge tone={summary.forms_with_quality_issues ? "warning" : "success"}>
+              {summary.forms_with_quality_issues
+                ? `${summary.forms_with_quality_issues} quality alerts`
+                : "Forms healthy"}
+            </Badge>
+          </>
+        }
+        actions={
+          <>
             <Button
               disabled={!canManageForms}
               onClick={() => {
@@ -2041,29 +2033,16 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
               <Download aria-hidden="true" />
               Export
             </Button>
-          </div>
-        </div>
-        <div
-          className="mt-3 flex gap-1.5 overflow-x-auto product-scrollbar"
-          aria-label="Forms sections"
-        >
-          {formsSections.map((section) => (
-            <button
-              className={cn(
-                "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
-                activeSection === section.id
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "bg-surface-container-lowest hover:bg-muted",
-              )}
-              key={section.id}
-              onClick={() => openFormsSection(section.id)}
-              type="button"
-            >
-              {section.label}
-            </button>
-          ))}
-        </div>
-      </div>
+          </>
+        }
+        helpLabel="About Forms"
+        helpText="Design, publish, version, govern, and manage survey/data collection forms with reference data, workflow, quality, mapping, permissions, and audit controls."
+        helpTitle="Forms"
+        onSelectTab={openFormsSection}
+        tabs={formsSections}
+        tabsLabel="Forms sections"
+        title="Forms"
+      />
 
       {selectedForm ? (
         <FormDetailWorkspace
@@ -8446,13 +8425,7 @@ function MetricCard({
   label: string;
   value: string | number;
 }) {
-  return (
-    <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3 shadow-card">
-      <Icon aria-hidden="true" className="text-primary" size={17} />
-      <p className="mt-3 text-xl font-semibold leading-tight">{value}</p>
-      <p className="mt-0.5 text-xs text-muted-foreground">{label}</p>
-    </div>
-  );
+  return <KpiShard icon={Icon} label={label} value={value} />;
 }
 
 function Signal({

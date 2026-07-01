@@ -1,0 +1,6 @@
+{
+  "name": "Field Operations Dashboard",
+  "description": "A high-fidelity Mission Control and Field Operations dashboard for managing field teams and workflows.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
