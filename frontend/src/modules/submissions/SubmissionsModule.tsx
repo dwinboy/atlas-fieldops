@@ -1599,6 +1599,7 @@ export function SubmissionsModule({
                   }
                 : undefined
             }
+            loading={!preview && submissionsQuery.isLoading}
             title="Submission list"
           />
         </section>

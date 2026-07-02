@@ -9,6 +9,7 @@ import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { ActionMenu } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 export type TableColumn<T> = {
@@ -91,6 +92,7 @@ export function DataTable<T>({
   emptyAction,
   emptyDescription,
   emptyLabel,
+  loading = false,
   rows,
   searchLabel,
   selection,
@@ -100,6 +102,8 @@ export function DataTable<T>({
   emptyAction?: TableEmptyAction;
   emptyDescription?: string;
   emptyLabel: string;
+  /** Render skeleton rows (matching the final table layout) while data loads. */
+  loading?: boolean;
   rows: T[];
   searchLabel: string;
   selection?: TableSelection<T>;
@@ -282,7 +286,21 @@ export function DataTable<T>({
         </div>
       </div>
 
-      <div className={cn("divide-y md:hidden", isFullscreen && "min-h-0 flex-1 overflow-y-auto product-scrollbar")}>
+      {loading ? (
+        <div aria-busy="true" aria-label={`Loading ${title}`} className="space-y-0 divide-y divide-border-subtle">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div className="flex items-center gap-4 px-4 py-3" key={index}>
+              <Skeleton className="h-4 w-1/5" />
+              <Skeleton className="h-4 w-1/4" />
+              <Skeleton className="hidden h-4 w-1/6 md:block" />
+              <Skeleton className="hidden h-4 flex-1 md:block" />
+              <Skeleton className="ml-auto h-6 w-16 rounded-full" />
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <div className={cn("divide-y md:hidden", loading && "hidden", isFullscreen && "min-h-0 flex-1 overflow-y-auto product-scrollbar")}>
         {pagedRows.map((row, index) => {
           const rowIndex = safePage * pageSize + index;
           const active = activeRowIndex === rowIndex;
@@ -338,7 +356,7 @@ export function DataTable<T>({
         ) : null}
       </div>
 
-      {filteredRows.length === 0 ? (
+      {loading ? null : filteredRows.length === 0 ? (
         <div className="hidden px-4 py-12 md:block">{emptyContent}</div>
       ) : (
       <div

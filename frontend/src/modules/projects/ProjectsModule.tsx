@@ -1764,6 +1764,7 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
             }
             emptyDescription="Projects hold your forms, field teams, entities, metrics, and reports. Create one to set up the operating context first."
             emptyLabel="No projects match this view yet"
+            loading={!preview && projectsQuery.isLoading}
             rows={filteredProjects}
             searchLabel="Search projects, funders, clients, owners, countries"
             title="Project list"
