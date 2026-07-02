@@ -2,6 +2,7 @@ import {
   Activity,
   AlertTriangle,
   ArrowUpRight,
+  ChevronRight,
   BarChart3,
   BookOpenCheck,
   CheckCircle2,
@@ -24,8 +25,12 @@ import {
   UsersRound,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
+
+// Leaflet needs the browser; load the dashboard map client-side only.
+const EmbeddedMap = dynamic(() => import("@/modules/mapping/EmbeddedMap"), { ssr: false });
 
 import { ActivityTimeline } from "@/components/ActivityTimeline";
 import {
@@ -1471,16 +1476,34 @@ export function Dashboard({ token, principal }: DashboardProps) {
               <div className="mt-3 flex flex-wrap gap-2">
                 {actionQueueItems.map((item) => (
                   <button
-                    className="flex items-center gap-2 rounded-xl border bg-surface-container-lowest px-3 py-2 text-left text-sm transition hover:-translate-y-0.5 hover:border-primary/35 hover:bg-primary/5 hover:shadow-elevated"
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left text-sm shadow-sm transition hover:shadow-card-hover",
+                      item.tone === "danger"
+                        ? "border-danger/20 bg-danger/8 hover:border-danger/40"
+                        : item.tone === "warning"
+                          ? "border-warning/25 bg-warning/8 hover:border-warning/45"
+                          : "border-primary/20 bg-primary/8 hover:border-primary/40",
+                    )}
                     key={item.label}
                     onClick={() =>
                       handleAttention(item.label, item.view, item.result)
                     }
                     type="button"
                   >
-                    <Badge tone={item.tone}>{item.count.toLocaleString()}</Badge>
+                    <span
+                      className={cn(
+                        "text-base font-bold tabular-nums",
+                        item.tone === "danger"
+                          ? "text-danger"
+                          : item.tone === "warning"
+                            ? "text-warning"
+                            : "text-primary",
+                      )}
+                    >
+                      {item.count.toLocaleString()}
+                    </span>
                     <span className="font-medium">{item.label}</span>
-                    <ArrowUpRight
+                    <ChevronRight
                       aria-hidden="true"
                       className="text-muted-foreground"
                       size={14}
@@ -1527,306 +1550,239 @@ export function Dashboard({ token, principal }: DashboardProps) {
               ))}
         </div>
 
-        <section
-          aria-labelledby="manager-command-center-title"
-          className="mt-5 rounded-2xl border border-border-subtle bg-surface-container-lowest p-5 shadow-card"
-        >
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge tone="support">Manager command center</Badge>
-                <Badge tone={pendingManagerActions ? "warning" : "success"}>
-                  {pendingManagerActions
-                    ? `${pendingManagerActions.toLocaleString()} action(s)`
-                    : "No urgent action"}
-                </Badge>
-              </div>
-              <h2
-                className="mt-2 text-lg font-semibold tracking-tight"
-                id="manager-command-center-title"
-              >
-                What needs management attention today
-              </h2>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-                One place to review field officer activity, role profiles, sync
-                health, approvals, visit requests, data quality issues, and
-                project coverage before work slows down in the field.
-              </p>
-            </div>
-            <Button
-              onClick={() =>
-                openView({
-                  label: pendingManagerActions
-                    ? "Open urgent management work"
-                    : "Open field operations",
-                  result: pendingManagerActions
-                    ? "Opening Submissions first because pending approvals, visit requests, quality flags, or stale sync items need management action."
-                    : "Opening Field Operations so managers can inspect field officers, assignments, devices, visits, and readiness.",
-                  view: pendingManagerActions ? "submissions" : "officers",
-                })
-              }
-              type="button"
-              variant={pendingManagerActions ? "primary" : "secondary"}
-            >
-              {pendingManagerActions ? "Open priority work" : "Open operations"}
-              <ArrowUpRight aria-hidden="true" />
-            </Button>
-          </div>
-
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-7">
-            {dashboardLoading
-              ? Array.from({ length: 7 }).map((_, index) => (
-                  <div
-                    className="rounded-xl border bg-background/80 p-3"
-                    key={index}
-                  >
-                    <Skeleton className="h-4 w-2/3" />
-                    <Skeleton className="mt-3 h-7 w-1/2" />
-                    <Skeleton className="mt-3 h-12 w-full" />
-                  </div>
-                ))
-              : managerCommandCards.map((card) => {
-                  const Icon = card.icon;
-
-                  return (
-                    <button
-                      className="group flex min-h-[156px] flex-col justify-between rounded-xl border bg-background/80 p-3 text-left shadow-line transition hover:-translate-y-0.5 hover:border-primary/35 hover:bg-primary/5 hover:shadow-elevated"
-                      key={card.label}
-                      onClick={() =>
-                        openView({
-                          label: card.label,
-                          result: card.result,
-                          view: card.view,
-                        })
-                      }
-                      type="button"
-                    >
-                      <div>
-                        <div className="flex items-start justify-between gap-2">
-                          <Badge tone={card.tone}>{card.label}</Badge>
-                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-surface-container-lowest text-primary transition group-hover:bg-primary group-hover:text-primary-foreground">
-                            <Icon aria-hidden="true" size={16} />
-                          </span>
-                        </div>
-                        <p className="mt-3 text-2xl font-semibold tabular-nums tracking-tight">
-                          {card.value}
-                        </p>
-                        <p className="mt-2 line-clamp-3 text-xs leading-5 text-muted-foreground">
-                          {card.detail}
-                        </p>
-                      </div>
-                      <span className="mt-3 text-xs font-medium text-primary">
-                        {card.action}
-                      </span>
-                    </button>
-                  );
-                })}
-          </div>
-        </section>
-
-        <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px_360px]">
-          <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-5 shadow-card">
-            <div className="flex items-center justify-between gap-3">
+        <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+          <section
+            aria-label="Field sync and coverage"
+            className="flex flex-col overflow-hidden rounded-2xl border border-border-subtle bg-surface-container-lowest shadow-card"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-5">
               <div>
-                <h2 className="text-sm font-semibold">Recent alerts</h2>
+                <h2 className="text-sm font-semibold">Field sync &amp; coverage</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Operational exceptions that need management attention.
+                  Live GPS evidence from synced submissions across your projects.
                 </p>
               </div>
+              <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
+                Live
+              </span>
+            </div>
+            <div className="mt-4 min-h-[320px] flex-1">
+              {dashboardLoading ? (
+                <Skeleton className="h-full min-h-[320px] w-full rounded-none" />
+              ) : dashboardSubmissions.some(
+                  (submission) =>
+                    Number.isFinite(submission.latitude) &&
+                    Number.isFinite(submission.longitude),
+                ) ? (
+                <EmbeddedMap
+                  points={dashboardSubmissions
+                    .filter(
+                      (submission) =>
+                        Number.isFinite(submission.latitude) &&
+                        Number.isFinite(submission.longitude),
+                    )
+                    .map((submission) => ({
+                      id: submission.id,
+                      lat: submission.latitude as number,
+                      lng: submission.longitude as number,
+                      label: submission.status,
+                      status: submission.status,
+                    }))}
+                />
+              ) : (
+                <div className="flex h-full min-h-[320px] items-center justify-center bg-surface-container-low/60 px-6 text-center text-sm text-muted-foreground">
+                  GPS-tagged submissions will appear on this map as field
+                  officers sync collected data.
+                </div>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle bg-surface-container-low/50 px-5 py-3">
+              <div className="flex flex-wrap gap-6">
+                {[
+                  ["Mapped records", coverageOverview.locatedSubmissions.toLocaleString()],
+                  [
+                    "Quality flags",
+                    (effectiveSummary?.quality_flags ?? dashboardQualitySignals.length).toLocaleString(),
+                  ],
+                  ["Sync health", `${syncProgressPercent}%`],
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      {label}
+                    </p>
+                    <p className="text-lg font-semibold tabular-nums">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <Button
+                onClick={() =>
+                  openView({
+                    label: "Expand map view",
+                    result:
+                      "Opening Mapping so teams can inspect project maps, submission maps, coverage, boundaries, and GPS quality.",
+                    view: "map",
+                  })
+                }
+                type="button"
+                variant="ghost"
+              >
+                Expand view
+                <ArrowUpRight aria-hidden="true" />
+              </Button>
+            </div>
+          </section>
+
+          <section
+            aria-label="Priority work"
+            className="flex flex-col rounded-2xl border border-border-subtle bg-surface-container-lowest p-5 shadow-card"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold">Priority work</h2>
               <Badge tone={recentAlerts.length ? "warning" : "success"}>
                 {recentAlerts.length ? `${recentAlerts.length} open` : "Clear"}
               </Badge>
             </div>
-            <div className="mt-4 divide-y">
-              {recentAlerts.length ? (
-                recentAlerts.map((alert) => (
-                  <button
-                    className="grid w-full grid-cols-[1fr_auto] gap-3 py-3 text-left transition hover:bg-muted/35"
-                    key={alert.label}
-                    onClick={() =>
-                      handleAttention(alert.label, alert.view, alert.detail)
-                    }
-                    type="button"
-                  >
-                    <div>
-                      <p className="text-sm font-medium">{alert.label}</p>
-                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                        {alert.detail}
-                      </p>
+            <div className="mt-3 flex-1 space-y-2.5">
+              {dashboardLoading
+                ? Array.from({ length: 3 }).map((_, index) => (
+                    <div className="rounded-xl border border-border-subtle p-3" key={index}>
+                      <Skeleton className="h-4 w-1/3" />
+                      <Skeleton className="mt-2 h-4 w-2/3" />
+                      <Skeleton className="mt-2 h-8 w-full" />
                     </div>
-                    <Badge tone={alert.tone}>{alert.value}</Badge>
-                  </button>
-                ))
-              ) : (
-                <div className="py-5 text-sm text-muted-foreground">
-                  No active alerts from live project, form, review, quality, or
-                  sync data.
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-5 shadow-card">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold">Approval queue</h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Submission review status across active forms.
-                </p>
-              </div>
-              <ClipboardCheck
-                aria-hidden="true"
-                className="text-muted-foreground"
-                size={18}
-              />
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              {[
-                ["Pending", approvalOverview.pending, "submissions", "Opening pending review submissions."],
-                ["Approved", approvalOverview.approved, "submissions", "Opening approved submission results."],
-                ["Returned", approvalOverview.returned, "submissions", "Opening returned submissions that need correction."],
-                ["Rejected", approvalOverview.rejected, "submissions", "Opening rejected submission results."],
-              ].map(([label, value, view, result]) => (
-                <button
-                  className="rounded-xl border bg-background/80 p-3 text-left transition hover:border-primary/35 hover:bg-primary/5"
-                  key={label}
-                  onClick={() =>
-                    openView({
-                      label: String(label),
-                      result: String(result),
-                      view: view as WorkspaceView,
-                    })
-                  }
-                  type="button"
-                >
-                  <p className="text-xs text-muted-foreground">{label}</p>
-                  <p className="mt-1 text-lg font-semibold tabular-nums">
-                    {Number(value).toLocaleString()}
-                  </p>
-                </button>
-              ))}
-            </div>
-            <div className="mt-4 rounded-xl border bg-background/80 p-3">
-              <ApprovalStatusChart
-                approved={approvalOverview.approved}
-                pending={approvalOverview.pending}
-                rejected={approvalOverview.rejected}
-                returned={approvalOverview.returned}
-              />
-            </div>
-            <div className="mt-4">
-              <div className="mb-1 flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Reviewed</span>
-                <span className="font-medium">{reviewCompletionPercent}%</span>
-              </div>
-              <div className="h-2 rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-primary"
-                  style={{ width: `${reviewCompletionPercent}%` }}
-                />
-              </div>
+                  ))
+                : recentAlerts.length ? (
+                    recentAlerts.map((alert) => (
+                      <button
+                        className="w-full rounded-xl border border-border-subtle bg-surface-container-lowest p-3 text-left shadow-sm transition hover:border-primary/35 hover:bg-primary/5"
+                        key={alert.label}
+                        onClick={() =>
+                          handleAttention(alert.label, alert.view, alert.detail)
+                        }
+                        type="button"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <Badge tone={alert.tone}>{alert.value}</Badge>
+                        </div>
+                        <p className="mt-2 text-sm font-semibold leading-5">
+                          {alert.label}
+                        </p>
+                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
+                          {alert.detail}
+                        </p>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="flex h-full min-h-[160px] items-center justify-center rounded-xl border border-dashed border-border-subtle px-4 text-center text-sm text-muted-foreground">
+                      No active alerts from live project, form, review, quality,
+                      or sync data.
+                    </div>
+                  )}
             </div>
             <Button
-              className="mt-4 w-full"
+              className="mt-4 w-full border-dashed"
               onClick={() =>
                 openView({
-                  label: "Open approval queue",
+                  label: "View all operations",
                   result:
-                    "Opening Submissions so reviewers can approve, reject, return, or archive collected data.",
-                  view: "submissions",
+                    "Opening Field Operations so managers can inspect field officers, assignments, devices, visits, and readiness.",
+                  view: "officers",
                 })
               }
               type="button"
               variant="secondary"
             >
-              Open submissions
-            </Button>
-          </section>
-
-          <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-5 shadow-card">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold">Map overview</h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  GPS coverage and mapped evidence readiness.
-                </p>
-              </div>
-              <MapPinned
-                aria-hidden="true"
-                className="text-muted-foreground"
-                size={18}
-              />
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <button
-                className="rounded-xl border bg-background/80 p-3 text-left transition hover:border-primary/35 hover:bg-primary/5"
-                onClick={() =>
-                  openView({
-                    label: "Mapped records",
-                    result: "Opening Submission Maps so teams can inspect collected records with GPS coordinates.",
-                    view: "map",
-                  })
-                }
-                type="button"
-              >
-                <p className="text-xs text-muted-foreground">Mapped records</p>
-                <p className="mt-1 text-lg font-semibold tabular-nums">
-                  {coverageOverview.locatedSubmissions.toLocaleString()}
-                </p>
-              </button>
-              <button
-                className="rounded-xl border bg-background/80 p-3 text-left transition hover:border-primary/35 hover:bg-primary/5"
-                onClick={() =>
-                  openView({
-                    label: "Mapped locations",
-                    result: "Opening Mapping so teams can review location coverage and map readiness.",
-                    view: "map",
-                  })
-                }
-                type="button"
-              >
-                <p className="text-xs text-muted-foreground">Locations</p>
-                <p className="mt-1 text-lg font-semibold tabular-nums">
-                  {coverageOverview.uniqueLocations.toLocaleString()}
-                </p>
-              </button>
-            </div>
-            <div className="mt-4 space-y-3">
-              {[
-                ["Coverage", coverageOverview.coveragePercent],
-                ["Sync", syncProgressPercent],
-              ].map(([label, value]) => (
-                <div key={label}>
-                  <div className="mb-1 flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">{label}</span>
-                    <span className="font-medium">{Number(value)}%</span>
-                  </div>
-                  <div className="h-2 rounded-full bg-muted">
-                    <div
-                      className="h-full rounded-full bg-primary"
-                      style={{ width: `${Number(value)}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-            <Button
-              className="mt-4 w-full"
-              onClick={() =>
-                openView({
-                  label: "Open mapping",
-                  result:
-                    "Opening Mapping so teams can inspect project maps, submission maps, coverage, boundaries, and GPS quality.",
-                  view: "map",
-                })
-              }
-              type="button"
-              variant="secondary"
-            >
-              Open mapping
+              View all operations
             </Button>
           </section>
         </div>
+
+        <section
+          aria-label="Review pipeline"
+          className="mt-5 rounded-2xl border border-border-subtle bg-surface-container-lowest p-5 shadow-card"
+        >
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div>
+              <div className="flex items-start gap-4">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/10 text-primary">
+                  <ClipboardCheck aria-hidden="true" size={22} />
+                </span>
+                <div>
+                  <h2 className="text-sm font-semibold">Review pipeline</h2>
+                  <p className="mt-1 max-w-xl text-sm leading-6 text-muted-foreground">
+                    Managing {dashboardSubmissions.length.toLocaleString()} collected
+                    record(s) through the Submitted → Review → Decision workflow.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {[
+                  ["Pending", approvalOverview.pending, "Opening pending review submissions."],
+                  ["Approved", approvalOverview.approved, "Opening approved submission results."],
+                  ["Returned", approvalOverview.returned, "Opening returned submissions that need correction."],
+                  ["Rejected", approvalOverview.rejected, "Opening rejected submission results."],
+                ].map(([label, value, result]) => (
+                  <button
+                    className="rounded-xl border border-border-subtle bg-background/80 p-3 text-left transition hover:border-primary/35 hover:bg-primary/5"
+                    key={label}
+                    onClick={() =>
+                      openView({
+                        label: String(label),
+                        result: String(result),
+                        view: "submissions",
+                      })
+                    }
+                    type="button"
+                  >
+                    <p className="text-xs text-muted-foreground">{label}</p>
+                    <p className="mt-1 text-lg font-semibold tabular-nums">
+                      {Number(value).toLocaleString()}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-col justify-between gap-4">
+              <div className="rounded-xl border border-border-subtle bg-background/80 p-3">
+                <ApprovalStatusChart
+                  approved={approvalOverview.approved}
+                  pending={approvalOverview.pending}
+                  rejected={approvalOverview.rejected}
+                  returned={approvalOverview.returned}
+                />
+              </div>
+              <div>
+                <div className="mb-1 flex items-center justify-between text-xs">
+                  <span className="font-semibold uppercase tracking-wider text-muted-foreground">
+                    Reviewed
+                  </span>
+                  <span className="font-semibold tabular-nums">{reviewCompletionPercent}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{ width: `${reviewCompletionPercent}%` }}
+                  />
+                </div>
+                <Button
+                  className="mt-3 w-full"
+                  onClick={() =>
+                    openView({
+                      label: "Open approval queue",
+                      result:
+                        "Opening Submissions so reviewers can approve, reject, return, or archive collected data.",
+                      view: "submissions",
+                    })
+                  }
+                  type="button"
+                  variant="secondary"
+                >
+                  Open submissions
+                </Button>
+              </div>
+            </div>
+          </div>
+        </section>
       </section>
 
       <section
