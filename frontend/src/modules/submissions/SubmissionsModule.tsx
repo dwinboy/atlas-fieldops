@@ -679,6 +679,83 @@ export function SubmissionsModule({
   const selectedSubmission =
     submissions.find((submission) => submission.id === selectedSubmissionId) ??
     null;
+
+  // Saved views: named filter sets persisted per browser (no backend contract change).
+  // Reviewers doing the same triage daily restore a view in one click instead of
+  // rebuilding five filters.
+  const [savedViews, setSavedViews] = useState<
+    { name: string; filters: typeof submissionFilters }[]
+  >([]);
+  const [viewNameDraft, setViewNameDraft] = useState("");
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("atlas.submissions.savedViews");
+      if (raw) setSavedViews(JSON.parse(raw));
+    } catch {
+      /* corrupted or unavailable storage — start clean */
+    }
+  }, []);
+  function persistSavedViews(next: { name: string; filters: typeof submissionFilters }[]): void {
+    setSavedViews(next);
+    try {
+      window.localStorage.setItem("atlas.submissions.savedViews", JSON.stringify(next));
+    } catch {
+      /* storage full/unavailable — view still applies for this session */
+    }
+  }
+  const hasActiveQueueFilters = Object.values(submissionFilters).some(Boolean);
+  function saveCurrentView(): void {
+    const name = viewNameDraft.trim();
+    if (!name || !hasActiveQueueFilters) return;
+    persistSavedViews([
+      ...savedViews.filter((view) => view.name !== name),
+      { name, filters: { ...submissionFilters } },
+    ]);
+    setViewNameDraft("");
+  }
+
+  // Keyboard-driven review in the detail view: j/k step through the filtered queue,
+  // a approves, r opens the reject/return dialog. Skipped while typing or while the
+  // reject dialog is open, so shortcuts never fire mid-comment.
+  useEffect(() => {
+    function isTypingTarget(target: EventTarget | null): boolean {
+      if (!(target instanceof HTMLElement)) return false;
+      return (
+        target.isContentEditable ||
+        ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)
+      );
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (!selectedSubmission || quickRejectSubmission) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (isTypingTarget(event.target)) return;
+      if (event.key === "j" || event.key === "k") {
+        event.preventDefault();
+        if (!filteredSubmissions.length) return;
+        const index = filteredSubmissions.findIndex(
+          (submission) => submission.id === selectedSubmission.id,
+        );
+        const nextIndex =
+          event.key === "j"
+            ? Math.min(index + 1, filteredSubmissions.length - 1)
+            : Math.max(index - 1, 0);
+        const target = filteredSubmissions[index === -1 ? 0 : nextIndex];
+        if (target && target.id !== selectedSubmission.id) openSubmission(target);
+      } else if (event.key === "a") {
+        if (!canReview || reviewMutation.isPending || !isBulkReviewable(selectedSubmission)) return;
+        event.preventDefault();
+        quickReviewSubmission(selectedSubmission, "approve");
+      } else if (event.key === "r") {
+        if (!canReview) return;
+        event.preventDefault();
+        setQuickRejectSubmission(selectedSubmission);
+        setQuickRejectComment("");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   const selectedFormSchemaQuery = useQuery({
     queryKey: ["submission-form-schema", token, selectedSubmission?.form_id],
     queryFn: () => getFormSchema(token ?? "", selectedSubmission?.form_id ?? ""),
@@ -1237,6 +1314,33 @@ export function SubmissionsModule({
       />
 
       {selectedSubmission ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border-subtle bg-surface-container-lowest px-3 py-1.5 text-xs text-on-surface-variant shadow-card">
+          <span className="tabular-nums">
+            {(() => {
+              const queueIndex = filteredSubmissions.findIndex(
+                (submission) => submission.id === selectedSubmission.id,
+              );
+              return queueIndex === -1
+                ? "Not in the current filtered queue"
+                : `Record ${queueIndex + 1} of ${filteredSubmissions.length} in queue`;
+            })()}
+          </span>
+          <span className="hidden items-center gap-2 md:flex">
+            {[
+              ["j / k", "next / prev"],
+              ...(canReview ? ([["a", "approve"], ["r", "reject"]] as const) : []),
+            ].map(([keys, label]) => (
+              <span className="flex items-center gap-1" key={keys}>
+                <kbd className="rounded border border-border-subtle bg-muted/40 px-1.5 py-0.5 font-mono text-[10px]">
+                  {keys}
+                </kbd>
+                {label}
+              </span>
+            ))}
+          </span>
+        </div>
+      ) : null}
+      {selectedSubmission ? (
         <SubmissionDetailWorkspace
           canEditResponses={canEditResponses}
           canReview={canReview}
@@ -1301,6 +1405,60 @@ export function SubmissionsModule({
             onChange={setSubmissionFilters}
             submissions={visibleSubmissions}
           />
+          <div className="flex flex-wrap items-center gap-2 px-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">
+              Views
+            </span>
+            {savedViews.map((view) => (
+              <span
+                className="inline-flex items-center overflow-hidden rounded-full border border-border-subtle bg-surface-container-lowest text-xs shadow-sm"
+                key={view.name}
+              >
+                <button
+                  className="px-2.5 py-1 font-medium text-on-surface transition hover:bg-primary/10 hover:text-primary"
+                  onClick={() => setSubmissionFilters(view.filters)}
+                  type="button"
+                >
+                  {view.name}
+                </button>
+                <button
+                  aria-label={`Delete saved view ${view.name}`}
+                  className="border-l border-border-subtle px-1.5 py-1 text-muted-foreground transition hover:bg-danger/10 hover:text-danger"
+                  onClick={() =>
+                    persistSavedViews(savedViews.filter((item) => item.name !== view.name))
+                  }
+                  type="button"
+                >
+                  <XCircle aria-hidden="true" size={13} />
+                </button>
+              </span>
+            ))}
+            {savedViews.length === 0 ? (
+              <span className="text-xs text-on-surface-variant">
+                Filter the queue, then save it as a reusable view.
+              </span>
+            ) : null}
+            <div className="ml-auto flex items-center gap-1.5">
+              <Input
+                aria-label="Saved view name"
+                className="h-7 w-40 text-xs"
+                onChange={(event) => setViewNameDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") saveCurrentView();
+                }}
+                placeholder="Name this view"
+                value={viewNameDraft}
+              />
+              <Button
+                disabled={!viewNameDraft.trim() || !hasActiveQueueFilters}
+                onClick={saveCurrentView}
+                size="sm"
+                variant="secondary"
+              >
+                Save view
+              </Button>
+            </div>
+          </div>
           {quickRejectSubmission ? (
             <section className="rounded-xl border border-danger/30 bg-danger/8 p-3 shadow-line">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
