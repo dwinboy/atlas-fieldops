@@ -29,6 +29,7 @@ import { useEffect, useMemo, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { ModuleHeader } from "@/components/shared/ModuleHeader";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { CommandMetricCard } from "@/components/ui/command-metric-card";
 import { KpiShard } from "@/components/ui/kpi-shard";
 import { EmptyMini } from "@/components/ui/empty-mini";
 import { Button } from "@/components/ui/button";
@@ -788,15 +789,19 @@ function IndicatorsDashboard({
   return (
     <div className="space-y-3">
       <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-5">
-        {cards.map((card) => (
-          <KpiShard
-            key={card.label}
-            icon={card.icon}
-            label={card.label}
-            value={card.value}
-            onClick={() => onOpenSection(card.section)}
-          />
-        ))}
+        {cards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <CommandMetricCard
+              icon={<Icon aria-hidden="true" />}
+              key={card.label}
+              label={card.label}
+              onClick={() => onOpenSection(card.section)}
+              tone="success"
+              value={card.value}
+            />
+          );
+        })}
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">

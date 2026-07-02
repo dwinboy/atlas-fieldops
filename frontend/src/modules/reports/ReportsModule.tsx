@@ -36,6 +36,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { ModuleHeader } from "@/components/shared/ModuleHeader";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { CommandMetricCard } from "@/components/ui/command-metric-card";
 import { KpiShard } from "@/components/ui/kpi-shard";
 import { Button } from "@/components/ui/button";
 import { EmptyMini } from "@/components/ui/empty-mini";
@@ -2102,7 +2103,17 @@ function DashboardCard({ dashboard }: { dashboard: DashboardRecord }) {
 }
 
 function MetricCard({ icon: Icon, label, onClick, tone, value }: { icon: LucideIcon; label: string; onClick: () => void; tone: BadgeProps["tone"]; value: number }) {
-  return <KpiShard icon={Icon} label={label} onClick={onClick} tone={tone} value={value.toLocaleString()} />;
+  const commandTone =
+    tone === "success" || tone === "warning" || tone === "danger" ? tone : "neutral";
+  return (
+    <CommandMetricCard
+      icon={<Icon aria-hidden="true" />}
+      label={label}
+      onClick={onClick}
+      tone={commandTone}
+      value={value.toLocaleString()}
+    />
+  );
 }
 
 function Panel({ action, children, title }: { action?: ReactNode; children: ReactNode; title: string }) {

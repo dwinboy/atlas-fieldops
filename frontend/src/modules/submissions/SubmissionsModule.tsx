@@ -41,6 +41,7 @@ import { useEffect, useMemo, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { ModuleHeader } from "@/components/shared/ModuleHeader";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { CommandMetricCard } from "@/components/ui/command-metric-card";
 import { KpiShard } from "@/components/ui/kpi-shard";
 import { EmptyMini } from "@/components/ui/empty-mini";
 import { Button } from "@/components/ui/button";
@@ -1726,19 +1727,47 @@ function SubmissionsDashboard({
 
   return (
     <div className="space-y-3">
-      <div className="space-y-4">
-        {cardGroups.map((group) => (
-          <div key={group.label}>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {group.label}
+      <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
+        <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+              Review command board
             </p>
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {group.cards.map((card) => (
-                <KpiShard key={card.label} icon={card.icon} label={card.label} value={card.value} />
-              ))}
-            </div>
+            <h2 className="mt-1 text-xl font-extrabold tracking-tight text-on-surface">
+              Submission review at a glance
+            </h2>
           </div>
-        ))}
+          <p className="max-w-md text-xs font-medium leading-5 text-on-surface-variant">
+            Live status across collection volume, the review pipeline, and quality performance.
+          </p>
+        </div>
+        <div className="space-y-5">
+          {cardGroups.map((group) => (
+            <div key={group.label}>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">
+                {group.label}
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {group.cards.map((card) => {
+                  const Icon = card.icon;
+                  const tone =
+                    card.tone === "success" || card.tone === "warning" || card.tone === "danger" || card.tone === "neutral"
+                      ? card.tone
+                      : "neutral";
+                  return (
+                    <CommandMetricCard
+                      icon={<Icon aria-hidden="true" />}
+                      key={card.label}
+                      label={card.label}
+                      tone={tone}
+                      value={card.value}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">

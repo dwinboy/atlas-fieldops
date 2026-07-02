@@ -35,6 +35,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { ModuleHeader } from "@/components/shared/ModuleHeader";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { CommandMetricCard } from "@/components/ui/command-metric-card";
 import { KpiShard } from "@/components/ui/kpi-shard";
 import { EmptyMini } from "@/components/ui/empty-mini";
 import { Button } from "@/components/ui/button";
@@ -1652,16 +1653,23 @@ function MappingDashboard({
   ];
   return (
     <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-      {cards.map((card) => (
-        <KpiShard
-          key={card.label}
-          label={card.label}
-          value={card.value}
-          icon={card.icon}
-          onClick={() => onOpenSection(card.section)}
-          tone={card.tone}
-        />
-      ))}
+      {cards.map((card) => {
+        const Icon = card.icon;
+        const tone =
+          card.tone === "success" || card.tone === "warning" || card.tone === "danger"
+            ? card.tone
+            : "success";
+        return (
+          <CommandMetricCard
+            icon={<Icon aria-hidden="true" />}
+            key={card.label}
+            label={card.label}
+            onClick={() => onOpenSection(card.section)}
+            tone={tone}
+            value={card.value}
+          />
+        );
+      })}
       <Panel title="Recent GPS Activity">
         {preview ? (
           <>

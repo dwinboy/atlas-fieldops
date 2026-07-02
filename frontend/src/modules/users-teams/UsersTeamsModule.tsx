@@ -33,6 +33,7 @@ import { useContextualBack } from "@/hooks/useContextualBack";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { ModuleHeader } from "@/components/shared/ModuleHeader";
 import { Badge } from "@/components/ui/badge";
+import { CommandMetricCard } from "@/components/ui/command-metric-card";
 import { Button } from "@/components/ui/button";
 import { EmptyMini } from "@/components/ui/empty-mini";
 import { ActionMenu } from "@/components/ui/dropdown-menu";
@@ -2176,20 +2177,21 @@ function DashboardSection({
   return (
     <div className="space-y-5">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-        {cards.map((card) => (
-          <button
-            className="group rounded-2xl border border-[#bec9bf]/45 bg-white p-4 text-left shadow-sm transition duration-300 hover:-translate-y-0.5 hover:border-[#005232]/45 hover:shadow-md"
-            key={card.label}
-            onClick={() => onOpenSection(card.label === "Active Sessions" ? "activity-logs" : "users")}
-            type="button"
-          >
-            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#e7f7f1] text-[#005232] transition duration-300 group-hover:bg-[#005232] group-hover:text-white">
-              <card.icon aria-hidden="true" size={21} />
-            </span>
-            <p className="mt-4 text-2xl font-bold tracking-tight text-[#101e1a]">{card.value}</p>
-            <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-[#3f4942]/70">{card.label}</p>
-          </button>
-        ))}
+        {cards.map((card) => {
+          const Icon = card.icon;
+          const tone =
+            card.tone === "success" || card.tone === "danger" ? card.tone : "success";
+          return (
+            <CommandMetricCard
+              icon={<Icon aria-hidden="true" />}
+              key={card.label}
+              label={card.label}
+              onClick={() => onOpenSection(card.label === "Active Sessions" ? "activity-logs" : "users")}
+              tone={tone}
+              value={card.value}
+            />
+          );
+        })}
       </div>
       <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <div className={`${missionPanelClass} p-5`}>

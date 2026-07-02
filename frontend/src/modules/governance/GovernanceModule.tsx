@@ -27,6 +27,7 @@ import { GovernanceCommandCenter } from "@/components/GovernanceCommandCenter";
 import { ModuleHeader } from "@/components/shared/ModuleHeader";
 import { AccessDenied } from "@/components/ui/access-denied";
 import { Badge } from "@/components/ui/badge";
+import { CommandMetricCard } from "@/components/ui/command-metric-card";
 import { KpiShard } from "@/components/ui/kpi-shard";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
@@ -122,7 +123,7 @@ function MetricCard({
   tone?: "danger" | "neutral" | "success" | "warning";
   value: string | number;
 }) {
-  return <KpiShard icon={icon} label={label} tone={tone} value={value} />;
+  return <CommandMetricCard icon={icon} label={label} tone={tone} value={value} />;
 }
 
 function SectionPanel({

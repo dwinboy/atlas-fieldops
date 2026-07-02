@@ -31,6 +31,7 @@ import { useEffect, useMemo, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { ModuleHeader } from "@/components/shared/ModuleHeader";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { CommandMetricCard } from "@/components/ui/command-metric-card";
 import { Button } from "@/components/ui/button";
 import { EmptyMini } from "@/components/ui/empty-mini";
 import { HelpHint } from "@/components/ui/help-hint";
@@ -2459,42 +2460,20 @@ function MetricCard({
   tone: BadgeProps["tone"];
   value: number | string;
 }) {
-  const toneStyle =
-    tone === "danger"
-      ? "bg-danger/10 text-danger"
-      : tone === "warning"
-        ? "bg-warning/10 text-warning"
-        : tone === "success"
-          ? "bg-success/10 text-success"
-          : "bg-muted text-muted-foreground";
-  const content = (
-    <>
-      <div className="flex items-start justify-between gap-3">
-        <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">{label}</span>
-        <span className={cn("flex size-10 items-center justify-center rounded-xl transition group-hover:scale-105", toneStyle)}>
-          <Icon aria-hidden="true" size={18} />
-        </span>
-      </div>
-      <p className="mt-5 text-3xl font-black tracking-tight text-on-surface">
-        {typeof value === "number" ? value.toLocaleString() : value}
-      </p>
-      <div className="mt-3 flex items-center gap-2 text-[11px] font-bold text-primary">
-        <span className={cn("size-2 rounded-full", tone === "danger" ? "bg-red-500" : tone === "warning" ? "bg-amber-500" : "bg-emerald-500")} />
-        Live queue
-      </div>
-    </>
+  const commandTone =
+    tone === "success" || tone === "warning" || tone === "danger" ? tone : "neutral";
+  return (
+    <CommandMetricCard
+      icon={<Icon aria-hidden="true" size={18} />}
+      label={label}
+      onClick={onClick}
+      tag="Live queue"
+      tone={commandTone}
+      value={typeof value === "number" ? value.toLocaleString() : value}
+    />
   );
-  const className = "group rounded-2xl border border-border-subtle bg-surface-container-lowest p-5 text-left shadow-card transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-card-hover";
-
-  if (onClick) {
-    return (
-      <button className={className} onClick={onClick} type="button">
-        {content}
-      </button>
-    );
-  }
-  return <div className={className}>{content}</div>;
 }
+
 
 function Panel({ action, children, title }: { action?: ReactNode; children: ReactNode; title: string }) {
   return (
