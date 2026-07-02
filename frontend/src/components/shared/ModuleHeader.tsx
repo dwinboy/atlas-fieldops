@@ -47,7 +47,7 @@ export function ModuleHeader<T extends string>({
   title,
 }: ModuleHeaderProps<T>) {
   return (
-    <div className={cn("module-header p-3.5", className)}>
+    <div className={cn("workspace-command-header p-4", className)}>
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className={cn("min-w-0", icon ? "flex max-w-4xl gap-3" : "max-w-3xl")}>
           {icon ? (
@@ -88,11 +88,6 @@ export function ModuleHeader<T extends string>({
               type="button"
             >
               <span>{tab.label}</span>
-              {tab.route ? (
-                <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
-                  {tab.route}
-                </span>
-              ) : null}
             </button>
           ))}
         </div>

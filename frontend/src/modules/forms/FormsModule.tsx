@@ -50,6 +50,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyMini } from "@/components/ui/empty-mini";
 import { EmptyState } from "@/components/ui/empty-state";
+import { CommandMetricCard } from "@/components/ui/command-metric-card";
 import { KpiShard } from "@/components/ui/kpi-shard";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
@@ -2239,16 +2240,47 @@ function FormsDashboard({
     .slice(0, 4);
   return (
     <div className="space-y-3">
-      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-        {cards.map((card) => (
-          <KpiShard
-            key={card.label}
-            label={card.label}
-            value={card.value}
-            icon={card.icon}
-            onClick={() => onOpenSection(card.section)}
-          />
-        ))}
+      <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
+        <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+              Forms command board
+            </p>
+            <h2 className="mt-1 text-xl font-extrabold tracking-tight text-on-surface">
+              Form operations at a glance
+            </h2>
+          </div>
+          <p className="max-w-md text-xs font-medium leading-5 text-on-surface-variant">
+            Live status across drafts, publishing, approvals, active collection, and quality.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {cards.map((card) => {
+            const Icon = card.icon;
+            const tone =
+              card.label === "Quality Issues"
+                ? summary.forms_with_quality_issues
+                  ? "warning"
+                  : "success"
+                : card.label === "Pending Approval"
+                  ? summary.pending_approval_forms
+                    ? "warning"
+                    : "success"
+                  : card.label === "Draft Forms" || card.label === "Archived Forms"
+                    ? "neutral"
+                    : "success";
+            return (
+              <CommandMetricCard
+                icon={<Icon aria-hidden="true" />}
+                key={card.label}
+                label={card.label}
+                onClick={() => onOpenSection(card.section)}
+                tone={tone}
+                value={card.value}
+              />
+            );
+          })}
+        </div>
       </div>
       <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">

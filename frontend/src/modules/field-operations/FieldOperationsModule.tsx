@@ -30,6 +30,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { AccessDenied, isPermissionError } from "@/components/ui/access-denied";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { CommandMetricCard, type CommandMetricTone } from "@/components/ui/command-metric-card";
 import { Button } from "@/components/ui/button";
 import { EmptyMini } from "@/components/ui/empty-mini";
 import { ActionMenu, type ActionMenuItem } from "@/components/ui/dropdown-menu";
@@ -475,7 +476,7 @@ function downloadCsv(
   URL.revokeObjectURL(url);
 }
 
-type MetricCardTone = "danger" | "neutral" | "success" | "warning";
+type MetricCardTone = CommandMetricTone;
 
 function MetricCard({
   icon,
@@ -490,62 +491,9 @@ function MetricCard({
   tone?: MetricCardTone;
   value: string | number;
 }) {
-  const toneStyles: Record<MetricCardTone, { icon: string; ring: string; text: string }> = {
-    danger: {
-      icon: "bg-danger/10 text-danger",
-      ring: "hover:border-danger/30",
-      text: "text-danger",
-    },
-    neutral: {
-      icon: "bg-muted text-muted-foreground",
-      ring: "hover:border-primary/25",
-      text: "text-muted-foreground",
-    },
-    success: {
-      icon: "bg-success/10 text-success",
-      ring: "hover:border-success/30",
-      text: "text-success",
-    },
-    warning: {
-      icon: "bg-warning/10 text-warning",
-      ring: "hover:border-warning/30",
-      text: "text-warning",
-    },
-  };
-  const styles = toneStyles[tone];
-  const cardClassName = cn(
-    "group min-h-[116px] rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 text-left shadow-card transition duration-200",
-    "hover:-translate-y-0.5 hover:shadow-card-hover",
-    styles.ring,
-    onClick ? "cursor-pointer" : "",
-  );
-  const content = (
-    <>
-      <div className="flex items-center justify-between gap-3">
-        <span className={cn("flex size-10 items-center justify-center rounded-xl transition group-hover:scale-105", styles.icon)}>
-          {icon}
-        </span>
-        <span className={cn("text-[10px] font-bold uppercase tracking-[0.18em]", styles.text)}>
-          Live
-        </span>
-      </div>
-      <div className="mt-5">
-        <p className="text-2xl font-extrabold tracking-tight text-on-surface">{value}</p>
-        <p className="mt-1 text-xs font-semibold text-on-surface-variant">{label}</p>
-      </div>
-    </>
-  );
-
-  if (onClick) {
-    return (
-      <button className={cardClassName} onClick={onClick} type="button">
-        {content}
-      </button>
-    );
-  }
-
-  return <div className={cardClassName}>{content}</div>;
+  return <CommandMetricCard icon={icon} label={label} onClick={onClick} tone={tone} value={value} />;
 }
+
 
 function caseStatusTone(status: EntityStatus): BadgeProps["tone"] {
   if (status === "Active") return "success";
