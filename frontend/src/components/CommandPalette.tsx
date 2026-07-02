@@ -96,7 +96,7 @@ export function CommandPalette({ principal }: { principal?: CurrentPrincipal | n
             type="button"
           >
             <span className="flex min-w-0 items-center gap-3">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-panel">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-surface-container-lowest">
                 <Icon aria-hidden="true" size={15} />
               </span>
               <span className="min-w-0">
@@ -108,7 +108,7 @@ export function CommandPalette({ principal }: { principal?: CurrentPrincipal | n
           </button>
           );
         }) : (
-          <div className="rounded-lg border bg-panel p-5 text-center">
+          <div className="rounded-lg border bg-surface-container-lowest p-5 text-center">
             <Search aria-hidden="true" className="mx-auto text-muted-foreground" size={22} />
             <h3 className="mt-3 text-sm font-semibold">No matching action</h3>
             <p className="mx-auto mt-2 max-w-sm text-xs leading-5 text-muted-foreground">

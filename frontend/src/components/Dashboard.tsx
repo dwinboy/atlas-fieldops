@@ -1471,7 +1471,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
               <div className="mt-3 flex flex-wrap gap-2">
                 {actionQueueItems.map((item) => (
                   <button
-                    className="flex items-center gap-2 rounded-xl border bg-panel px-3 py-2 text-left text-sm transition hover:-translate-y-0.5 hover:border-primary/35 hover:bg-primary/5 hover:shadow-elevated"
+                    className="flex items-center gap-2 rounded-xl border bg-surface-container-lowest px-3 py-2 text-left text-sm transition hover:-translate-y-0.5 hover:border-primary/35 hover:bg-primary/5 hover:shadow-elevated"
                     key={item.label}
                     onClick={() =>
                       handleAttention(item.label, item.view, item.result)
@@ -1604,7 +1604,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                       <div>
                         <div className="flex items-start justify-between gap-2">
                           <Badge tone={card.tone}>{card.label}</Badge>
-                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-panel text-primary transition group-hover:bg-primary group-hover:text-primary-foreground">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-surface-container-lowest text-primary transition group-hover:bg-primary group-hover:text-primary-foreground">
                             <Icon aria-hidden="true" size={16} />
                           </span>
                         </div>
@@ -1953,7 +1953,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                             "Collects survey data for the assigned project."}
                         </p>
                       </div>
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-panel text-primary">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-surface-container-lowest text-primary">
                         <ClipboardList aria-hidden="true" size={18} />
                       </span>
                     </div>
@@ -1966,7 +1966,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                         ["Approved", item.approved.toLocaleString()],
                       ].map(([label, value]) => (
                         <div
-                          className="rounded-xl border bg-panel/80 p-3"
+                          className="rounded-xl border bg-surface-container-lowest/80 p-3"
                           key={label}
                         >
                           <p className="text-xs text-muted-foreground">
@@ -2160,7 +2160,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
           <div className="mt-5 rounded-2xl border border-dashed bg-background/80 p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex gap-3">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border bg-panel text-primary">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border bg-surface-container-lowest text-primary">
                   <ClipboardList aria-hidden="true" size={20} />
                 </span>
                 <div>
@@ -2446,7 +2446,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                   <div className="flex items-start gap-3">
                     <span
                       className={cn(
-                        "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-panel",
+                        "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-surface-container-lowest",
                         step.complete ? "text-success" : "text-primary",
                       )}
                     >
@@ -2635,7 +2635,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                 type="button"
               >
                 <div className="flex items-center gap-3">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-panel text-primary">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-surface-container-lowest text-primary">
                     <Icon aria-hidden="true" size={16} />
                   </span>
                   <Badge>{index + 1}</Badge>

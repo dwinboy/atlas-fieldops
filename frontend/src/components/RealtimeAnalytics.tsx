@@ -54,7 +54,7 @@ export function RealtimeAnalytics() {
         </section>
       ) : null}
 
-      <section className="rounded-lg border bg-panel p-4" aria-labelledby="stream-title">
+      <section className="rounded-lg border bg-surface-container-lowest p-4" aria-labelledby="stream-title">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <RadioTower aria-hidden="true" className="text-primary" size={18} />
@@ -105,7 +105,7 @@ export function RealtimeAnalytics() {
         ].map(([label, value]) => (
           <button
             key={label}
-            className="rounded-lg border bg-panel p-4 text-left transition hover:border-primary/30 hover:bg-primary/5"
+            className="rounded-lg border bg-surface-container-lowest p-4 text-left transition hover:border-primary/30 hover:bg-primary/5"
             onClick={() =>
               setAnalyticsResult(
                 `${label}: ${value}. Use this operational signal to decide whether reports are ready, whether queues need processing, or whether supervisors should review field activity.`
@@ -123,7 +123,7 @@ export function RealtimeAnalytics() {
       </div>
 
       {showExplorer ? (
-        <section id="analytics-explorer" className="grid gap-4 rounded-lg border bg-panel p-4 lg:grid-cols-[1fr_320px]" aria-labelledby="analytics-explorer-title">
+        <section id="analytics-explorer" className="grid gap-4 rounded-lg border bg-surface-container-lowest p-4 lg:grid-cols-[1fr_320px]" aria-labelledby="analytics-explorer-title">
           <div>
             <div className="flex items-center gap-2">
               <BarChart3 aria-hidden="true" className="text-primary" size={18} />

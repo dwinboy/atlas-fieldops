@@ -176,7 +176,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
       </div>
 
       <form
-        className="flex min-h-screen items-start bg-panel/95 px-5 py-8 shadow-elevated backdrop-blur sm:items-center sm:px-6 sm:py-10 lg:min-h-0 lg:border-l"
+        className="flex min-h-screen items-start bg-surface-container-lowest/95 px-5 py-8 shadow-elevated backdrop-blur sm:items-center sm:px-6 sm:py-10 lg:min-h-0 lg:border-l"
         onSubmit={(event) => {
           event.preventDefault();
           submitLogin();

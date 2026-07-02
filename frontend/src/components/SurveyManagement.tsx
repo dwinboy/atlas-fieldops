@@ -739,7 +739,7 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
       <section className="surface-premium rounded-2xl p-4">
         <div className="grid gap-3 text-sm md:grid-cols-6">
           {["Organization", "Project", "Survey", "Form", "Submission", "Reports"].map((step, index) => (
-            <div key={step} className="rounded-lg border bg-panel p-3 shadow-line">
+            <div key={step} className="rounded-lg border border-border-subtle bg-surface-container-lowest p-3 shadow-card">
               <span className="text-xs font-medium text-muted-foreground">Step {index + 1}</span>
               <p className="mt-1 font-semibold">{step}</p>
             </div>
@@ -748,7 +748,7 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
       </section>
 
       <div className={creatingSurvey ? "grid gap-4 lg:grid-cols-[1.15fr_0.85fr]" : "grid gap-4"}>
-        <section className="rounded-2xl border bg-panel p-4 shadow-line">
+        <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <div className="flex flex-wrap items-center gap-2">
@@ -844,7 +844,7 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
           </div>
         </section>
 
-        {creatingSurvey ? <section className="rounded-2xl border bg-panel p-4 shadow-line">
+        {creatingSurvey ? <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-lg font-semibold">Create survey</h2>
             <HelpHint label="About creating surveys" title="Create survey">
@@ -898,7 +898,7 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
         </section>
       ) : null}
 
-      <section className="rounded-2xl border bg-panel p-4 shadow-line">
+      <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
             <h2 className="text-lg font-semibold">Survey workspace</h2>
@@ -940,7 +940,7 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
                     { label: "Forms", value: selectedSurveyForms.length, icon: ClipboardList },
                     { label: "Coverage", value: selectedSurvey?.geographic_scope ? "Defined" : "Missing", icon: MapPinned },
                   ].map((item) => (
-                    <div key={item.label} className="rounded-lg border bg-panel p-3">
+                    <div key={item.label} className="rounded-lg border bg-surface-container-lowest p-3">
                       <item.icon aria-hidden="true" className="text-primary" size={18} />
                       <p className="mt-3 text-lg font-semibold">{item.value}</p>
                       <p className="text-sm text-muted-foreground">{item.label}</p>
@@ -948,7 +948,7 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
                   ))}
                 </div>
               </div>
-              <div className="rounded-lg border bg-panel p-4">
+              <div className="rounded-lg border bg-surface-container-lowest p-4">
                 <h4 className="font-semibold">Next best action</h4>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
                   {selectedSurveyForms.length ? "Review data quality before reporting." : "Create the first survey form before assigning enumerators."}
@@ -982,7 +982,7 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">Only forms attached to this survey appear here. This prevents collection tools from floating outside project and survey context.</p>
                 <div className="mt-4 grid gap-2">
                   {selectedSurveyForms.length ? selectedSurveyForms.map((form) => (
-                    <div className="flex items-center justify-between gap-3 rounded-lg border bg-panel px-3 py-2" key={form.id}>
+                    <div className="flex items-center justify-between gap-3 rounded-lg border bg-surface-container-lowest px-3 py-2" key={form.id}>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold">{form.name}</p>
                         <p className="truncate text-xs text-muted-foreground">{form.status} | version {form.current_version}</p>
@@ -990,7 +990,7 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
                       <Badge tone={form.status === "published" ? "success" : "neutral"}>{form.status}</Badge>
                     </div>
                   )) : (
-                    <p className="rounded-lg border border-dashed bg-panel p-4 text-sm text-muted-foreground">No forms yet. Create a form when the survey structure is agreed.</p>
+                    <p className="rounded-lg border border-dashed bg-surface-container-lowest p-4 text-sm text-muted-foreground">No forms yet. Create a form when the survey structure is agreed.</p>
                   )}
                 </div>
               </div>
@@ -1026,7 +1026,7 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
                     {governanceRoleGroups.map((group) => {
                       const Icon = group.icon;
                       return (
-                        <section className="rounded-xl border bg-panel p-3" key={group.key}>
+                        <section className="rounded-xl border bg-surface-container-lowest p-3" key={group.key}>
                           <div className="flex items-start gap-3">
                             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-background text-primary">
                               <Icon aria-hidden="true" size={15} />
@@ -1064,7 +1064,7 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
                   </div>
                 </div>
 
-                <aside className="rounded-xl border bg-panel p-4">
+                <aside className="rounded-xl border bg-surface-container-lowest p-4">
                   <h4 className="font-semibold">Review behavior</h4>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
                     Choose how synced mobile records and uploaded Excel rows enter the workflow.
@@ -1179,7 +1179,7 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
                       ["3", "Upload data", "CSV, XLS, or XLSX"],
                       ["4", "Review and approve", governanceDraft.uploaded_submission_default_status],
                     ].map(([step, title, value]) => (
-                      <div className="rounded-xl border bg-panel p-3" key={step}>
+                      <div className="rounded-xl border bg-surface-container-lowest p-3" key={step}>
                         <Badge tone="accent">Step {step}</Badge>
                         <p className="mt-3 text-sm font-semibold">{title}</p>
                         <p className="mt-1 text-xs leading-5 text-muted-foreground">{value}</p>
@@ -1188,7 +1188,7 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
                   </div>
 
                   {lastUpload ? (
-                    <div className="mt-4 rounded-xl border bg-panel p-4">
+                    <div className="mt-4 rounded-xl border bg-surface-container-lowest p-4">
                       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div>
                           <h4 className="font-semibold">Latest upload preview</h4>
@@ -1227,7 +1227,7 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
                   ) : null}
                 </div>
 
-                <aside className="rounded-xl border bg-panel p-4">
+                <aside className="rounded-xl border bg-surface-container-lowest p-4">
                   <h4 className="font-semibold">Import setup</h4>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
                     The template and upload are tied to this survey and form context.

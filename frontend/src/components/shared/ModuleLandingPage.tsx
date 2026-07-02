@@ -41,7 +41,7 @@ export function ModuleLandingPage({
 }: ModuleLandingPageProps) {
   return (
     <section className={cn("space-y-3", className)}>
-      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex min-w-0 gap-2.5">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-primary/10 text-primary">
@@ -82,7 +82,7 @@ export function ModuleLandingPage({
         {areas.map((area) => (
           <article
             key={area.route}
-            className="rounded-lg border bg-panel p-3 shadow-sm"
+            className="rounded-lg border bg-surface-container-lowest p-3 shadow-sm"
           >
             <div className="flex items-start gap-2.5">
               <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">

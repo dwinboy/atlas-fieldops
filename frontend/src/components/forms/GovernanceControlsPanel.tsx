@@ -143,7 +143,7 @@ export function GovernanceControlsPanel({
                     ][]
                   ).map(([key, label]) => (
                     <label
-                      className="flex items-center gap-2 rounded-md border bg-panel px-3 py-2 text-sm"
+                      className="flex items-center gap-2 rounded-md border bg-surface-container-lowest px-3 py-2 text-sm"
                       key={String(key)}
                     >
                       <input

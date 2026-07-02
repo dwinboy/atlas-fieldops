@@ -284,7 +284,7 @@ export function PublicCollectionForm({ slug }: PublicCollectionFormProps) {
             validate the record, request corrections, or approve it for
             reporting.
           </p>
-          <div className="mt-5 w-full rounded-2xl border bg-panel p-4 text-left shadow-line">
+          <div className="mt-5 w-full rounded-2xl border bg-surface-container-lowest p-4 text-left shadow-line">
             <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
               Submission summary
             </p>
@@ -324,7 +324,7 @@ export function PublicCollectionForm({ slug }: PublicCollectionFormProps) {
 
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <header className="border-b bg-panel/90 px-4 py-4 shadow-sm backdrop-blur">
+      <header className="border-b bg-surface-container-lowest/90 px-4 py-4 shadow-sm backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <span className="flex h-12 w-12 items-center justify-center rounded-xl border bg-background">
@@ -352,7 +352,7 @@ export function PublicCollectionForm({ slug }: PublicCollectionFormProps) {
 
       <section className="mx-auto grid max-w-6xl gap-5 px-4 py-6 lg:grid-cols-[320px_1fr]">
         <aside className="space-y-4">
-          <section className="rounded-2xl border bg-panel p-4 shadow-line">
+          <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
             <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
               Collection progress
             </p>
@@ -404,7 +404,7 @@ export function PublicCollectionForm({ slug }: PublicCollectionFormProps) {
             </div>
           </section>
 
-          <section className="rounded-2xl border bg-panel p-4 shadow-line">
+          <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
             <h2 className="text-sm font-semibold">Before submitting</h2>
             <div className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground">
               <p>Confirm the respondent gave consent.</p>
@@ -415,7 +415,7 @@ export function PublicCollectionForm({ slug }: PublicCollectionFormProps) {
         </aside>
 
         <form
-          className="rounded-2xl border bg-panel p-4 shadow-line md:p-6"
+          className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card md:p-6"
           onSubmit={(event) => {
             event.preventDefault();
             setCollectionResult(
@@ -527,7 +527,7 @@ export function PublicCollectionForm({ slug }: PublicCollectionFormProps) {
                   const captured = evidence[action.key];
                   return (
                     <button
-                      className="rounded-xl border bg-panel p-4 text-left transition hover:border-primary/30 hover:bg-primary/5"
+                      className="rounded-xl border bg-surface-container-lowest p-4 text-left transition hover:border-primary/30 hover:bg-primary/5"
                       key={action.key}
                       onClick={() => {
                         setEvidence((current) => ({

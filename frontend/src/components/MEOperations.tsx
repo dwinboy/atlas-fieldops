@@ -162,7 +162,7 @@ function ConnectedPanel({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-lg border bg-panel p-4 shadow-line">
+    <section className="rounded-lg border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
       <div className="flex items-center gap-2">
         <h2 className="text-sm font-semibold">{title}</h2>
         <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
@@ -182,7 +182,7 @@ function SetupEmptyState({
   steps?: string[];
 }) {
   return (
-    <section className="rounded-lg border bg-panel p-5 shadow-line">
+    <section className="rounded-lg border border-border-subtle bg-surface-container-lowest p-5 shadow-card">
       <div className="flex items-start gap-3">
         <CheckCircle2 aria-hidden="true" className="mt-0.5 text-primary" size={18} />
         <div>
@@ -330,7 +330,7 @@ export function EnterpriseOperationsCenter({ token }: TokenAwareProps) {
       <div className="grid gap-4 md:grid-cols-4">
         {enterpriseMetrics.map(({ label, value, icon: Icon, result }) => (
           <button
-            className="rounded-lg border bg-panel p-4 text-left shadow-line transition hover:border-primary/30 hover:bg-primary/5"
+            className="rounded-lg border bg-surface-container-lowest p-4 text-left shadow-line transition hover:border-primary/30 hover:bg-primary/5"
             key={label}
             onClick={() => setEnterpriseResult(result)}
             type="button"
@@ -493,7 +493,7 @@ export function OperationalEcosystem({ token }: TokenAwareProps) {
 
       {isPreview ? (
         <>
-      <div className="rounded-lg border bg-panel p-4 shadow-line">
+      <div className="rounded-lg border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-sm font-semibold">Connected workflow chain</h2>
@@ -533,7 +533,7 @@ export function OperationalEcosystem({ token }: TokenAwareProps) {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1fr_380px]">
-        <section className="rounded-lg border bg-panel p-4 shadow-line">
+        <section className="rounded-lg border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold">Realtime event propagation</h2>
@@ -574,7 +574,7 @@ export function OperationalEcosystem({ token }: TokenAwareProps) {
           </div>
         </section>
 
-        <aside className="rounded-lg border bg-panel p-4 shadow-line">
+        <aside className="rounded-lg border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
           <h2 className="text-sm font-semibold">Living entity profile</h2>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
             Entities aggregate every operational signal: projects, visits, submissions, GPS, cases, indicators, and reports.
@@ -609,7 +609,7 @@ export function OperationalEcosystem({ token }: TokenAwareProps) {
           ["Report-ready", "Dashboards and donor reports read live trusted operational data instead of disconnected exports."]
         ].map(([title, text]) => (
           <button
-            className="rounded-lg border bg-panel p-4 text-left shadow-line transition hover:border-primary/30 hover:bg-primary/5"
+            className="rounded-lg border bg-surface-container-lowest p-4 text-left shadow-line transition hover:border-primary/30 hover:bg-primary/5"
             key={title}
             onClick={() => setEcosystemResult(`${title}: ${text}`)}
             type="button"
@@ -746,7 +746,7 @@ export function BeneficiaryRegistry({ token }: TokenAwareProps) {
         {registryActions.map(({ label, value, icon: Icon, result }) => (
           <button
             key={label}
-            className="rounded-lg border bg-panel p-4 text-left transition hover:border-primary/30 hover:bg-primary/5"
+            className="rounded-lg border bg-surface-container-lowest p-4 text-left transition hover:border-primary/30 hover:bg-primary/5"
             onClick={() => setBeneficiaryResult(result)}
             type="button"
           >
@@ -831,7 +831,7 @@ export function ProgramManagement({ token }: TokenAwareProps) {
       ) : null}
       <div className="grid gap-5 xl:grid-cols-[1fr_340px]">
         <DataTable columns={columns} emptyLabel="No programs yet" rows={programRows} searchLabel="Search programs, donors, or regions" title={programsQuery.isFetching ? "Active programs syncing" : "Active programs"} />
-        <aside className="rounded-lg border bg-panel p-4">
+        <aside className="rounded-lg border bg-surface-container-lowest p-4">
           <h2 className="text-sm font-semibold">Next milestones</h2>
           <div className="mt-4 space-y-3">
             {programRows.length ? programRows.map((program) => (
@@ -1047,7 +1047,7 @@ export function GeospatialIntelligence({ token }: TokenAwareProps) {
       ) : null}
       {isPreview ? (
       <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
-        <section className="min-h-[420px] rounded-lg border bg-panel p-4">
+        <section className="min-h-[420px] rounded-lg border bg-surface-container-lowest p-4">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-sm font-semibold">Coverage map</h2>
@@ -1059,7 +1059,7 @@ export function GeospatialIntelligence({ token }: TokenAwareProps) {
             {mapCoverage.map((region) => (
               <button
                 key={region.region}
-                className="flex flex-col justify-between rounded-lg border bg-panel p-4 text-left transition hover:border-primary/30 hover:bg-primary/5"
+                className="flex flex-col justify-between rounded-lg border bg-surface-container-lowest p-4 text-left transition hover:border-primary/30 hover:bg-primary/5"
                 onClick={() =>
                   setMapResult(
                     `${region.region} has ${region.coverage}% coverage and ${region.submissions.toLocaleString()} submissions. Use this area to decide where supervisors should verify coverage or load offline map packs.`
@@ -1079,7 +1079,7 @@ export function GeospatialIntelligence({ token }: TokenAwareProps) {
             ))}
           </div>
         </section>
-        <aside className="rounded-lg border bg-panel p-4">
+        <aside className="rounded-lg border bg-surface-container-lowest p-4">
           <h2 className="text-sm font-semibold">Map layers</h2>
           <div className="mt-4 space-y-2">
             {["Villages", "Farm boundaries", "Clinic catchments", "Supervisor routes", "Offline map packs"].map((layer) => (
@@ -1211,7 +1211,7 @@ export function ReportingCenter({ token }: TokenAwareProps) {
       <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
         <DataTable columns={columns} emptyLabel="No reports yet" rows={reportRows} searchLabel="Search reports" title={reportsQuery.isFetching ? "Reporting center syncing" : "Reporting center"} />
         <aside className="space-y-4">
-          <section className="rounded-lg border bg-panel p-4">
+          <section className="rounded-lg border bg-surface-container-lowest p-4">
             <h2 className="text-sm font-semibold">AI report assistant</h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">Draft narrative summaries from approved indicators, cases, maps, and field activity.</p>
             <Button className="mt-4 w-full" onClick={draftNarrativeSummary} type="button">
@@ -1224,7 +1224,7 @@ export function ReportingCenter({ token }: TokenAwareProps) {
               </div>
             ) : null}
           </section>
-          <section className="rounded-lg border bg-panel p-4">
+          <section className="rounded-lg border bg-surface-container-lowest p-4">
             <h2 className="text-sm font-semibold">White-label exports</h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">Use organization branding, logo, custom colors, and donor-specific formats.</p>
             <div className="mt-4 grid gap-2">
@@ -1288,7 +1288,7 @@ export function ConnectivityCenter({ token }: TokenAwareProps) {
         ].map(([label, value, Icon]) => (
           <button
             key={label as string}
-            className="rounded-lg border bg-panel p-4 text-left transition hover:border-primary/30 hover:bg-primary/5"
+            className="rounded-lg border bg-surface-container-lowest p-4 text-left transition hover:border-primary/30 hover:bg-primary/5"
             onClick={() =>
               setConnectivityResult(
                 `${label as string} is ${value as string}. Use this status to decide whether field teams can keep collecting, retry failed uploads, or switch to SMS and WhatsApp follow-up.`
@@ -1304,7 +1304,7 @@ export function ConnectivityCenter({ token }: TokenAwareProps) {
           </button>
         ))}
       </div>
-      <section className="rounded-lg border bg-panel p-4">
+      <section className="rounded-lg border bg-surface-container-lowest p-4">
         <h2 className="text-sm font-semibold">Data quality and fraud signals</h2>
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           {dataQualitySignals.map((item) => (
@@ -1673,7 +1673,7 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
           ["Bulk edits", isPreview ? "3 batches" : selectedImportId ? "Available" : "None yet", Columns3],
           ["Rollback", isPreview ? "Available" : selectedImportIsApplied ? "Available" : "After import", CheckCircle2]
         ].map(([label, value, Icon]) => (
-          <article key={label as string} className="rounded-lg border bg-panel p-4">
+          <article key={label as string} className="rounded-lg border bg-surface-container-lowest p-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">{label as string}</p>
               <Icon aria-hidden="true" className="text-muted-foreground" size={17} />
@@ -1685,7 +1685,7 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
 
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4" aria-label="Collection channels">
         {(isPreview ? collectionChannels : liveCollectionChannels).map((channel) => (
-          <article className="rounded-lg border bg-panel p-4" key={channel.name}>
+          <article className="rounded-lg border bg-surface-container-lowest p-4" key={channel.name}>
             <div className="flex items-start justify-between gap-3">
               <h2 className="text-sm font-semibold">{channel.name}</h2>
               <Badge tone={channel.status === "Ready" || channel.status === "Supported" ? "success" : "accent"}>{channel.status}</Badge>
@@ -1709,7 +1709,7 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
 
       <section className="grid min-w-0 gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
         <aside className="space-y-4">
-          <section className="rounded-lg border bg-panel p-4">
+          <section className="rounded-lg border bg-surface-container-lowest p-4">
             <h2 className="text-sm font-semibold">Upload settings</h2>
             <label className="mt-4 block text-sm font-medium">
               Dataset
@@ -1736,7 +1736,7 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
               </p>
             ) : null}
           </section>
-          <section className="rounded-lg border bg-panel p-4">
+          <section className="rounded-lg border bg-surface-container-lowest p-4">
             <h2 className="text-sm font-semibold">Safe import steps</h2>
             <div className="mt-4 space-y-3">
               {[
@@ -1755,7 +1755,7 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
               ))}
             </div>
           </section>
-          <section className="rounded-lg border bg-panel p-4">
+          <section className="rounded-lg border bg-surface-container-lowest p-4">
             <h2 className="text-sm font-semibold">Migration sources</h2>
             <div className="mt-3 flex flex-wrap gap-2">
               {migrationSources.map((source) => <Badge key={source} tone="neutral">{source}</Badge>)}
@@ -1770,7 +1770,7 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
             <DataTable columns={importColumnsDef} emptyLabel="No import jobs yet" rows={importJobs} searchLabel="Search imports" title="Import history" />
           )}
 
-          <section className="rounded-lg border bg-panel p-4">
+          <section className="rounded-lg border bg-surface-container-lowest p-4">
             <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold">Column mapping</h2>
@@ -1834,7 +1834,7 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
       </section>
 
       <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <section className="min-w-0 rounded-lg border bg-panel p-4">
+        <section className="min-w-0 rounded-lg border bg-surface-container-lowest p-4">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold">Validation issues</h2>
@@ -1902,7 +1902,7 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
           </div>
         </section>
 
-        <aside className="rounded-lg border bg-panel p-4">
+        <aside className="rounded-lg border bg-surface-container-lowest p-4">
           <h2 className="text-sm font-semibold">Conflict resolution</h2>
           <div className="mt-4 space-y-3 text-sm">
             {["Update existing records by ID", "Flag duplicate beneficiaries", "Keep prior version for rollback", "Ask supervisor before overwriting reviewed data"].map((item) => (
@@ -1925,7 +1925,7 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
 
       <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <DataTable columns={exportColumns} emptyLabel="No export jobs yet" rows={isPreview ? exportJobs : []} searchLabel="Search exports" title="Exports and scheduled files" />
-        <aside className="rounded-lg border bg-panel p-4">
+        <aside className="rounded-lg border bg-surface-container-lowest p-4">
           <h2 className="text-sm font-semibold">Export formats</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">Prepare filtered files for donors, supervisors, GIS tools, migration packages, or external systems.</p>
           <div className="mt-4 space-y-2">
@@ -1966,7 +1966,7 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
         ) : (
           <DataTable columns={serverMediaColumns} emptyLabel="No media evidence yet" rows={[]} searchLabel="Search media evidence" title="Media gallery and evidence review" />
         )}
-        <aside className="rounded-lg border bg-panel p-4">
+        <aside className="rounded-lg border bg-surface-container-lowest p-4">
           <h2 className="text-sm font-semibold">Media evidence workflow</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             Photos, signatures, audio, video, and files are treated as linked evidence. Review status, record links, file size, and location stay visible before export.
@@ -1983,7 +1983,7 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
       </section>
 
       {publicLinksQuery.data?.length ? (
-        <section className="rounded-lg border bg-panel p-4">
+        <section className="rounded-lg border bg-surface-container-lowest p-4">
           <h2 className="text-sm font-semibold">Live public collection links</h2>
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {publicLinksQuery.data.map((link) => (

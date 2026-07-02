@@ -36,7 +36,7 @@ export function EntityControlsPanel({
                     {selectedEntityWorkflow.badge}
                   </Badge>
                 </div>
-                <div className="mt-3 rounded-lg border bg-panel p-3 text-sm text-muted-foreground">
+                <div className="mt-3 rounded-lg border bg-surface-container-lowest p-3 text-sm text-muted-foreground">
                   {selectedEntityWorkflow.description}
                 </div>
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -224,7 +224,7 @@ export function EntityControlsPanel({
                     ],
                   ].map(([key, label, helper]) => (
                     <label
-                      className="flex items-start gap-3 rounded-lg border bg-panel p-3 text-sm"
+                      className="flex items-start gap-3 rounded-lg border bg-surface-container-lowest p-3 text-sm"
                       key={key}
                     >
                       <input
@@ -269,7 +269,7 @@ export function EntityControlsPanel({
                       "Name + village match: 60",
                       "GPS within 50m: 40",
                     ].map((line) => (
-                      <p className="rounded-md border bg-panel px-3 py-2" key={line}>
+                      <p className="rounded-md border bg-surface-container-lowest px-3 py-2" key={line}>
                         {line}
                       </p>
                     ))}

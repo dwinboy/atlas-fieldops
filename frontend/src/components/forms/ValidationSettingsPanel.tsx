@@ -23,7 +23,7 @@ export function ValidationSettingsPanel({
   onUpdateValidation: (patch: Partial<NonNullable<FormField["validation"]>>) => void;
 }) {
   return (
-                            <section className="mt-4 rounded-lg border bg-panel p-4">
+                            <section className="mt-4 rounded-lg border bg-surface-container-lowest p-4">
                               <div className="flex items-center gap-2">
                                 <Check
                                   aria-hidden="true"
@@ -453,7 +453,7 @@ export function ValidationSettingsPanel({
                                     },
                                   ].map(({ label, patch }) => (
                                     <button
-                                      className="rounded-md border bg-panel px-2.5 py-2 text-left text-xs transition hover:border-primary/40 hover:bg-primary/10"
+                                      className="rounded-md border bg-surface-container-lowest px-2.5 py-2 text-left text-xs transition hover:border-primary/40 hover:bg-primary/10"
                                       key={label}
                                       onClick={() =>
                                         onUpdateForm(

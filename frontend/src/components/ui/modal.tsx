@@ -29,7 +29,7 @@ export function Modal({
         <Dialog.Overlay className="fixed inset-0 z-40 bg-background/70 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out" />
         <Dialog.Content
           className={cn(
-            "fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border bg-panel p-0 shadow-elevated",
+            "fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border bg-surface-container-lowest p-0 shadow-elevated",
             contentClassName
           )}
         >
@@ -85,7 +85,7 @@ export function ModalFooter({
   return (
     <div
       className={cn(
-        "flex shrink-0 items-center justify-end gap-2 border-t bg-panel px-5 py-3",
+        "flex shrink-0 items-center justify-end gap-2 border-t bg-surface-container-lowest px-5 py-3",
         className,
       )}
     >

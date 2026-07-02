@@ -59,7 +59,7 @@ export function SortableField({
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(
-        "group border-b bg-panel px-3 py-2.5 transition last:border-b-0 hover:bg-muted/30",
+        "group border-b bg-surface-container-lowest px-3 py-2.5 transition last:border-b-0 hover:bg-muted/30",
         field.type === "repeat_group" &&
           "border-l-4 border-l-primary/70 bg-primary/5",
         selected && "bg-primary/10 ring-1 ring-inset ring-primary/25",

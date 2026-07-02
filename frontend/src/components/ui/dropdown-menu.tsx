@@ -34,7 +34,7 @@ export function ActionMenu({
       <DropdownMenuPrimitive.Portal>
         <DropdownMenuPrimitive.Content
           align="end"
-          className="z-50 min-w-[190px] overflow-hidden rounded-xl border bg-panel p-1 shadow-elevated data-[state=open]:animate-in data-[state=closed]:animate-out"
+          className="z-50 min-w-[190px] overflow-hidden rounded-xl border bg-surface-container-lowest p-1 shadow-elevated data-[state=open]:animate-in data-[state=closed]:animate-out"
           sideOffset={6}
         >
           {items.map((item) => (

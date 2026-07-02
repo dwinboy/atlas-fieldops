@@ -998,7 +998,7 @@ export function OrganizationManagement({
       </div>
 
       {accessLoading ? (
-        <div className="rounded-2xl border bg-panel p-4 text-sm text-muted-foreground">
+        <div className="rounded-2xl border bg-surface-container-lowest p-4 text-sm text-muted-foreground">
           Loading users, roles, and access scopes...
         </div>
       ) : null}
@@ -1198,7 +1198,7 @@ export function OrganizationManagement({
       <div className="grid gap-5 xl:grid-cols-2">
         {isPlatformOwnerConsole ? (
           <form
-            className="rounded-lg border bg-panel p-4"
+            className="rounded-lg border bg-surface-container-lowest p-4"
             onSubmit={(event) => {
               event.preventDefault();
               if (isPreview) {
@@ -1294,7 +1294,7 @@ export function OrganizationManagement({
             </Button>
           </form>
         ) : (
-          <section className="rounded-lg border bg-panel p-4">
+          <section className="rounded-lg border bg-surface-container-lowest p-4">
             <div className="mb-4 flex items-center gap-2">
               <Building2 aria-hidden="true" size={18} />
               <h2 className="text-sm font-semibold">Organization workspace</h2>
@@ -1308,7 +1308,7 @@ export function OrganizationManagement({
         )}
 
         <form
-          className="rounded-lg border bg-panel p-4"
+          className="rounded-lg border bg-surface-container-lowest p-4"
           onSubmit={(event) => {
             event.preventDefault();
             if (isPreview) {
@@ -1442,7 +1442,7 @@ export function OrganizationManagement({
       </div>
 
       <section className="grid gap-4 xl:grid-cols-2" aria-label="Bulk imports">
-        <article className="rounded-lg border bg-panel p-4">
+        <article className="rounded-lg border bg-surface-container-lowest p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <div className="flex items-center gap-2">
@@ -1487,7 +1487,7 @@ export function OrganizationManagement({
           </div>
         </article>
 
-        <article className="rounded-lg border bg-panel p-4">
+        <article className="rounded-lg border bg-surface-container-lowest p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <div className="flex items-center gap-2">
@@ -1564,7 +1564,7 @@ export function OrganizationManagement({
       />
 
       {accountResult ? (
-        <section className="rounded-2xl border bg-panel p-4" aria-live="polite">
+        <section className="rounded-2xl border bg-surface-container-lowest p-4" aria-live="polite">
           <div className="flex items-start gap-3">
             <KeyRound
               aria-hidden="true"

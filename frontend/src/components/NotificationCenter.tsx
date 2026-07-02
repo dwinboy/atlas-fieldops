@@ -34,7 +34,7 @@ export function NotificationCenter() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 6, scale: 0.98 }}
             transition={{ duration: 0.16, ease: [0.2, 0.8, 0.2, 1] }}
-            className="pointer-events-auto rounded-lg border bg-panel/95 p-3 shadow-elevated backdrop-blur-xl"
+            className="pointer-events-auto rounded-lg border bg-surface-container-lowest/95 p-3 shadow-elevated backdrop-blur-xl"
             role="status"
           >
             <div className="flex items-start justify-between gap-3">

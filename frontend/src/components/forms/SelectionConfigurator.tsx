@@ -346,7 +346,7 @@ export function SelectionConfigurator({
             </p>
 
             {/* Two clear paths: reuse vs upload. */}
-            <div className="inline-flex rounded-md border bg-panel p-0.5 text-sm">
+            <div className="inline-flex rounded-md border bg-surface-container-lowest p-0.5 text-sm">
               {(
                 [
                   ["reuse", "Reuse existing"],
@@ -440,7 +440,7 @@ export function SelectionConfigurator({
                       </>
                     ) : null}
                     {onReplaceDataset ? (
-                      <label className="inline-flex cursor-pointer items-center rounded-md border bg-panel px-2.5 py-1.5 text-xs font-semibold hover:border-primary">
+                      <label className="inline-flex cursor-pointer items-center rounded-md border bg-surface-container-lowest px-2.5 py-1.5 text-xs font-semibold hover:border-primary">
                         Replace data
                         <input
                           accept=".csv,.xlsx,.xls,.json"
@@ -529,7 +529,7 @@ export function SelectionConfigurator({
                   Preview · first {sampleRows.length} row(s)
                 </p>
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-panel text-muted-foreground">
+                  <thead className="bg-surface-container-lowest text-muted-foreground">
                     <tr>
                       {datasetColumns.map((column) => (
                         <th className="px-3 py-1.5 font-semibold" key={column}>{column}</th>
@@ -651,7 +651,7 @@ export function SelectionConfigurator({
                 the same variable name here is filled automatically.
               </p>
               {sourceFormFields.length ? (
-                <div className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto rounded-md border bg-panel p-2">
+                <div className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto rounded-md border bg-surface-container-lowest p-2">
                   {sourceFormFields.map((sourceField) => {
                     const active = (selection.loadColumns ?? []).includes(sourceField.variable);
                     return (

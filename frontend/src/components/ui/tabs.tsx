@@ -51,7 +51,7 @@ export function Tabs<T extends string>({
     <div
       aria-label={ariaLabel}
       className={cn(
-        "flex max-w-full items-center gap-1 overflow-x-auto rounded-xl border bg-panel p-1 shadow-line product-scrollbar",
+        "flex max-w-full items-center gap-1 overflow-x-auto rounded-2xl border border-border-subtle bg-surface-container-lowest p-1 shadow-card product-scrollbar",
         className,
       )}
       onKeyDown={handleKeyDown}

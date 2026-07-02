@@ -63,7 +63,7 @@ export function CommonSettingsPanel({
     onUpdateForm(updateField(form, field.id, patch));
   };
   return (
-                            <section className="mt-4 rounded-lg border bg-panel p-4">
+                            <section className="mt-4 rounded-lg border bg-surface-container-lowest p-4">
                               <div className="flex flex-wrap items-center gap-2">
                                 <Settings2
                                   aria-hidden="true"

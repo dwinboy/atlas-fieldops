@@ -267,7 +267,7 @@ export function Select({
       {open && typeof document !== "undefined"
         ? createPortal(
             <div
-              className="origin-top overflow-y-auto overscroll-contain rounded-xl border bg-panel shadow-elevated transition-all duration-150 ease-product product-scrollbar"
+              className="origin-top overflow-y-auto overscroll-contain rounded-xl border bg-surface-container-lowest shadow-elevated transition-all duration-150 ease-product product-scrollbar"
               id={menuId}
               onWheel={(event) => event.stopPropagation()}
               onPointerDown={(event) => event.stopPropagation()}
@@ -276,7 +276,7 @@ export function Select({
               style={menuStyle}
             >
               {searchable ? (
-                <div className="sticky top-0 z-10 border-b bg-panel p-2">
+                <div className="sticky top-0 z-10 border-b bg-surface-container-lowest p-2">
                   <input
                     aria-label="Search options"
                     className={cn(inputClass, "h-8 shadow-none")}
@@ -354,7 +354,7 @@ export function Textarea({
   return (
     <textarea
       className={cn(
-        "min-h-20 w-full rounded-lg border border-input bg-panel/95 px-2.5 py-2 text-sm shadow-line transition-all duration-150 ease-product placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35",
+        "min-h-20 w-full rounded-lg border border-input bg-surface-container-lowest/95 px-2.5 py-2 text-sm shadow-line transition-all duration-150 ease-product placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35",
         className,
       )}
       {...props}

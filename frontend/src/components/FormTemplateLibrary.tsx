@@ -115,7 +115,7 @@ function TemplateCard({
   return (
     <article
       className={cn(
-        "group flex min-h-[238px] flex-col justify-between rounded-lg border bg-panel p-4 shadow-line transition duration-150 hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-elevated",
+        "group flex min-h-[238px] flex-col justify-between rounded-lg border border-border-subtle bg-surface-container-lowest p-4 shadow-card transition duration-150 hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-elevated",
         active && "border-primary/45 bg-primary/5"
       )}
     >
@@ -197,7 +197,7 @@ function PreviewPanel({ template }: { template: FormTemplateCard }) {
   ];
 
   return (
-    <aside className="rounded-lg border bg-panel shadow-line">
+    <aside className="rounded-lg border bg-surface-container-lowest shadow-line">
       <div className="border-b p-4">
         <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Template preview</p>
         <h2 className="mt-2 text-lg font-semibold tracking-tight">{template.name}</h2>
@@ -205,7 +205,7 @@ function PreviewPanel({ template }: { template: FormTemplateCard }) {
       </div>
       <div className="grid gap-4 p-4">
         <div className="rounded-lg border bg-background p-3">
-          <div className="mx-auto max-w-[280px] rounded-[28px] border bg-panel p-3 shadow-line">
+          <div className="mx-auto max-w-[280px] rounded-[28px] border bg-surface-container-lowest p-3 shadow-line">
             <div className="mb-3 h-1.5 w-16 rounded-full bg-muted mx-auto" />
             <div className="space-y-3">
               <div>
@@ -446,7 +446,7 @@ export function FormTemplateLibrary({ token }: { token: string | null }) {
         </div>
       </section>
 
-      <div className="rounded-lg border bg-panel p-3 shadow-line">
+      <div className="rounded-lg border border-border-subtle bg-surface-container-lowest p-3 shadow-card">
         {backendTemplatesQuery.data?.length ? (
           <p className="mb-3 rounded-md border bg-success/10 px-3 py-2 text-xs text-muted-foreground">
             Live backend template catalog connected: {backendTemplatesQuery.data.length} templates available for duplication.
@@ -521,7 +521,7 @@ export function FormTemplateLibrary({ token }: { token: string | null }) {
             ))}
           </div>
         ) : (
-          <div className="rounded-lg border bg-panel p-6 text-center shadow-line">
+          <div className="rounded-lg border bg-surface-container-lowest p-6 text-center shadow-line">
             <Search aria-hidden="true" className="mx-auto text-muted-foreground" size={24} />
             <h2 className="mt-3 text-base font-semibold">No templates match this search</h2>
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
@@ -542,7 +542,7 @@ export function FormTemplateLibrary({ token }: { token: string | null }) {
           ["Customize", "Rename it, remove questions, adjust validation, then preview mobile layout."],
           ["Publish", "Deploy the offline-ready version to field officers with audit tracking."]
         ].map(([title, text], index) => (
-          <div className="rounded-lg border bg-panel p-4 shadow-line" key={title}>
+          <div className="rounded-lg border border-border-subtle bg-surface-container-lowest p-4 shadow-card" key={title}>
             <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-sm font-semibold text-primary">
               {index + 1}
             </div>
@@ -552,7 +552,7 @@ export function FormTemplateLibrary({ token }: { token: string | null }) {
         ))}
       </div>
 
-      <div className="rounded-lg border bg-panel p-4 shadow-line">
+      <div className="rounded-lg border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-sm font-semibold">Prepared for smarter templates</h2>

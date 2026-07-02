@@ -136,7 +136,7 @@ export function WorkflowManagement({ token }: { token?: string | null }) {
           ["Typical review time", isPreview ? "8m 12s" : "Not started", TimerReset, "neutral" as const],
           ["Overdue", isPreview ? "11" : "0", ShieldAlert, "danger" as const]
         ] as const).map(([label, value, Icon, tone]) => (
-          <article key={label as string} className="rounded-lg border bg-panel p-4">
+          <article key={label as string} className="rounded-lg border bg-surface-container-lowest p-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">{label as string}</p>
               <Icon aria-hidden="true" className="text-muted-foreground" size={17} />
@@ -164,7 +164,7 @@ export function WorkflowManagement({ token }: { token?: string | null }) {
 
       <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
         <DataTable columns={columns} emptyLabel="No workflows found" rows={workflows} searchLabel="Search workflows" title="Approval workflows" />
-        <aside className="rounded-lg border bg-panel p-4 shadow-line">
+        <aside className="rounded-lg border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
           <div className="mb-4 flex items-center gap-2">
             <GitPullRequestArrow aria-hidden="true" className="text-primary" size={18} />
             <div>
@@ -211,7 +211,7 @@ export function WorkflowManagement({ token }: { token?: string | null }) {
       {isPreview ? (
         <ActivityTimeline />
       ) : workflows.length ? null : (
-        <section className="rounded-lg border bg-panel p-4 shadow-line">
+        <section className="rounded-lg border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
           <h2 className="text-sm font-semibold">No approval activity yet</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             This organization has no live approval queues or workflow events yet. Add a draft approval rule, connect it to forms, and collect submissions before review activity appears here.
@@ -219,7 +219,7 @@ export function WorkflowManagement({ token }: { token?: string | null }) {
         </section>
       )}
 
-      <section className="rounded-lg border bg-panel p-4" aria-labelledby="approval-path-title">
+      <section className="rounded-lg border bg-surface-container-lowest p-4" aria-labelledby="approval-path-title">
         <h2 id="approval-path-title" className="text-sm font-semibold">
           Approval path
         </h2>

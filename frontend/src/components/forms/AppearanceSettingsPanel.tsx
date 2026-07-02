@@ -15,7 +15,7 @@ export function AppearanceSettingsPanel({
   onUpdateForm: (form: DynamicForm) => void;
 }) {
   return (
-                            <section className="mt-4 space-y-4 rounded-lg border bg-panel p-4">
+                            <section className="mt-4 space-y-4 rounded-lg border bg-surface-container-lowest p-4">
                               <div className="flex items-center gap-2">
                                 <Palette
                                   aria-hidden="true"

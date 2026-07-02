@@ -118,7 +118,7 @@ export function HelpHint({
       {open && typeof document !== "undefined"
         ? createPortal(
             <span
-              className="block overflow-y-auto rounded-xl border bg-panel p-3 text-left shadow-elevated product-scrollbar"
+              className="block overflow-y-auto rounded-xl border bg-surface-container-lowest p-3 text-left shadow-elevated product-scrollbar"
               id={id}
               role="dialog"
               style={popoverStyle}

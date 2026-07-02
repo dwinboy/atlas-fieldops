@@ -1683,7 +1683,7 @@ export function ProductHelpCenter() {
 
       <section
         aria-label="Search the documentation"
-        className="rounded-2xl border bg-panel p-4 shadow-line md:p-5"
+        className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card md:p-5"
       >
         <label className="relative block" htmlFor="help-search">
           <span className="sr-only">Search the documentation</span>
@@ -1740,7 +1740,7 @@ export function ProductHelpCenter() {
 
       <section
         aria-labelledby="getting-started-title"
-        className="rounded-2xl border bg-panel p-4 shadow-line md:p-5"
+        className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card md:p-5"
       >
         <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
@@ -1762,7 +1762,7 @@ export function ProductHelpCenter() {
               className="rounded-xl border bg-background p-4"
               key={item.title}
             >
-              <span className="flex h-7 w-7 items-center justify-center rounded-full border bg-panel text-xs font-semibold">
+              <span className="flex h-7 w-7 items-center justify-center rounded-full border bg-surface-container-lowest text-xs font-semibold">
                 {index + 1}
               </span>
               <h3 className="mt-4 text-sm font-semibold">{item.title}</h3>
@@ -1776,7 +1776,7 @@ export function ProductHelpCenter() {
 
       <section
         aria-labelledby="manual-sections-title"
-        className="rounded-2xl border bg-panel p-4 shadow-line md:p-5"
+        className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card md:p-5"
       >
         <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
@@ -1799,7 +1799,7 @@ export function ProductHelpCenter() {
               href={`#${topic.id}`}
               key={topic.id}
             >
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-panel text-xs font-semibold">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-surface-container-lowest text-xs font-semibold">
                 {index + 1}
               </span>
               <span>{topic.title}</span>
@@ -1819,7 +1819,7 @@ export function ProductHelpCenter() {
       <div className="grid gap-5 xl:grid-cols-[1fr_340px]">
         <div className="space-y-4">
           {filteredTopics.length === 0 ? (
-            <article className="rounded-2xl border bg-panel p-6 text-center shadow-line">
+            <article className="rounded-2xl border bg-surface-container-lowest p-6 text-center shadow-line">
               <p className="text-sm font-semibold">No guides match your search</p>
               <p className="mt-2 text-sm text-muted-foreground">
                 Try a simpler word, or clear the search and filter to browse every guide.
@@ -1832,7 +1832,7 @@ export function ProductHelpCenter() {
             const topicView = topic.view;
             return (
               <article
-                className="rounded-2xl border bg-panel p-4 shadow-line md:p-5"
+                className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card md:p-5"
                 id={topic.id}
                 key={topic.id}
               >
@@ -1875,7 +1875,7 @@ export function ProductHelpCenter() {
                 >
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold">
                     <span>Read detailed instructions</span>
-                    <span className="rounded-full border bg-panel px-2 py-1 text-xs font-medium text-muted-foreground">
+                    <span className="rounded-full border bg-surface-container-lowest px-2 py-1 text-xs font-medium text-muted-foreground">
                       {index < 2 ? "Open" : "Expand"}
                     </span>
                   </summary>
@@ -1920,7 +1920,7 @@ export function ProductHelpCenter() {
                             className="flex gap-3 text-sm leading-6 text-muted-foreground"
                             key={step}
                           >
-                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border bg-panel text-xs font-semibold text-foreground">
+                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border bg-surface-container-lowest text-xs font-semibold text-foreground">
                               {stepIndex + 1}
                             </span>
                             <span>{step}</span>
@@ -2008,7 +2008,7 @@ export function ProductHelpCenter() {
           className="space-y-4 xl:sticky xl:top-20 xl:self-start"
           aria-label="Guide standards"
         >
-          <section className="rounded-2xl border bg-panel p-4 shadow-line">
+          <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
             <h2 className="text-sm font-semibold">
               Content agent starting point
             </h2>
@@ -2020,7 +2020,7 @@ export function ProductHelpCenter() {
             </p>
           </section>
 
-          <section className="rounded-2xl border bg-panel p-4 shadow-line">
+          <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
             <h2 className="text-sm font-semibold">Who should read what</h2>
             <div className="mt-3 space-y-3">
               {rolePaths.map(([role, description]) => (
@@ -2034,7 +2034,7 @@ export function ProductHelpCenter() {
             </div>
           </section>
 
-          <section className="rounded-2xl border bg-panel p-4 shadow-line">
+          <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
             <h2 className="text-sm font-semibold">Writing standard</h2>
             <div className="mt-3 space-y-3">
               {guideStandards.map((standard) => (

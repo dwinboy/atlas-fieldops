@@ -31,7 +31,7 @@ function ChartTooltip({
   if (!active || !payload?.length) return null;
 
   return (
-    <div className="rounded-lg border bg-panel px-3 py-2 text-xs shadow-elevated">
+    <div className="rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs shadow-elevated">
       {label ? <p className="font-semibold text-foreground">{label}</p> : null}
       {payload.map((entry) => (
         <p className="flex items-center gap-1.5 text-muted-foreground" key={entry.name}>

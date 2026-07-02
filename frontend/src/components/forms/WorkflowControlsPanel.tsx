@@ -66,7 +66,7 @@ export function WorkflowControlsPanel({
                 <div className="mt-4 space-y-3">
                   {controls.workflow_stages.map((stage, index) => (
                     <div
-                      className="grid gap-3 rounded-lg border bg-panel p-3 md:grid-cols-[40px_minmax(0,1fr)_160px]"
+                      className="grid gap-3 rounded-lg border bg-surface-container-lowest p-3 md:grid-cols-[40px_minmax(0,1fr)_160px]"
                       key={stage.id}
                     >
                       <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">

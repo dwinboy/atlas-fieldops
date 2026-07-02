@@ -144,7 +144,7 @@ export function FormPreviewTester({
           </div>
         </header>
 
-        <div className="flex items-center gap-2 border-b bg-panel/50 px-4 py-2 text-xs">
+        <div className="flex items-center gap-2 border-b bg-surface-container-lowest/50 px-4 py-2 text-xs">
           <Badge tone={issues.length ? "danger" : "success"}>
             {issues.length ? `${issues.length} required answer${issues.length === 1 ? "" : "s"} missing` : "No blocking issues"}
           </Badge>
@@ -229,7 +229,7 @@ export function FormPreviewTester({
                 const shownFields = section.fields.filter((entry) => entry.visible);
                 if (shownFields.length === 0) return null;
                 return (
-                  <section className="rounded-lg border bg-panel p-3" key={section.id}>
+                  <section className="rounded-lg border bg-surface-container-lowest p-3" key={section.id}>
                     <h3 className="text-sm font-semibold">{section.title}</h3>
                     <div className="mt-3 space-y-4">
                       {shownFields.map((entry) => (

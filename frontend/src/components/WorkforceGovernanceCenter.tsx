@@ -636,7 +636,7 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
       </div>
 
       {queriesLoading ? (
-        <div className="rounded-2xl border bg-panel p-4 text-sm text-muted-foreground">Loading workforce governance records...</div>
+        <div className="rounded-2xl border bg-surface-container-lowest p-4 text-sm text-muted-foreground">Loading workforce governance records...</div>
       ) : null}
       {queriesError ? (
         <div className="rounded-2xl border border-danger/30 bg-danger/10 p-4 text-sm" role="alert">
@@ -700,7 +700,7 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
 
       {activeSection === "setup" ? (
       <div className="grid gap-4 xl:grid-cols-4">
-        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? createPreviewDepartment() : createDepartmentMutation.mutate(); }}>
+        <form className="rounded-2xl border bg-surface-container-lowest p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? createPreviewDepartment() : createDepartmentMutation.mutate(); }}>
           <div className="flex items-center gap-2">
             <Network aria-hidden="true" size={17} />
             <h2 className="text-sm font-semibold">Add a department</h2>
@@ -712,7 +712,7 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
           </label>
           <Button className="mt-4 w-full" disabled={!departmentName.trim() || createDepartmentMutation.isPending} type="submit" variant="primary">Create department</Button>
         </form>
-        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? createPreviewTeam() : createTeamMutation.mutate(); }}>
+        <form className="rounded-2xl border bg-surface-container-lowest p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? createPreviewTeam() : createTeamMutation.mutate(); }}>
           <div className="flex items-center gap-2">
             <UsersRound aria-hidden="true" size={17} />
             <h2 className="text-sm font-semibold">Create a team</h2>
@@ -728,7 +728,7 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
           </label>
           <Button className="mt-4 w-full" disabled={!teamName.trim() || createTeamMutation.isPending} type="submit" variant="primary">Create team</Button>
         </form>
-        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? createPreviewProfile() : createProfileMutation.mutate(); }}>
+        <form className="rounded-2xl border bg-surface-container-lowest p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? createPreviewProfile() : createProfileMutation.mutate(); }}>
           <div className="flex items-center gap-2">
             <UserCheck aria-hidden="true" size={17} />
             <h2 className="text-sm font-semibold">Assign a person</h2>
@@ -747,7 +747,7 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
           </label>
           <Button className="mt-4 w-full" disabled={!firstUserId || !firstDepartmentId || !firstTeamId || createProfileMutation.isPending} type="submit" variant="primary">Assign profile</Button>
         </form>
-        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? createPreviewDelegation() : createDelegationMutation.mutate(); }}>
+        <form className="rounded-2xl border bg-surface-container-lowest p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? createPreviewDelegation() : createDelegationMutation.mutate(); }}>
           <div className="flex items-center gap-2">
             <KeyRound aria-hidden="true" size={17} />
             <h2 className="text-sm font-semibold">Delegate approval</h2>
@@ -859,13 +859,13 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
           ["Trusted devices", displayedDevices.length, "Registered mobile and desktop devices"],
           ["Session logs", displayedSessions.length, "Recent access and risk history"]
         ].map(([label, value, text]) => (
-          <div className="rounded-2xl border bg-panel p-4" key={String(label)}>
+          <div className="rounded-2xl border bg-surface-container-lowest p-4" key={String(label)}>
             <p className="text-xs text-muted-foreground">{String(label)}</p>
             <p className="mt-2 text-2xl font-semibold">{String(value)}</p>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">{String(text)}</p>
           </div>
         ))}
-        <div className="rounded-2xl border bg-panel p-4 md:col-span-4">
+        <div className="rounded-2xl border bg-surface-container-lowest p-4 md:col-span-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <h2 className="text-sm font-semibold">Security baseline</h2>

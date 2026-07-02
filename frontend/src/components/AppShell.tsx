@@ -200,7 +200,7 @@ function UserMenu({
       <DropdownMenuPrimitive.Portal>
         <DropdownMenuPrimitive.Content
           align="end"
-          className="z-50 w-64 overflow-hidden rounded-xl border bg-panel p-1.5 shadow-elevated data-[state=open]:animate-in data-[state=closed]:animate-out"
+          className="z-50 w-64 overflow-hidden rounded-xl border bg-surface-container-lowest p-1.5 shadow-elevated data-[state=open]:animate-in data-[state=closed]:animate-out"
           sideOffset={8}
         >
           <div className="px-2.5 py-2">
@@ -451,7 +451,7 @@ export function AppShell({
       )}
     >
       <aside
-        className="sticky top-0 hidden h-screen min-h-0 border-r bg-panel/88 p-2.5 shadow-[8px_0_40px_-32px_rgba(15,23,42,0.45)] backdrop-blur-xl lg:flex lg:flex-col"
+        className="sticky top-0 hidden h-screen min-h-0 border-r bg-surface-container-lowest/88 p-2.5 shadow-[8px_0_40px_-32px_rgba(15,23,42,0.45)] backdrop-blur-xl lg:flex lg:flex-col"
         onMouseEnter={() => setSidebarHovered(true)}
         onMouseLeave={() => setSidebarHovered(false)}
       >
@@ -547,7 +547,7 @@ export function AppShell({
       </aside>
 
       <div className="min-w-0 max-w-full overflow-x-hidden">
-        <header className="sticky top-0 z-20 flex h-14 max-w-full items-center justify-between gap-2 overflow-hidden border-b bg-panel/88 px-3 shadow-sm backdrop-blur-xl lg:px-4">
+        <header className="sticky top-0 z-20 flex h-14 max-w-full items-center justify-between gap-2 overflow-hidden border-b bg-surface-container-lowest/88 px-3 shadow-sm backdrop-blur-xl lg:px-4">
           <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <Button
               aria-label="Toggle navigation"
@@ -625,7 +625,7 @@ export function AppShell({
 
         {previewMode ? (
           <section className="border-b border-warning/30 bg-warning/10 px-3 py-4 shadow-line sm:px-4 lg:px-5">
-            <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-3 rounded-2xl border border-warning/30 bg-panel/85 p-4 shadow-line backdrop-blur md:flex-row md:items-center md:justify-between">
+            <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-3 rounded-2xl border border-warning/30 bg-surface-container-lowest/85 p-4 shadow-line backdrop-blur md:flex-row md:items-center md:justify-between">
               <div className="flex items-start gap-3">
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-warning/15 text-warning">
                   <AlertTriangle aria-hidden="true" size={22} />
@@ -657,7 +657,7 @@ export function AppShell({
         ) : null}
 
         {mobileNavOpen ? (
-          <div className="border-b bg-panel p-3 lg:hidden">{navigation}</div>
+          <div className="border-b bg-surface-container-lowest p-3 lg:hidden">{navigation}</div>
         ) : null}
 
         {!focusedEditorRoute ? (
@@ -673,7 +673,7 @@ export function AppShell({
                   {showGlobalBack ? (
                     <button
                       aria-label="Go back to the previous view"
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-panel/80 text-muted-foreground shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:text-foreground"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-surface-container-lowest/80 text-muted-foreground shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:text-foreground"
                       onClick={() => router.back()}
                       title="Back"
                       type="button"

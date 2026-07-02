@@ -42,7 +42,7 @@ export function AuditControlsPanel({
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {controls.audit.tracked_events.map((event) => (
                     <span
-                      className="rounded-md border bg-panel px-2 py-1 text-[11px] text-muted-foreground"
+                      className="rounded-md border bg-surface-container-lowest px-2 py-1 text-[11px] text-muted-foreground"
                       key={event}
                     >
                       {event.replaceAll("_", " ")}

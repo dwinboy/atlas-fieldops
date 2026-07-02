@@ -210,7 +210,7 @@ export function FieldOfficerOperations({ token }: FieldOfficerOperationsProps) {
           ["Recent location", String(officers.filter((officer) => officer.last_latitude && officer.last_longitude).length), MapPin],
           ["Correction queue", "0", RotateCcw]
         ].map(([label, value, Icon]) => (
-          <article key={label as string} className="rounded-lg border bg-panel p-4">
+          <article key={label as string} className="rounded-lg border bg-surface-container-lowest p-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">{label as string}</p>
               <Icon aria-hidden="true" className="text-muted-foreground" size={17} />
@@ -222,7 +222,7 @@ export function FieldOfficerOperations({ token }: FieldOfficerOperationsProps) {
 
       <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
         <form
-          className="rounded-lg border bg-panel p-4"
+          className="rounded-lg border bg-surface-container-lowest p-4"
           onSubmit={(event) => {
             event.preventDefault();
             if (isPreview) {
@@ -293,7 +293,7 @@ export function FieldOfficerOperations({ token }: FieldOfficerOperationsProps) {
         </form>
 
         <div className="space-y-4">
-          <section className="rounded-lg border bg-panel p-4">
+          <section className="rounded-lg border bg-surface-container-lowest p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h2 className="text-sm font-semibold">Bulk import officers</h2>

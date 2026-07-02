@@ -163,7 +163,7 @@ export function ChoiceOptionsEditor({
               optionRefs.current[index] = element;
             }}
             aria-label={`Option ${index + 1}`}
-            className="h-9 w-full rounded-lg border border-input bg-panel/95 px-2.5 text-sm text-foreground shadow-line transition-all duration-150 ease-product placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-3 focus:ring-ring/15"
+            className="h-9 w-full rounded-lg border border-input bg-surface-container-lowest/95 px-2.5 text-sm text-foreground shadow-line transition-all duration-150 ease-product placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-3 focus:ring-ring/15"
             onChange={(event) => updateOption(index, event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
@@ -192,7 +192,7 @@ export function ChoiceOptionsEditor({
           {codesEnabled && showCodes ? (
             <input
               aria-label={`Answer code for option ${index + 1}`}
-              className="h-9 w-32 rounded-lg border border-input bg-panel/95 px-2.5 text-sm text-foreground shadow-line placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-3 focus:ring-ring/15"
+              className="h-9 w-32 rounded-lg border border-input bg-surface-container-lowest/95 px-2.5 text-sm text-foreground shadow-line placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-3 focus:ring-ring/15"
               onChange={(event) => updateValue(index, event.target.value)}
               placeholder="code (auto)"
               value={draftValues[index] ?? ""}

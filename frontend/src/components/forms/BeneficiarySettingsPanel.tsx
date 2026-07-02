@@ -22,7 +22,7 @@ export function BeneficiarySettingsPanel({
   onUpdateForm: (form: DynamicForm) => void;
 }) {
   return (
-                            <section className="mt-4 rounded-lg border bg-panel p-4">
+                            <section className="mt-4 rounded-lg border bg-surface-container-lowest p-4">
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
                                   <Fingerprint aria-hidden="true" className="text-primary" size={16} />

@@ -2729,7 +2729,7 @@ export function DynamicForms({
 
       {formBuilderFocused && !questionFirstMode ? (
         <section
-          className="sticky top-0 z-30 rounded-lg border bg-panel/98 px-3 py-2 shadow-line backdrop-blur"
+          className="sticky top-0 z-30 rounded-lg border bg-surface-container-lowest/98 px-3 py-2 shadow-line backdrop-blur"
           data-builder-sticky-header
         >
           <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_180px_180px_auto] xl:items-center">
@@ -2947,7 +2947,7 @@ export function DynamicForms({
               ].map((step, index) => (
                 <div
                   key={step}
-                  className="rounded-lg border bg-panel px-3 py-2"
+                  className="rounded-lg border bg-surface-container-lowest px-3 py-2"
                 >
                   <span className="font-semibold text-foreground">
                     Step {index + 1}
@@ -3387,7 +3387,7 @@ export function DynamicForms({
             ))}
           </div>
 
-          <div className="mt-5 rounded-lg border bg-panel p-4">
+          <div className="mt-5 rounded-lg border bg-surface-container-lowest p-4">
             <div className="flex items-center gap-2">
               <ShieldCheck
                 aria-hidden="true"
@@ -3896,7 +3896,7 @@ export function DynamicForms({
       >
         <div className="grid min-h-0 flex-1 gap-0 overflow-hidden lg:grid-cols-[360px_minmax(0,1fr)]">
           <aside className="min-h-0 border-b bg-background/70 p-5 lg:border-b-0 lg:border-r">
-            <div className="rounded-lg border bg-panel p-4">
+            <div className="rounded-lg border bg-surface-container-lowest p-4">
               <FileUp aria-hidden="true" className="text-primary" />
               <h3 className="mt-3 text-sm font-semibold">
                 Template and mapping
@@ -3937,7 +3937,7 @@ export function DynamicForms({
               </div>
             </div>
 
-            <div className="mt-4 rounded-lg border bg-panel p-4">
+            <div className="mt-4 rounded-lg border bg-surface-container-lowest p-4">
               <h3 className="text-sm font-semibold">Import readiness</h3>
               <div className="mt-3 space-y-2 text-sm">
                 {[
@@ -3971,7 +3971,7 @@ export function DynamicForms({
           </aside>
 
           <section className="min-h-0 overflow-y-auto p-5 product-scrollbar">
-            <div className="rounded-lg border bg-panel">
+            <div className="rounded-lg border bg-surface-container-lowest">
               <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
                 <div>
                   <h3 className="text-sm font-semibold">
@@ -4003,7 +4003,7 @@ export function DynamicForms({
               </div>
             </div>
 
-            <div className="mt-5 rounded-lg border bg-panel">
+            <div className="mt-5 rounded-lg border bg-surface-container-lowest">
               <div className="border-b px-4 py-3">
                 <h3 className="text-sm font-semibold">Recent import runs</h3>
               </div>
@@ -4113,7 +4113,7 @@ export function DynamicForms({
           </div>
 
           <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-            <section className="rounded-lg border bg-panel">
+            <section className="rounded-lg border bg-surface-container-lowest">
               <div className="border-b px-4 py-3">
                 <h3 className="text-sm font-semibold">Quality flags</h3>
               </div>
@@ -4163,7 +4163,7 @@ export function DynamicForms({
                   .filter((rule) => rule.enabled)
                   .map((rule) => (
                     <div
-                      className="rounded-md border bg-panel px-3 py-2 text-sm"
+                      className="rounded-md border bg-surface-container-lowest px-3 py-2 text-sm"
                       key={rule.id}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -4257,7 +4257,7 @@ export function DynamicForms({
                   ).length,
                 ],
               ].map(([label, value]) => (
-                <div className="rounded-lg border bg-panel p-3" key={label}>
+                <div className="rounded-lg border bg-surface-container-lowest p-3" key={label}>
                   <p className="text-xs text-muted-foreground">{label}</p>
                   <p className="mt-1 text-xl font-semibold">{value}</p>
                 </div>
@@ -4265,13 +4265,13 @@ export function DynamicForms({
             </div>
             <div className="max-h-[56vh] space-y-2 overflow-y-auto p-4 product-scrollbar">
               {formSubmissionsQuery.isLoading && !isPreview ? (
-                <div className="rounded-lg border bg-panel p-4 text-sm text-muted-foreground">
+                <div className="rounded-lg border bg-surface-container-lowest p-4 text-sm text-muted-foreground">
                   Loading submissions...
                 </div>
               ) : null}
               {!selectedFormReviewRows.length &&
               !formSubmissionsQuery.isLoading ? (
-                <div className="rounded-lg border bg-panel p-4 text-sm leading-5 text-muted-foreground">
+                <div className="rounded-lg border bg-surface-container-lowest p-4 text-sm leading-5 text-muted-foreground">
                   No submissions are available for this form yet. Once field
                   officers sync records, they will appear here for review.
                 </div>
@@ -4279,7 +4279,7 @@ export function DynamicForms({
               {selectedFormReviewRows.map((submission) => (
                 <button
                   className={cn(
-                    "w-full rounded-lg border bg-panel p-3 text-left transition hover:border-primary/40 hover:bg-primary/5",
+                    "w-full rounded-lg border bg-surface-container-lowest p-3 text-left transition hover:border-primary/40 hover:bg-primary/5",
                     selectedReviewSubmission?.id === submission.id &&
                       "border-primary/50 bg-primary/10",
                   )}
@@ -4313,7 +4313,7 @@ export function DynamicForms({
           <section className="min-h-0 overflow-y-auto p-5 product-scrollbar">
             {selectedReviewSubmission ? (
               <div className="space-y-4">
-                <div className="flex flex-col gap-3 rounded-lg border bg-panel p-4 md:flex-row md:items-start md:justify-between">
+                <div className="flex flex-col gap-3 rounded-lg border bg-surface-container-lowest p-4 md:flex-row md:items-start md:justify-between">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="text-base font-semibold">
@@ -4378,7 +4378,7 @@ export function DynamicForms({
                   ))}
                 </div>
 
-                <div className="rounded-lg border bg-panel">
+                <div className="rounded-lg border bg-surface-container-lowest">
                   <div className="border-b px-4 py-3">
                     <p className="text-sm font-semibold">Response values</p>
                   </div>
@@ -4441,7 +4441,7 @@ export function DynamicForms({
                 </div>
               </div>
             ) : (
-              <div className="flex h-full min-h-72 items-center justify-center rounded-lg border bg-panel p-6 text-center">
+              <div className="flex h-full min-h-72 items-center justify-center rounded-lg border bg-surface-container-lowest p-6 text-center">
                 <div>
                   <Eye
                     aria-hidden="true"
@@ -4627,7 +4627,7 @@ export function DynamicForms({
                   </button>
                 ))}
               </div>
-              <div className="mt-2 flex items-center gap-2 rounded-lg border bg-panel px-3 py-2 text-xs font-medium">
+              <div className="mt-2 flex items-center gap-2 rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs font-medium">
                 {templateCategory}
                 <HelpHint
                   label={`About ${templateCategory}`}
@@ -4650,7 +4650,7 @@ export function DynamicForms({
                     type="button"
                   >
                     <div className="mb-4 flex items-start justify-between gap-3">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-xl border bg-panel text-primary">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl border bg-surface-container-lowest text-primary">
                         <MonitorSmartphone aria-hidden="true" size={18} />
                       </span>
                       {template.featured ? (
@@ -4693,7 +4693,7 @@ export function DynamicForms({
                     {selectedTemplate.description}
                   </HelpHint>
                 </div>
-                <div className="mt-4 rounded-[28px] border bg-panel p-3 shadow-line">
+                <div className="mt-4 rounded-[28px] border bg-surface-container-lowest p-3 shadow-line">
                   <div className="mx-auto mb-3 h-1.5 w-16 rounded-full bg-muted" />
                   {templateToForm(selectedTemplate)
                     .fields.slice(0, 5)
@@ -4728,7 +4728,7 @@ export function DynamicForms({
       ) : null}
 
       {!allForms.length && builderMode !== "templates" ? (
-        <section className="rounded-lg border bg-panel p-6 text-center">
+        <section className="rounded-lg border bg-surface-container-lowest p-6 text-center">
           <ClipboardList
             aria-hidden="true"
             className="mx-auto text-primary"
@@ -4793,7 +4793,7 @@ export function DynamicForms({
         >
           <section
             className={cn(
-              "rounded-lg border bg-panel p-2 xl:hidden",
+              "rounded-lg border bg-surface-container-lowest p-2 xl:hidden",
               questionFirstMode && "hidden",
             )}
             data-builder-mobile-tabs
@@ -4845,7 +4845,7 @@ export function DynamicForms({
             )}
             data-builder-workspace
           >
-            <section className="rounded-lg border bg-panel p-3">
+            <section className="rounded-lg border bg-surface-container-lowest p-3">
               <div className="flex items-center gap-2">
                 <PanelsTopLeft aria-hidden="true" size={18} />
                 <h2 className="text-sm font-semibold">Builder workspace</h2>
@@ -4880,7 +4880,7 @@ export function DynamicForms({
             </section>
 
             {leftPanelTab === "structure" ? (
-              <section className="rounded-lg border bg-panel p-3">
+              <section className="rounded-lg border bg-surface-container-lowest p-3">
                 <div className="flex items-center justify-between gap-2">
                   <div>
                     <h2 className="text-sm font-semibold">Survey structure</h2>
@@ -5077,7 +5077,7 @@ export function DynamicForms({
             ) : null}
 
             {leftPanelTab === "bank" ? (
-              <section className="rounded-lg border bg-panel p-3">
+              <section className="rounded-lg border bg-surface-container-lowest p-3">
                 <div className="mb-3 flex items-center gap-2">
                   <Plus aria-hidden="true" size={18} />
                   <h2 className="text-sm font-semibold">Question Library</h2>
@@ -5098,7 +5098,7 @@ export function DynamicForms({
                       );
                       return (
                         <div
-                          className="rounded-md border bg-panel/70 p-2"
+                          className="rounded-md border bg-surface-container-lowest/70 p-2"
                           key={section.id}
                         >
                           <button
@@ -5177,7 +5177,7 @@ export function DynamicForms({
                       const Icon = fieldTypeIcons[type];
                       return (
                         <button
-                          className="flex items-center gap-1.5 rounded-md border bg-panel px-2 py-1.5 text-xs font-medium transition hover:border-primary/35 hover:bg-primary/5"
+                          className="flex items-center gap-1.5 rounded-md border bg-surface-container-lowest px-2 py-1.5 text-xs font-medium transition hover:border-primary/35 hover:bg-primary/5"
                           key={type}
                           onClick={() => addCatalogField(type)}
                           type="button"
@@ -5405,7 +5405,7 @@ export function DynamicForms({
             ) : null}
 
             {leftPanelTab === "logic" ? (
-              <section className="rounded-lg border bg-panel p-3">
+              <section className="rounded-lg border bg-surface-container-lowest p-3">
                 <h2 className="text-sm font-semibold">Logic flows</h2>
                 <div className="mt-3 space-y-2">
                   {(
@@ -5443,7 +5443,7 @@ export function DynamicForms({
             ) : null}
 
             {leftPanelTab === "variables" ? (
-              <section className="rounded-lg border bg-panel p-3">
+              <section className="rounded-lg border bg-surface-container-lowest p-3">
                 <h2 className="text-sm font-semibold">Variables</h2>
                 <div className="mt-3 space-y-2">
                   {selectedForm?.fields.map((field) => (
@@ -5469,7 +5469,7 @@ export function DynamicForms({
               </section>
             ) : null}
 
-            <section className="rounded-lg border bg-panel p-3">
+            <section className="rounded-lg border bg-surface-container-lowest p-3">
               <div className="mb-3 flex items-center gap-2">
                 <ClipboardList aria-hidden="true" size={18} />
                 <h2 className="text-sm font-semibold">Forms</h2>
@@ -5519,7 +5519,7 @@ export function DynamicForms({
                 builderFocusPanel !== "build" && "hidden xl:block",
               )}
             >
-              <section className="hidden rounded-lg border bg-panel px-3 py-2">
+              <section className="hidden rounded-lg border bg-surface-container-lowest px-3 py-2">
                 <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <Badge tone="accent">v{selectedForm.version}</Badge>
@@ -5624,7 +5624,7 @@ export function DynamicForms({
                 </div>
               </section>
 
-              <section className="hidden rounded-lg border bg-panel px-3 py-2">
+              <section className="hidden rounded-lg border bg-surface-container-lowest px-3 py-2">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div className="flex min-w-0 items-start gap-2">
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-primary/10 text-primary">
@@ -5678,7 +5678,7 @@ export function DynamicForms({
                 </div>
               </section>
 
-              <section className="hidden rounded-lg border bg-panel px-3 py-2">
+              <section className="hidden rounded-lg border bg-surface-container-lowest px-3 py-2">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div className="flex min-w-0 items-start gap-2">
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
@@ -5721,7 +5721,7 @@ export function DynamicForms({
                 </div>
               </section>
 
-              <section className="hidden rounded-lg border bg-panel px-3 py-2">
+              <section className="hidden rounded-lg border bg-surface-container-lowest px-3 py-2">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div className="flex min-w-0 items-start gap-2">
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-sky-500/10 text-sky-700 dark:text-sky-300">
@@ -6093,7 +6093,7 @@ export function DynamicForms({
                             );
                             return (
                               <section
-                                className="rounded-lg border bg-panel/70 p-3"
+                                className="rounded-lg border bg-surface-container-lowest/70 p-3"
                                 key={page.id}
                               >
                                 <div className="mb-3 flex items-start justify-between gap-3">
@@ -6162,7 +6162,7 @@ export function DynamicForms({
                                           {sectionFields.map(
                                             (field, fieldIndex) => (
                                               <label
-                                                className="block rounded-lg border bg-panel p-3 text-sm"
+                                                className="block rounded-lg border bg-surface-container-lowest p-3 text-sm"
                                                 key={field.id}
                                               >
                                                 <span className="flex flex-wrap items-center gap-1.5">
@@ -6208,7 +6208,7 @@ export function DynamicForms({
                                             ),
                                           )}
                                           {!sectionFields.length ? (
-                                            <div className="rounded-md border border-dashed bg-panel px-3 py-2 text-xs text-muted-foreground">
+                                            <div className="rounded-md border border-dashed bg-surface-container-lowest px-3 py-2 text-xs text-muted-foreground">
                                               No fields in this section yet.
                                             </div>
                                           ) : null}
@@ -6228,7 +6228,7 @@ export function DynamicForms({
               </Modal>
 
               <section
-                className="overflow-hidden rounded-lg border bg-panel"
+                className="overflow-hidden rounded-lg border bg-surface-container-lowest"
                 aria-labelledby="canvas-title"
               >
                 {!builderFocusMode ? (
@@ -6354,7 +6354,7 @@ export function DynamicForms({
                   >
                     <div
                       className={cn(
-                        "grid grid-cols-[48px_minmax(0,1fr)] border-r bg-panel/60",
+                        "grid grid-cols-[48px_minmax(0,1fr)] border-r bg-surface-container-lowest/60",
                         questionFirstMode && "grid-rows-[auto_minmax(0,1fr)]",
                       )}
                     >
@@ -6453,7 +6453,7 @@ export function DynamicForms({
                         </div>
                         <div
                           className={cn(
-                            "mt-3 rounded-md border bg-panel p-2",
+                            "mt-3 rounded-md border bg-surface-container-lowest p-2",
                             questionFirstMode && "mt-1.5 p-1.5",
                           )}
                         >
@@ -6890,7 +6890,7 @@ export function DynamicForms({
                           ) : null}
                         </div>
                       ) : (
-                        <div className="flex min-h-[420px] items-center justify-center rounded-lg border border-dashed bg-panel/60 p-6 text-center">
+                        <div className="flex min-h-[420px] items-center justify-center rounded-lg border border-dashed bg-surface-container-lowest/60 p-6 text-center">
                           <div>
                             <Plus
                               aria-hidden="true"
@@ -7001,7 +7001,7 @@ export function DynamicForms({
                                 </div>
                               </div>
                               {!collapsedSectionIds[section.id] ? (
-                                <div className="border-t bg-panel/40 px-4 py-2">
+                                <div className="border-t bg-surface-container-lowest/40 px-4 py-2">
                                   <div className="flex items-center gap-2">
                                     <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-muted-foreground">
                                       Show section when
@@ -7116,7 +7116,7 @@ export function DynamicForms({
                                 })
                               ) : (
                                 <div className="p-4">
-                                  <div className="rounded-lg border border-dashed bg-panel/60 p-4">
+                                  <div className="rounded-lg border border-dashed bg-surface-container-lowest/60 p-4">
                                     <div className="text-center text-sm text-muted-foreground">
                                       <Plus
                                         aria-hidden="true"
@@ -7215,7 +7215,7 @@ export function DynamicForms({
               title={`Field settings: ${selectedField.label}`}
             >
               <div className="flex-1 overflow-y-auto p-5 product-scrollbar">
-                <section className="rounded-lg border bg-panel p-4">
+                <section className="rounded-lg border bg-surface-container-lowest p-4">
                   <div className="flex items-center gap-2">
                     <Settings2 aria-hidden="true" size={17} />
                     <div>
@@ -8361,7 +8361,7 @@ export function DynamicForms({
                   ) : null}
                 </section>
 
-                <section className="rounded-lg border bg-panel p-4">
+                <section className="rounded-lg border bg-surface-container-lowest p-4">
                   <div className="flex items-center gap-2">
                     <Check aria-hidden="true" size={17} />
                     <h2 className="text-sm font-semibold">Offline readiness</h2>
@@ -8398,7 +8398,7 @@ export function DynamicForms({
                 builderFocusPanel !== "preview" && "hidden",
               )}
             >
-              <section className="sticky top-0 rounded-lg border bg-panel p-3">
+              <section className="sticky top-0 rounded-lg border bg-surface-container-lowest p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">
@@ -8452,7 +8452,7 @@ export function DynamicForms({
                     previewMode === "tablet" && "mx-auto max-w-[520px]",
                   )}
                 >
-                  <div className="mb-3 rounded-lg border bg-panel px-3 py-2">
+                  <div className="mb-3 rounded-lg border bg-surface-container-lowest px-3 py-2">
                     <p className="truncate text-sm font-semibold">
                       {selectedForm.name}
                     </p>
@@ -8468,7 +8468,7 @@ export function DynamicForms({
                       );
                       return (
                         <section
-                          className="rounded-lg border bg-panel/60 p-3"
+                          className="rounded-lg border bg-surface-container-lowest/60 p-3"
                           key={page.id}
                         >
                           <div className="mb-3">
@@ -8515,7 +8515,7 @@ export function DynamicForms({
                                     {sectionFields.map((field) => (
                                       <button
                                         className={cn(
-                                          "w-full rounded-lg border bg-panel p-2 text-left transition hover:border-primary/40 hover:bg-primary/5",
+                                          "w-full rounded-lg border bg-surface-container-lowest p-2 text-left transition hover:border-primary/40 hover:bg-primary/5",
                                           selectedField?.id === field.id &&
                                             "border-primary/50 bg-primary/10",
                                         )}
@@ -8550,7 +8550,7 @@ export function DynamicForms({
                                       </button>
                                     ))}
                                     {!sectionFields.length ? (
-                                      <div className="rounded-md border border-dashed bg-panel px-3 py-2 text-xs text-muted-foreground">
+                                      <div className="rounded-md border border-dashed bg-surface-container-lowest px-3 py-2 text-xs text-muted-foreground">
                                         No fields yet.
                                       </div>
                                     ) : null}

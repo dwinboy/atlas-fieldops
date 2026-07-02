@@ -57,7 +57,7 @@ export function ResponseSettingsPanel({
       ? datasets.find((dataset) => dataset.slug === field.selection?.datasetId)?.columns ?? []
       : [];
   return (
-                            <section className="mt-4 rounded-lg border bg-panel p-4">
+                            <section className="mt-4 rounded-lg border bg-surface-container-lowest p-4">
                               <div className="flex items-center justify-between gap-2">
                                 <h3 className="text-sm font-semibold">
                                   Response configuration

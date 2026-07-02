@@ -356,7 +356,7 @@ function StatCard({
   value: string;
 }) {
   return (
-    <article className="rounded-lg border bg-panel p-4 shadow-line">
+    <article className="rounded-lg border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
@@ -1568,7 +1568,7 @@ export function PlatformConsole({
         <Panel title="Recent configuration changes" description="Immutable audit events from platform and tenant support actions.">
           <div className="space-y-3">
             {auditLogs.slice(0, 6).map((log) => (
-              <div className="rounded-lg border bg-panel p-3" key={log.id}>
+              <div className="rounded-lg border bg-surface-container-lowest p-3" key={log.id}>
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-sm font-medium">{log.action}</p>
                   <span className="text-xs text-muted-foreground">{formatDate(log.created_at)}</span>
@@ -1618,7 +1618,7 @@ export function PlatformConsole({
     <Panel title="Global role templates" description="Super Admin is a protected global template. System Admin and business roles are organization-level templates.">
       <div className="grid gap-3 lg:grid-cols-2">
         {roles.map((role: PlatformRoleTemplateRead) => (
-          <article className="rounded-lg border bg-panel p-4 shadow-line" key={role.key}>
+          <article className="rounded-lg border border-border-subtle bg-surface-container-lowest p-4 shadow-card" key={role.key}>
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="font-semibold">{role.label}</h3>
@@ -1637,7 +1637,7 @@ export function PlatformConsole({
     <Panel title="Feature flags" description="Use global defaults with future organization overrides. Every change must be audited.">
       <div className="grid gap-3 lg:grid-cols-2">
         {flags.map((flag: PlatformFeatureFlagRead) => (
-          <article className="rounded-lg border bg-panel p-4" key={flag.key}>
+          <article className="rounded-lg border bg-surface-container-lowest p-4" key={flag.key}>
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="font-semibold">{flag.label}</h3>
@@ -1690,7 +1690,7 @@ export function PlatformConsole({
               ["Redis", settings.redis_configured ? "Configured" : "Local or missing"],
               ["Kafka", settings.kafka_configured ? "Configured" : "Local or missing"],
             ].map(([label, value]) => (
-              <div className="rounded-lg border bg-panel p-4" key={label}>
+              <div className="rounded-lg border bg-surface-container-lowest p-4" key={label}>
                 <p className="text-xs uppercase text-muted-foreground">{label}</p>
                 <p className="mt-2 font-medium">{value}</p>
               </div>
@@ -1970,7 +1970,7 @@ export function PlatformConsole({
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <div className="rounded-lg border bg-panel/80 px-3 py-2 shadow-line">
+                <div className="rounded-lg border bg-surface-container-lowest/80 px-3 py-2 shadow-line">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                     Signed in as
                   </p>
@@ -2221,7 +2221,7 @@ function TenantUsageSnapshot({ rows }: { rows: PlatformOrganizationUsageRead[] }
       {topRows.length ? (
         <div className="space-y-3">
           {topRows.map((row) => (
-            <div className="rounded-lg border bg-panel p-3" key={row.organization_id}>
+            <div className="rounded-lg border bg-surface-container-lowest p-3" key={row.organization_id}>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-medium">{row.organization_name}</p>
@@ -2246,7 +2246,7 @@ function LeadPipeline({ leads }: { leads: PlatformLeadRead[] }) {
       {topLeads.length ? (
         <div className="space-y-3">
           {topLeads.map((lead) => (
-            <div className="rounded-lg border bg-panel p-3" key={lead.id}>
+            <div className="rounded-lg border bg-surface-container-lowest p-3" key={lead.id}>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-medium">{lead.organization || lead.name}</p>
@@ -2271,7 +2271,7 @@ function OrganizationPlanGrid({ onEdit, plans }: { onEdit: (plan: PlatformOrgani
       {plans.length ? (
         <div className="grid gap-3 lg:grid-cols-2">
           {plans.map((plan) => (
-            <article className="rounded-lg border bg-panel p-4" key={plan.organization_id}>
+            <article className="rounded-lg border bg-surface-container-lowest p-4" key={plan.organization_id}>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="font-semibold">{plan.organization_name}</h3>
@@ -2305,7 +2305,7 @@ function OrganizationPlanGrid({ onEdit, plans }: { onEdit: (plan: PlatformOrgani
 
 function ServiceCard({ service }: { service: PlatformHealthServiceRead }) {
   return (
-    <article className="rounded-lg border bg-panel p-4 shadow-line">
+    <article className="rounded-lg border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="font-semibold">{service.service}</h3>
@@ -2357,15 +2357,15 @@ function SecurityEvents({
             Support session timeout minutes
             <Input min={5} type="number" value={draft.support_session_timeout_minutes} onChange={(event) => onDraftChange((current) => ({ ...current, support_session_timeout_minutes: Number(event.target.value) }))} />
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.mfa_required_for_admins} onChange={(event) => onDraftChange((current) => ({ ...current, mfa_required_for_admins: event.target.checked }))} type="checkbox" />
             Require MFA for admins
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.mfa_required_for_all_users} onChange={(event) => onDraftChange((current) => ({ ...current, mfa_required_for_all_users: event.target.checked }))} type="checkbox" />
             Require MFA for all users
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.ip_allowlist_enabled} onChange={(event) => onDraftChange((current) => ({ ...current, ip_allowlist_enabled: event.target.checked }))} type="checkbox" />
             Enable IP allowlist
           </label>
@@ -2389,7 +2389,7 @@ function SecurityEvents({
       <Panel title="Security center" description="High-risk actions such as lock, unlock, reset password, session revoke, and MFA requirement require confirmation and reason.">
         <div className="grid gap-3">
           {events.map((event) => (
-            <article className="rounded-lg border bg-panel p-4" key={event.id}>
+            <article className="rounded-lg border bg-surface-container-lowest p-4" key={event.id}>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="font-semibold">{event.event_type}</h3>
@@ -2406,7 +2406,7 @@ function SecurityEvents({
       <Panel title="Support access sessions" description="Recent organization support-mode entries. Support access must remain explicit, visible, and auditable.">
         <div className="space-y-3">
           {supportSessions.map((session) => (
-            <article className="rounded-lg border bg-panel p-4" key={session.id}>
+            <article className="rounded-lg border bg-surface-container-lowest p-4" key={session.id}>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="font-semibold">{session.organization_name ?? "Organization"}</h3>
@@ -2445,15 +2445,15 @@ function MobileFleet({
       </div>
       <Panel title="Version policy" description="Super Admin should verify production and minimum supported app versions before field rollout.">
         <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-lg border bg-panel p-4">
+          <div className="rounded-lg border bg-surface-container-lowest p-4">
             <p className="text-xs uppercase text-muted-foreground">Production version</p>
             <p className="mt-2 font-semibold">{fleet.current_production_version}</p>
           </div>
-          <div className="rounded-lg border bg-panel p-4">
+          <div className="rounded-lg border bg-surface-container-lowest p-4">
             <p className="text-xs uppercase text-muted-foreground">Minimum supported</p>
             <p className="mt-2 font-semibold">{fleet.minimum_supported_version}</p>
           </div>
-          <div className="rounded-lg border bg-panel p-4">
+          <div className="rounded-lg border bg-surface-container-lowest p-4">
             <p className="text-xs uppercase text-muted-foreground">Version distribution</p>
             <p className="mt-2 font-semibold">{Object.entries(fleet.app_versions).map(([version, count]) => `${version}: ${count}`).join(", ") || "No devices"}</p>
           </div>
@@ -2510,15 +2510,15 @@ function TenantLifecyclePolicy({
             Default submission limit
             <Input min={1} type="number" value={draft.default_submission_limit} onChange={(event) => onDraftChange((current) => ({ ...current, default_submission_limit: Number(event.target.value) }))} />
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.suspend_after_grace} onChange={(event) => onDraftChange((current) => ({ ...current, suspend_after_grace: event.target.checked }))} type="checkbox" />
             Suspend after grace
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.require_owner_before_activation} onChange={(event) => onDraftChange((current) => ({ ...current, require_owner_before_activation: event.target.checked }))} type="checkbox" />
             Require owner before activation
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.require_project_before_activation} onChange={(event) => onDraftChange((current) => ({ ...current, require_project_before_activation: event.target.checked }))} type="checkbox" />
             Require project before activation
           </label>
@@ -2616,15 +2616,15 @@ function CompliancePolicy({
             Subprocessors URL
             <Input value={draft.subprocessors_public_url} onChange={(event) => onDraftChange((current) => ({ ...current, subprocessors_public_url: event.target.value }))} placeholder="https://..." />
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.pii_masking_default} onChange={(event) => onDraftChange((current) => ({ ...current, pii_masking_default: event.target.checked }))} type="checkbox" />
             Mask PII by default
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.require_export_approval} onChange={(event) => onDraftChange((current) => ({ ...current, require_export_approval: event.target.checked }))} type="checkbox" />
             Require export approval
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.require_dpa_for_exports} onChange={(event) => onDraftChange((current) => ({ ...current, require_dpa_for_exports: event.target.checked }))} type="checkbox" />
             Require DPA for exports
           </label>
@@ -2865,11 +2865,11 @@ function QuotaPolicy({
               <option value="suspend">Suspend tenant</option>
             </Select>
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.notify_owners_on_warning} onChange={(event) => onDraftChange((current) => ({ ...current, notify_owners_on_warning: event.target.checked }))} type="checkbox" />
             Notify owners on warning
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.notify_super_admins_on_critical} onChange={(event) => onDraftChange((current) => ({ ...current, notify_super_admins_on_critical: event.target.checked }))} type="checkbox" />
             Notify Super Admins on critical
           </label>
@@ -3107,7 +3107,7 @@ function RetentionPolicy({
             Anonymize deleted users after days
             <Input min={1} type="number" value={draft.anonymize_deleted_user_days} onChange={(event) => onDraftChange((current) => ({ ...current, anonymize_deleted_user_days: Number(event.target.value) }))} />
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.legal_hold_enabled} onChange={(event) => onDraftChange((current) => ({ ...current, legal_hold_enabled: event.target.checked }))} type="checkbox" />
             Legal hold can pause deletion
           </label>
@@ -3200,15 +3200,15 @@ function ApiGovernancePolicy({
       </div>
       <Panel title="API and integration governance policy" description="Set global defaults for public API access, API key expiry, webhook retry behavior, connector secret rotation, and external-access auditing.">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.public_api_enabled} onChange={(event) => onDraftChange((current) => ({ ...current, public_api_enabled: event.target.checked }))} type="checkbox" />
             Public API enabled
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.require_scoped_api_keys} onChange={(event) => onDraftChange((current) => ({ ...current, require_scoped_api_keys: event.target.checked }))} type="checkbox" />
             Require scoped API keys
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.audit_external_access} onChange={(event) => onDraftChange((current) => ({ ...current, audit_external_access: event.target.checked }))} type="checkbox" />
             Audit external access
           </label>
@@ -3321,19 +3321,19 @@ function AiGovernancePolicy({
       </div>
       <Panel title="AI governance policy" description="Set platform defaults for AI-assisted workflows, provider selection, PII protection, human review, prompt retention, token budget, and audit logging.">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.ai_features_enabled} onChange={(event) => onDraftChange((current) => ({ ...current, ai_features_enabled: event.target.checked }))} type="checkbox" />
             AI features enabled
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.pii_redaction_required} onChange={(event) => onDraftChange((current) => ({ ...current, pii_redaction_required: event.target.checked }))} type="checkbox" />
             Require PII redaction
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.human_review_required} onChange={(event) => onDraftChange((current) => ({ ...current, human_review_required: event.target.checked }))} type="checkbox" />
             Require human review
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.audit_ai_actions} onChange={(event) => onDraftChange((current) => ({ ...current, audit_ai_actions: event.target.checked }))} type="checkbox" />
             Audit AI actions
           </label>
@@ -3440,19 +3440,19 @@ function CommunicationPolicy({
       </div>
       <Panel title="Communication policy" description="Set platform defaults for transactional email, support replies, SMS, push notifications, tenant broadcasts, and notification log retention.">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.transactional_email_enabled} onChange={(event) => onDraftChange((current) => ({ ...current, transactional_email_enabled: event.target.checked }))} type="checkbox" />
             Transactional email enabled
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.sms_enabled} onChange={(event) => onDraftChange((current) => ({ ...current, sms_enabled: event.target.checked }))} type="checkbox" />
             SMS enabled
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.push_notifications_enabled} onChange={(event) => onDraftChange((current) => ({ ...current, push_notifications_enabled: event.target.checked }))} type="checkbox" />
             Push notifications enabled
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.tenant_broadcasts_enabled} onChange={(event) => onDraftChange((current) => ({ ...current, tenant_broadcasts_enabled: event.target.checked }))} type="checkbox" />
             Tenant broadcasts enabled
           </label>
@@ -3510,7 +3510,7 @@ function SectorPacks({ isLoading, packs }: { isLoading: boolean; packs: Platform
     <Panel title="Sector pack manager" description="Review platform starter content for industries. Each pack defines entities, starter forms, metrics, reports, validation, quality rules, workflows, and mobile guidance.">
       <div className="grid gap-3 xl:grid-cols-2">
         {packs.map((pack) => (
-          <article className="rounded-lg border bg-panel p-4 shadow-line" key={pack.id}>
+          <article className="rounded-lg border border-border-subtle bg-surface-container-lowest p-4 shadow-card" key={pack.id}>
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="font-semibold">{pack.name}</h3>
@@ -3556,7 +3556,7 @@ function Integrations({
     <Panel title="Platform integrations" description="Secrets are never shown in the UI. Status checks explain the recorded provider health, while configuration changes require an audit reason.">
       <div className="grid gap-3 lg:grid-cols-2">
         {rows.map((row) => (
-          <article className="rounded-lg border bg-panel p-4" key={row.key}>
+          <article className="rounded-lg border bg-surface-container-lowest p-4" key={row.key}>
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="font-semibold">{row.name}</h3>
@@ -3635,7 +3635,7 @@ function ReleaseCenter({
       <Panel title="Deployment readiness" description="Use this as the Super Admin release checklist before mobile builds, backend deploys, and public frontend rollout.">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {readiness.map(([label, ready]) => (
-            <div className="rounded-lg border bg-panel p-4" key={label}>
+            <div className="rounded-lg border bg-surface-container-lowest p-4" key={label}>
               <p className="text-xs uppercase text-muted-foreground">{label}</p>
               <Badge className="mt-2" tone={ready ? "success" : "warning"}>{ready ? "Ready" : "Needs setup"}</Badge>
             </div>
@@ -3675,7 +3675,7 @@ function ReleaseCenter({
               <option value="Rollback needed">Rollback needed</option>
             </Select>
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.maintenance_mode} onChange={(event) => onDraftChange((current) => ({ ...current, maintenance_mode: event.target.checked }))} type="checkbox" />
             Maintenance mode planned
           </label>
@@ -3738,7 +3738,7 @@ function ReleaseCenter({
             <p className="mt-1 text-xs text-muted-foreground">Show a platform notice to signed-in workspace users for rollout updates, incidents, or support guidance.</p>
           </div>
           <div className="grid gap-3 md:grid-cols-[180px_1fr_180px]">
-            <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
               <input checked={draft.announcement_enabled} onChange={(event) => onDraftChange((current) => ({ ...current, announcement_enabled: event.target.checked }))} type="checkbox" />
               Show notice
             </label>
@@ -3850,15 +3850,15 @@ function Backups({
             Restore approver role
             <Input value={draft.restore_approver_role} onChange={(event) => onDraftChange((current) => ({ ...current, restore_approver_role: event.target.value }))} />
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.tenant_export_enabled} onChange={(event) => onDraftChange((current) => ({ ...current, tenant_export_enabled: event.target.checked }))} type="checkbox" />
             Tenant export enabled
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.restore_requires_approval} onChange={(event) => onDraftChange((current) => ({ ...current, restore_requires_approval: event.target.checked }))} type="checkbox" />
             Restore requires approval
           </label>
-          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+          <label className="flex items-center gap-2 rounded-lg border bg-surface-container-lowest p-3 text-sm font-medium">
             <input checked={draft.anonymize_archived_data} onChange={(event) => onDraftChange((current) => ({ ...current, anonymize_archived_data: event.target.checked }))} type="checkbox" />
             Anonymize archived data
           </label>
@@ -3885,7 +3885,7 @@ function Backups({
       <Panel title="Backup jobs" description="Backups are visible to Super Admins. Restore operations require re-authentication, reason, confirmation, and immutable audit logging.">
         <div className="grid gap-3 lg:grid-cols-2">
           {rows.map((row) => (
-            <article className="rounded-lg border bg-panel p-4" key={row.id}>
+            <article className="rounded-lg border bg-surface-container-lowest p-4" key={row.id}>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="font-semibold">{row.backup_type}</h3>

@@ -96,7 +96,7 @@ export function PermissionsControlsPanel({
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {rule.permissions.map((permission) => (
                         <span
-                          className="rounded-md border bg-panel px-2 py-1 text-[11px] text-muted-foreground"
+                          className="rounded-md border bg-surface-container-lowest px-2 py-1 text-[11px] text-muted-foreground"
                           key={permission}
                         >
                           {permission.replaceAll("_", " ")}

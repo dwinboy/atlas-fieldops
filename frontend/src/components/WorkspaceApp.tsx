@@ -278,7 +278,7 @@ export function WorkspaceApp() {
     return (
       <>
         <section className="flex min-h-screen items-center justify-center bg-background px-6">
-          <div className="max-w-lg rounded-lg border bg-panel p-6 text-center shadow-elevated">
+          <div className="max-w-lg rounded-lg border bg-surface-container-lowest p-6 text-center shadow-elevated">
             <Badge tone="danger">Forbidden</Badge>
             <h1 className="mt-3 text-xl font-semibold">
               Platform Console requires Super Admin access

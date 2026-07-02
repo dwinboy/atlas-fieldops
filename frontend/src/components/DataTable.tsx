@@ -73,7 +73,7 @@ function TableActionDropdown({ children }: { children: ReactNode }) {
       <DropdownMenuPrimitive.Portal>
         <DropdownMenuPrimitive.Content
           align="end"
-          className="z-50 min-w-[190px] overflow-hidden rounded-xl border bg-panel p-1 shadow-elevated data-[state=open]:animate-in data-[state=closed]:animate-out"
+          className="z-50 min-w-[190px] overflow-hidden rounded-xl border bg-surface-container-lowest p-1 shadow-elevated data-[state=open]:animate-in data-[state=closed]:animate-out"
           onClick={(event) => event.stopPropagation()}
           sideOffset={6}
         >
@@ -347,7 +347,7 @@ export function DataTable<T>({
           isFullscreen ? "min-h-0 flex-1" : "max-h-[68vh]",
         )}
       >
-        <table className="w-full border-separate border-spacing-0 text-left text-xs" style={{ minWidth: smartTableMinWidth }}>
+        <table className="w-full border-separate border-spacing-0 text-left text-xs tabular-nums" style={{ minWidth: smartTableMinWidth }}>
           <thead className="sticky top-0 z-20 bg-muted text-muted-foreground shadow-[0_1px_0_hsl(var(--border)),0_8px_12px_-12px_rgba(13,38,28,0.35)]">
             <tr>
               {selection ? (
@@ -459,13 +459,13 @@ export function DataTable<T>({
                       columnIndex === 0 &&
                         !selection &&
                         cn(
-                          "sticky left-0 z-[5] border-r border-border/60 bg-panel shadow-[8px_0_12px_-10px_rgba(13,38,28,0.16)] transition-colors group-hover:bg-muted/35",
+                          "sticky left-0 z-[5] border-r border-border/60 bg-surface-container-lowest shadow-[8px_0_12px_-10px_rgba(13,38,28,0.16)] transition-colors group-hover:bg-muted/35",
                           active && "bg-primary/10",
                         ),
                       columnIndex === columns.length - 1 &&
                         columns.length > 1 &&
                         cn(
-                          "sticky right-0 z-[5] border-l border-border/60 bg-panel shadow-[-8px_0_12px_-10px_rgba(13,38,28,0.16)] transition-colors group-hover:bg-muted/35",
+                          "sticky right-0 z-[5] border-l border-border/60 bg-surface-container-lowest shadow-[-8px_0_12px_-10px_rgba(13,38,28,0.16)] transition-colors group-hover:bg-muted/35",
                           active && "bg-primary/10",
                         ),
                     )}

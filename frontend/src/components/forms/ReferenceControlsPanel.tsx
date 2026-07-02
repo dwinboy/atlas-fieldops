@@ -52,7 +52,7 @@ export function ReferenceControlsPanel({
                   {controls.reference_bindings.length ? (
                     controls.reference_bindings.map((binding) => (
                       <div
-                        className="rounded-lg border bg-panel p-3"
+                        className="rounded-lg border bg-surface-container-lowest p-3"
                         key={binding.id}
                       >
                         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -224,7 +224,7 @@ export function ReferenceControlsPanel({
                       </div>
                     ))
                   ) : (
-                    <div className="rounded-lg border border-dashed bg-panel p-5 text-center">
+                    <div className="rounded-lg border border-dashed bg-surface-container-lowest p-5 text-center">
                       <Database
                         aria-hidden="true"
                         className="mx-auto text-primary"
@@ -246,7 +246,7 @@ export function ReferenceControlsPanel({
                   )}
                 </div>
               </section>
-              <aside className="rounded-lg border bg-panel p-4">
+              <aside className="rounded-lg border bg-surface-container-lowest p-4">
                 <h3 className="text-sm font-semibold">Available questions</h3>
                 <div className="mt-3 space-y-2">
                   {(form?.fields ?? []).slice(0, 12).map((field) => (

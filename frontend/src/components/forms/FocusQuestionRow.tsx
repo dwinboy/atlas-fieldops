@@ -37,7 +37,7 @@ export function FocusQuestionRow({
       className={cn(
         "group flex min-h-16 w-full items-center gap-2 border-b px-4 py-3 transition hover:bg-muted/60",
         selected && "bg-primary/5 text-primary",
-        isDragging && "relative z-20 bg-panel shadow-elevated",
+        isDragging && "relative z-20 bg-surface-container-lowest shadow-elevated",
       )}
     >
       <button

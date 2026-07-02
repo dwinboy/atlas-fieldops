@@ -64,7 +64,7 @@ export function FieldPropertiesPanel({
 }) {
   if (!form || !field) {
     return (
-      <section className="rounded-lg border bg-panel p-4">
+      <section className="rounded-lg border bg-surface-container-lowest p-4">
         <div className="flex items-center gap-2">
           <Settings2 aria-hidden="true" className="text-primary" size={17} />
           <h2 className="text-sm font-semibold">Properties</h2>
@@ -116,7 +116,7 @@ export function FieldPropertiesPanel({
   const logicValueControl = logicValueInputForField(logicConditionField);
 
   return (
-    <section className="rounded-lg border bg-panel p-4">
+    <section className="rounded-lg border bg-surface-container-lowest p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">

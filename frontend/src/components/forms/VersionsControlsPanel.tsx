@@ -54,7 +54,7 @@ export function VersionsControlsPanel({
                     ][]
                   ).map(([key, label]) => (
                     <label
-                      className="flex items-center gap-2 rounded-md border bg-panel px-3 py-2 text-sm"
+                      className="flex items-center gap-2 rounded-md border bg-surface-container-lowest px-3 py-2 text-sm"
                       key={String(key)}
                     >
                       <input
@@ -75,7 +75,7 @@ export function VersionsControlsPanel({
                   ))}
                 </div>
               </section>
-              <aside className="rounded-lg border bg-panel p-4">
+              <aside className="rounded-lg border bg-surface-container-lowest p-4">
                 <h3 className="text-sm font-semibold">Current form history</h3>
                 <div className="mt-3 space-y-2">
                   {(

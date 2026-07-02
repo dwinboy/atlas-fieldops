@@ -33,7 +33,7 @@ export function FieldInsightCard({
   );
 
   return (
-    <section className="mt-4 rounded-lg border bg-panel p-3">
+    <section className="mt-4 rounded-lg border bg-surface-container-lowest p-3">
       <div className="flex items-start gap-2">
         <Info aria-hidden="true" className="mt-0.5 text-primary" size={15} />
         <div className="min-w-0 flex-1">

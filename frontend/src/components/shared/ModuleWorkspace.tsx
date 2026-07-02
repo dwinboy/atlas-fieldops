@@ -76,7 +76,7 @@ export function ModuleWorkspace({
       {showSections && areas.length ? (
         <section
           aria-label={`${item.label} sections`}
-          className="rounded-xl border bg-panel/80 p-3 shadow-line"
+          className="rounded-xl border bg-surface-container-lowest/80 p-3 shadow-line"
         >
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
@@ -94,7 +94,7 @@ export function ModuleWorkspace({
                 key={area.route}
               >
                 <div className="flex items-start gap-2.5">
-                  <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border bg-panel text-primary">
+                  <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border bg-surface-container-lowest text-primary">
                     <Sparkles aria-hidden="true" size={13} />
                   </span>
                   <div className="min-w-0">

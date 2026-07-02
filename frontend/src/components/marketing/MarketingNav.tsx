@@ -253,7 +253,7 @@ export function MarketingNav() {
         aria-controls="mobile-nav-drawer"
         aria-expanded={mobileOpen}
         aria-label="Open navigation"
-        className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-border bg-panel text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:hidden"
+        className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-border bg-surface-container-lowest text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:hidden"
         onClick={() => setMobileOpen(true)}
         ref={hamburgerRef}
         type="button"
@@ -402,7 +402,7 @@ function MegaPanel({
       ref={panelRef}
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="rounded-b-xl border border-t-[3px] border-border border-t-primary bg-panel shadow-elevated">
+        <div className="rounded-b-xl border border-t-[3px] border-border border-t-primary bg-surface-container-lowest shadow-elevated">
           <div
             className={cn(
               "grid gap-8 p-8 lg:gap-10 lg:p-10",

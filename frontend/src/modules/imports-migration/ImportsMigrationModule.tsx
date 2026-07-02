@@ -357,7 +357,7 @@ export function ImportsMigrationModule({
 
   return (
     <section className="space-y-4" aria-labelledby="imports-migration-title">
-      <div className="rounded-2xl border bg-panel p-4 shadow-line">
+      <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -389,7 +389,7 @@ export function ImportsMigrationModule({
         <Metric icon={AlertTriangle} label="Issues to review" value={formatCount(metrics.issues)} tone="warning" />
       </div>
 
-      <div className="rounded-2xl border bg-panel p-3 shadow-line">
+      <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3 shadow-card">
         <div className="flex gap-2 overflow-x-auto pb-1">
           {steps.map((label, index) => (
             <button
@@ -573,7 +573,7 @@ export function ImportsMigrationModule({
 
 function Metric({ icon: Icon, label, tone = "neutral", value }: { icon: LucideIcon; label: string; tone?: "neutral" | "warning"; value: string }) {
   return (
-    <section className="rounded-xl border bg-panel p-3 shadow-line">
+    <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3 shadow-card">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs text-muted-foreground">{label}</p>
@@ -589,7 +589,7 @@ function Metric({ icon: Icon, label, tone = "neutral", value }: { icon: LucideIc
 
 function WizardPanel({ children, description, title }: { children: ReactNode; description: string; title: string }) {
   return (
-    <section className="rounded-2xl border bg-panel p-4 shadow-line">
+    <section className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-4 shadow-card">
       <div className="mb-3">
         <h2 className="text-sm font-semibold">{title}</h2>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>

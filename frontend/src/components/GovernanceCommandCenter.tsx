@@ -373,24 +373,24 @@ export function GovernanceCommandCenter({ token }: GovernanceCommandCenterProps)
       ) : null}
 
       <div className="grid gap-4 xl:grid-cols-4">
-        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? createPreviewPolicy() : createPolicyMutation.mutate(); }}>
+        <form className="rounded-2xl border bg-surface-container-lowest p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? createPreviewPolicy() : createPolicyMutation.mutate(); }}>
           <h2 className="text-sm font-semibold">Policy</h2>
           <Input className="mt-3" value={policyName} onChange={(event) => setPolicyName(event.target.value)} />
           <Button className="mt-4 w-full" disabled={createPolicyMutation.isPending} type="submit" variant="primary"><FileCheck2 aria-hidden="true" /> Create policy</Button>
         </form>
-        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? createPreviewRetention() : createRetentionMutation.mutate(); }}>
+        <form className="rounded-2xl border bg-surface-container-lowest p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? createPreviewRetention() : createRetentionMutation.mutate(); }}>
           <h2 className="text-sm font-semibold">Retention</h2>
           <Select className="mt-3" value={retentionRecordType} onChange={(event) => setRetentionRecordType(event.target.value)}>
             {["submissions", "entities", "reports", "media", "audit_logs"].map((type) => <option key={type} value={type}>{type}</option>)}
           </Select>
           <Button className="mt-4 w-full" disabled={createRetentionMutation.isPending} type="submit" variant="primary">Set retention</Button>
         </form>
-        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? createPreviewRule() : createRuleMutation.mutate(); }}>
+        <form className="rounded-2xl border bg-surface-container-lowest p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? createPreviewRule() : createRuleMutation.mutate(); }}>
           <h2 className="text-sm font-semibold">Validation</h2>
           <Input className="mt-3" value={validationRuleCode} onChange={(event) => setValidationRuleCode(event.target.value)} />
           <Button className="mt-4 w-full" disabled={createRuleMutation.isPending} type="submit" variant="primary">Add rule</Button>
         </form>
-        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? governPreviewExport() : governExportMutation.mutate(); }}>
+        <form className="rounded-2xl border bg-surface-container-lowest p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? governPreviewExport() : governExportMutation.mutate(); }}>
           <h2 className="text-sm font-semibold">Export control</h2>
           <Select className="mt-3" value={exportDataset} onChange={(event) => setExportDataset(event.target.value)}>
             {["entities", "submissions", "indicators", "reports"].map((type) => <option key={type} value={type}>{type}</option>)}
