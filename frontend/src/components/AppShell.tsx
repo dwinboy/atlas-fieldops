@@ -39,7 +39,7 @@ import { hasAnyPermission } from "@/config/permissions";
 import { isPendingReviewSubmission } from "@/lib/dashboard";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
-import { getOperationsSummary, listSubmissions, type CurrentPrincipal } from "@/lib/api";
+import { getOperationsSummary, listProjects, listSubmissions, type CurrentPrincipal } from "@/lib/api";
 
 export type { WorkspaceView } from "@/stores/workspace";
 
@@ -163,6 +163,87 @@ function OrganizationMark({
     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-gradient-to-br from-primary/10 via-background to-background shadow-sm">
       <AtlasFieldOpsLogo alt={`${name} logo`} size={42} />
     </div>
+  );
+}
+
+/**
+ * Permanent project context switcher in the topbar. Everything in Atlas anchors to a
+ * project, so jumping between project workspaces must never feel like starting over.
+ * Navigation-only by design: selecting a project routes to its overview — it does not
+ * introduce a global data filter, so module data flows stay exactly as they are.
+ */
+function ProjectSwitcher({
+  token,
+  principal,
+}: {
+  token?: string | null;
+  principal?: CurrentPrincipal | null;
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const canViewProjects = hasAnyPermission(["projects.view"], principal);
+  const liveData = Boolean(token && token !== "preview-token") && canViewProjects;
+  const projectsQuery = useQuery({
+    queryKey: ["shell-projects", token],
+    queryFn: () => listProjects(token ?? ""),
+    enabled: liveData,
+    staleTime: 120_000,
+  });
+  const projects = projectsQuery.data ?? [];
+  const activeProjectId = pathname?.match(/^\/projects\/([^/]+)\//)?.[1] ?? null;
+  const activeProject = projects.find((project) => project.id === activeProjectId) ?? null;
+  if (!canViewProjects) return null;
+  return (
+    <DropdownMenuPrimitive.Root>
+      <DropdownMenuPrimitive.Trigger asChild>
+        <button
+          aria-label="Switch project"
+          className="hidden h-8 max-w-56 items-center gap-1.5 rounded-lg border border-border-subtle bg-surface-container-lowest px-2.5 text-xs font-medium text-on-surface transition hover:bg-muted/50 md:flex"
+          type="button"
+        >
+          <span className="size-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+          <span className="truncate">{activeProject?.name ?? "All projects"}</span>
+          <ChevronDown aria-hidden="true" className="shrink-0 text-muted-foreground" size={13} />
+        </button>
+      </DropdownMenuPrimitive.Trigger>
+      <DropdownMenuPrimitive.Portal>
+        <DropdownMenuPrimitive.Content
+          align="start"
+          className="z-50 max-h-80 w-64 overflow-y-auto rounded-xl border border-border-subtle bg-surface-container-lowest p-1.5 shadow-elevated product-scrollbar data-[state=open]:animate-in data-[state=closed]:animate-out"
+          sideOffset={8}
+        >
+          <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">
+            Jump to project
+          </p>
+          {projects.length ? (
+            projects.map((project) => (
+              <DropdownMenuPrimitive.Item
+                className={cn(
+                  "flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-sm outline-none data-[highlighted]:bg-muted/60",
+                  project.id === activeProjectId && "bg-primary/10 font-medium text-primary",
+                )}
+                key={project.id}
+                onSelect={() => router.push(`/projects/${project.id}/overview`)}
+              >
+                <span className="truncate">{project.name}</span>
+              </DropdownMenuPrimitive.Item>
+            ))
+          ) : (
+            <p className="px-2.5 py-2 text-xs text-on-surface-variant">
+              {projectsQuery.isLoading ? "Loading projects…" : "No projects yet."}
+            </p>
+          )}
+          <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border-subtle" />
+          <DropdownMenuPrimitive.Item
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-on-surface-variant outline-none data-[highlighted]:bg-muted/60"
+            onSelect={() => router.push("/projects")}
+          >
+            <ArrowRight aria-hidden="true" size={14} />
+            All projects
+          </DropdownMenuPrimitive.Item>
+        </DropdownMenuPrimitive.Content>
+      </DropdownMenuPrimitive.Portal>
+    </DropdownMenuPrimitive.Root>
   );
 }
 
@@ -547,7 +628,7 @@ export function AppShell({
       </aside>
 
       <div className="min-w-0 max-w-full overflow-x-hidden">
-        <header className="sticky top-0 z-20 flex h-14 max-w-full items-center justify-between gap-2 overflow-hidden border-b bg-surface-container-lowest/88 px-3 shadow-sm backdrop-blur-xl lg:px-4">
+        <header className="sticky top-0 z-20 flex h-[52px] max-w-full items-center justify-between gap-2 overflow-hidden border-b bg-surface-container-lowest/88 px-3 shadow-sm backdrop-blur-xl lg:px-4">
           <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <Button
               aria-label="Toggle navigation"
@@ -587,6 +668,7 @@ export function AppShell({
                 </div>
               </div>
             </div>
+            <ProjectSwitcher principal={principal} token={token} />
           </div>
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             <Button
