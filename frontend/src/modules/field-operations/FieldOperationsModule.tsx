@@ -31,6 +31,7 @@ import { DataTable, type TableColumn } from "@/components/DataTable";
 import { AccessDenied, isPermissionError } from "@/components/ui/access-denied";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { CommandMetricCard, type CommandMetricTone } from "@/components/ui/command-metric-card";
+import { QueryErrorState } from "@/components/ui/query-error-state";
 import { Button } from "@/components/ui/button";
 import { EmptyMini } from "@/components/ui/empty-mini";
 import { ActionMenu, type ActionMenuItem } from "@/components/ui/dropdown-menu";
@@ -714,7 +715,7 @@ function FieldOperationsWorkflowProcess({
             </div>
           </div>
         </div>
-        <div className="relative overflow-hidden rounded-2xl border border-emerald-900/10 bg-[#0C1F1B] p-4 text-white">
+        <div className="relative overflow-hidden rounded-2xl border border-emerald-900/10 bg-deep-emerald-dark p-4 text-white">
           <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(147,236,184,0.12)_1px,transparent_1px),linear-gradient(to_bottom,rgba(147,236,184,0.12)_1px,transparent_1px)] bg-[size:28px_28px] opacity-50" />
           <div className="relative">
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-200">
@@ -3338,7 +3339,7 @@ export function FieldOperationsModule({
                 <div className="grid gap-3 lg:grid-cols-3">
                   {assignments.slice(0, 3).map((assignment) => (
                     <button
-                      className="rounded-2xl border border-border-subtle bg-surface-container-low p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/30 hover:bg-surface-container-lowest"
+                      className="rounded-2xl border border-border-subtle bg-surface-container-low p-4 text-left transition hover:border-primary/30 hover:bg-surface-container-lowest hover:shadow-card-hover"
                       key={assignment.id}
                       onClick={() => {
                         setViewAssignment(assignment);
@@ -3436,7 +3437,7 @@ export function FieldOperationsModule({
                 ))}
                 {!activities.length ? <EmptyMini label="No activity has reached the live feed yet." /> : null}
               </div>
-              <div className="border-t border-emerald-900/10 bg-[#0C1F1B] p-4 text-white">
+              <div className="border-t border-emerald-900/10 bg-deep-emerald-dark p-4 text-white">
                 <div className="flex items-center gap-3">
                   <span className="flex size-11 items-center justify-center rounded-2xl bg-cyan-400/10 text-cyan-200">
                     <MapPinned aria-hidden="true" />
@@ -3644,10 +3645,17 @@ Password:          ${lastInviteCredentials.password}`}
           ) : null}
           {isPermissionError(officersQuery.error) && !preview ? (
             <AccessDenied resource="field officers" />
+          ) : !preview && officersQuery.isError ? (
+            <QueryErrorState
+              onRetry={() => void officersQuery.refetch()}
+              resource="field officers"
+              retrying={officersQuery.isFetching}
+            />
           ) : (
             <DataTable
               columns={officerColumns}
               emptyLabel="No field officers yet. Invite one officer or import a CSV roster."
+              loading={!preview && officersQuery.isLoading}
               rows={officers}
               searchLabel="Search field officers"
               title="Field officer roster"

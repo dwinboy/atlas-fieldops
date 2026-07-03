@@ -51,6 +51,8 @@ import { Button } from "@/components/ui/button";
 import { EmptyMini } from "@/components/ui/empty-mini";
 import { EmptyState } from "@/components/ui/empty-state";
 import { CommandMetricCard } from "@/components/ui/command-metric-card";
+import { ConfirmDialog, type ConfirmRequest } from "@/components/ui/confirm-dialog";
+import { QueryErrorState } from "@/components/ui/query-error-state";
 import { KpiShard } from "@/components/ui/kpi-shard";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
@@ -2100,7 +2102,13 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
               <FormsViewToggle mode={formsViewMode} onChange={setFormsViewMode} />
             ) : null}
           </div>
-          {activeSection === "all" || formsViewMode === "list" ? (
+          {!preview && formsQuery.isError ? (
+            <QueryErrorState
+              onRetry={() => void formsQuery.refetch()}
+              resource="forms"
+              retrying={formsQuery.isFetching}
+            />
+          ) : activeSection === "all" || formsViewMode === "list" ? (
             <DataTable
               columns={columns}
               emptyAction={
@@ -2116,6 +2124,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
               }
               emptyDescription="Create a data collection form, publish it, and assign it to field officers to start collecting."
               emptyLabel="No forms match this view yet"
+              loading={!preview && formsQuery.isLoading}
               rows={filteredForms}
               searchLabel="Search forms, projects, owners, status"
               title="Form list"
@@ -3005,6 +3014,8 @@ function FormDataGridWorkspace({
   const [returnComment, setReturnComment] = useState("");
   const [editingSubmissionId, setEditingSubmissionId] = useState<string | null>(null);
   const [editingCellKey, setEditingCellKey] = useState<string | null>(null);
+  // Deferred continuation for on-brand confirms (replaces window.confirm in cleaning flows).
+  const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [pendingNextSubmissionId, setPendingNextSubmissionId] = useState<string | null>(null);
   const [editingReason, setEditingReason] = useState("");
   const [editingValues, setEditingValues] = useState<Record<string, string>>({});
@@ -4050,8 +4061,13 @@ function FormDataGridWorkspace({
 
   function cancelRowEdit(options?: { force?: boolean; keepPendingNext?: boolean }): void {
     if (!options?.force && isEditingDirty) {
-      const confirmed = window.confirm("Discard the unsaved edits for this imported row?");
-      if (!confirmed) return;
+      setConfirmRequest({
+        confirmLabel: "Discard edits",
+        message: "Discard the unsaved edits for this imported row?",
+        onConfirm: () => cancelRowEdit({ ...options, force: true }),
+        tone: "danger",
+      });
+      return;
     }
     if (currentEditingSubmission) {
       clearDraftForSubmission(currentEditingSubmission.id);
@@ -4149,13 +4165,16 @@ function FormDataGridWorkspace({
     };
   }
 
-  function resetEditingRow(): void {
+  function resetEditingRow(options?: { force?: boolean }): void {
     if (!currentEditingSubmission) return;
-    if (isEditingDirty) {
-      const confirmed = window.confirm(
-        "Reset all unsaved edits in this row back to the original imported values?",
-      );
-      if (!confirmed) return;
+    if (!options?.force && isEditingDirty) {
+      setConfirmRequest({
+        confirmLabel: "Reset row",
+        message: "Reset all unsaved edits in this row back to the original imported values?",
+        onConfirm: () => resetEditingRow({ force: true }),
+        tone: "danger",
+      });
+      return;
     }
     clearDraftForSubmission(currentEditingSubmission.id);
     openSubmissionForEditing(currentEditingSubmission, editingCellKey ?? undefined, {
@@ -4163,13 +4182,16 @@ function FormDataGridWorkspace({
     });
   }
 
-  function resetEditingCell(): void {
+  function resetEditingCell(options?: { force?: boolean }): void {
     if (!activeEditingQuestion || !currentEditingSubmission) return;
-    if (activeEditingCellDirty) {
-      const confirmed = window.confirm(
-        `Reset ${activeEditingQuestion.label} back to its original imported value?`,
-      );
-      if (!confirmed) return;
+    if (!options?.force && activeEditingCellDirty) {
+      setConfirmRequest({
+        confirmLabel: "Reset value",
+        message: `Reset ${activeEditingQuestion.label} back to its original imported value?`,
+        onConfirm: () => resetEditingCell({ force: true }),
+        tone: "danger",
+      });
+      return;
     }
     const currentAnswers = submissionAnswerMap(currentEditingSubmission);
     updateEditingCell(
@@ -4178,16 +4200,21 @@ function FormDataGridWorkspace({
     );
   }
 
-  function openAdjacentEditingRow(direction: -1 | 1): void {
+  function openAdjacentEditingRow(direction: -1 | 1, options?: { force?: boolean }): void {
     if (!currentEditingSubmission) return;
     const targetSubmissionId =
       direction < 0 ? currentEditingPreviousSubmissionId : currentEditingNextSubmissionId;
     if (!targetSubmissionId) return;
     if (isEditingDirty) {
-      const confirmed = window.confirm(
-        "Discard the unsaved edits for this row and open another staged row?",
-      );
-      if (!confirmed) return;
+      if (!options?.force) {
+        setConfirmRequest({
+          confirmLabel: "Discard and open",
+          message: "Discard the unsaved edits for this row and open another staged row?",
+          onConfirm: () => openAdjacentEditingRow(direction, { force: true }),
+          tone: "danger",
+        });
+        return;
+      }
       clearDraftForSubmission(currentEditingSubmission.id);
     }
     const targetSubmission = navigationRows.find(
@@ -4198,7 +4225,7 @@ function FormDataGridWorkspace({
     openSubmissionForEditing(targetSubmission);
   }
 
-  function openAdjacentIssueRow(direction: -1 | 1): void {
+  function openAdjacentIssueRow(direction: -1 | 1, options?: { force?: boolean }): void {
     if (!currentEditingSubmission) return;
     const targetSubmissionId =
       direction < 0
@@ -4206,10 +4233,15 @@ function FormDataGridWorkspace({
         : currentEditingNextIssueSubmissionId;
     if (!targetSubmissionId) return;
     if (isEditingDirty) {
-      const confirmed = window.confirm(
-        "Discard the unsaved edits for this row and open another row that still needs cleaning?",
-      );
-      if (!confirmed) return;
+      if (!options?.force) {
+        setConfirmRequest({
+          confirmLabel: "Discard and open",
+          message: "Discard the unsaved edits for this row and open another row that still needs cleaning?",
+          onConfirm: () => openAdjacentIssueRow(direction, { force: true }),
+          tone: "danger",
+        });
+        return;
+      }
       clearDraftForSubmission(currentEditingSubmission.id);
     }
     const targetSubmission = navigationRows.find(
@@ -4320,12 +4352,17 @@ function FormDataGridWorkspace({
     }
   }
 
-  function clearAllCleaningDrafts(): void {
+  function clearAllCleaningDrafts(options?: { force?: boolean }): void {
     if (!Object.keys(cleaningDrafts).length) return;
-    const confirmed = window.confirm(
-      "Clear all local cleaning drafts for this form from this browser?",
-    );
-    if (!confirmed) return;
+    if (!options?.force) {
+      setConfirmRequest({
+        confirmLabel: "Clear drafts",
+        message: "Clear all local cleaning drafts for this form from this browser?",
+        onConfirm: () => clearAllCleaningDrafts({ force: true }),
+        tone: "danger",
+      });
+      return;
+    }
     setCleaningDrafts({});
     setEditingSubmissionId(null);
     setEditingCellKey(null);
@@ -5745,6 +5782,7 @@ function FormDataGridWorkspace({
 
   return (
     <section className="space-y-3">
+      <ConfirmDialog onClose={() => setConfirmRequest(null)} request={confirmRequest} />
       <div className="rounded-2xl border border-border-subtle bg-surface-container-lowest p-3.5 shadow-card">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
@@ -6418,7 +6456,7 @@ function FormDataGridWorkspace({
                 </Button>
                 <Button
                   disabled={!Object.keys(cleaningDrafts).length}
-                  onClick={clearAllCleaningDrafts}
+                  onClick={() => clearAllCleaningDrafts()}
                   size="sm"
                   variant="ghost"
                 >
@@ -6483,7 +6521,7 @@ function FormDataGridWorkspace({
                   </Button>
                   <Button
                     disabled={!activeEditingCellDirty}
-                    onClick={resetEditingCell}
+                    onClick={() => resetEditingCell()}
                     size="sm"
                     variant="ghost"
                   >
@@ -6507,7 +6545,7 @@ function FormDataGridWorkspace({
                   </Button>
                   <Button
                     disabled={!isEditingDirty}
-                    onClick={resetEditingRow}
+                    onClick={() => resetEditingRow()}
                     size="sm"
                     variant="ghost"
                   >

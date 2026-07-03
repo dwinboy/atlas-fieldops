@@ -6,6 +6,8 @@ import {
   ArrowRight,
   BarChart3,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   ClipboardCheck,
   Clock3,
   Database,
@@ -42,6 +44,7 @@ import { DataTable, type TableColumn } from "@/components/DataTable";
 import { ModuleHeader } from "@/components/shared/ModuleHeader";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { CommandMetricCard } from "@/components/ui/command-metric-card";
+import { QueryErrorState } from "@/components/ui/query-error-state";
 import { KpiShard } from "@/components/ui/kpi-shard";
 import { EmptyMini } from "@/components/ui/empty-mini";
 import { Button } from "@/components/ui/button";
@@ -1316,14 +1319,45 @@ export function SubmissionsModule({
 
       {selectedSubmission ? (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border-subtle bg-surface-container-lowest px-3 py-1.5 text-xs text-on-surface-variant shadow-card">
-          <span className="tabular-nums">
+          <span className="flex items-center gap-2">
             {(() => {
               const queueIndex = filteredSubmissions.findIndex(
                 (submission) => submission.id === selectedSubmission.id,
               );
-              return queueIndex === -1
-                ? "Not in the current filtered queue"
-                : `Record ${queueIndex + 1} of ${filteredSubmissions.length} in queue`;
+              const previous = queueIndex > 0 ? filteredSubmissions[queueIndex - 1] : null;
+              const next =
+                queueIndex !== -1 && queueIndex < filteredSubmissions.length - 1
+                  ? filteredSubmissions[queueIndex + 1]
+                  : null;
+              return (
+                <>
+                  <Button
+                    aria-label="Previous record in queue"
+                    disabled={!previous}
+                    onClick={() => previous && openSubmission(previous)}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    <ChevronLeft aria-hidden="true" />
+                    Prev
+                  </Button>
+                  <span className="tabular-nums">
+                    {queueIndex === -1
+                      ? "Not in the current filtered queue"
+                      : `Record ${queueIndex + 1} of ${filteredSubmissions.length} in queue`}
+                  </span>
+                  <Button
+                    aria-label="Next record in queue"
+                    disabled={!next}
+                    onClick={() => next && openSubmission(next)}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Next
+                    <ChevronRight aria-hidden="true" />
+                  </Button>
+                </>
+              );
             })()}
           </span>
           <span className="hidden items-center gap-2 md:flex">
@@ -1514,7 +1548,10 @@ export function SubmissionsModule({
             </section>
           ) : null}
           {bulkReviewEnabled && bulkSelectedIds.size ? (
-            <section className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/25 bg-primary/5 p-3">
+            <section
+              aria-label="Bulk review actions"
+              className="sticky bottom-4 z-30 flex flex-wrap items-center gap-2 rounded-2xl border border-primary/30 bg-surface-container-lowest/95 p-3 shadow-elevated backdrop-blur-md"
+            >
               <Badge tone="accent">{bulkSelectedIds.size} selected</Badge>
               <Input
                 aria-label="Bulk reviewer comment"
@@ -1558,6 +1595,13 @@ export function SubmissionsModule({
               </Button>
             </section>
           ) : null}
+          {!preview && submissionsQuery.isError ? (
+            <QueryErrorState
+              onRetry={() => void submissionsQuery.refetch()}
+              resource="submissions"
+              retrying={submissionsQuery.isFetching}
+            />
+          ) : (
           <DataTable
             columns={columns}
             emptyAction={
@@ -1603,6 +1647,7 @@ export function SubmissionsModule({
             loading={!preview && submissionsQuery.isLoading}
             title="Submission list"
           />
+          )}
         </section>
       ) : null}
     </section>
