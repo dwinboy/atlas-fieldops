@@ -9,6 +9,7 @@ import {
   backendDraftNameForSave,
   backendFormTargetIdForSave,
   createDraftFromSpreadsheetRows,
+  createEditableDraftFromSavedSchema,
   createEditableDraftFromListItem,
   createEnterpriseDraftForm,
   duplicateReviewDefaults,
@@ -133,6 +134,65 @@ describe("enterprise form creation workspace", () => {
     expect(draft.fields).toHaveLength(42);
     expect(draft.fields.some((field) => field.type === "repeat_group")).toBe(true);
     expect(draft.fields.some((field) => field.type === "gps" && field.validation?.accuracyMax)).toBe(true);
+  });
+
+  it("loads published edit questions from saved builder-style schemas", () => {
+    const draft = createEditableDraftFromSavedSchema(
+      {
+        active_assignments: 0,
+        created_by: "Manager",
+        form_type: "Registration",
+        has_quality_issues: false,
+        id: "published-registration",
+        name: "Retail Outlet Registration",
+        owner: "Operations Manager",
+        pending_approval: false,
+        project_id: "project-retail",
+        project_name: "Retail Expansion",
+        quality_score: 100,
+        questions: 2,
+        recently_updated: false,
+        sections: 1,
+        slug: "retail-outlet-registration",
+        status: "published",
+        survey_name: "Outlet Survey",
+        total_submissions: 0,
+        updated_at: "2026-07-07T00:00:00.000Z",
+        version: 4,
+      },
+      {
+        pages: [{ id: "page-1", title: "Page 1" }],
+        sections: [{ id: "main", pageId: "page-1", title: "Outlet details" }],
+        fields: [
+          {
+            id: "store-name",
+            label: "Store name",
+            pageId: "page-1",
+            required: true,
+            sectionId: "main",
+            type: "text",
+            variableName: "store_name",
+          },
+          {
+            id: "store-type",
+            label: "Store type",
+            options: ["Kiosk", "Supermarket"],
+            pageId: "page-1",
+            sectionId: "main",
+            type: "dropdown",
+            variableName: "store_type",
+          },
+        ],
+      },
+      5,
+      { liveVersion: 4 },
+    );
+
+    expect(draft.status).toBe("draft");
+    expect(draft.activeVersion).toBe(4);
+    expect(draft.version).toBe(5);
+    expect(draft.fields.map((field) => field.label)).toEqual(["Store name", "Store type"]);
+    expect(draft.fields[1]?.options).toEqual(["Kiosk", "Supermarket"]);
   });
 
   it("uses the existing form id so published edits become a new version", () => {

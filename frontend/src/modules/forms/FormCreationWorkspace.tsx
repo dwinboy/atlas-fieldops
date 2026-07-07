@@ -3746,7 +3746,96 @@ export function createEditableDraftFromListItem(
   };
 }
 
-function createEditableDraftFromSavedSchema(
+function savedSchemaRecords(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+    : [];
+}
+
+function savedSchemaString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function savedSchemaOptions(value: unknown): { labels: string[]; values: string[] | undefined } {
+  if (!Array.isArray(value)) return { labels: [], values: undefined };
+  const labels: string[] = [];
+  const values: string[] = [];
+  for (const option of value) {
+    if (typeof option === "string") {
+      labels.push(option);
+      values.push("");
+      continue;
+    }
+    if (!option || typeof option !== "object" || Array.isArray(option)) continue;
+    const record = option as Record<string, unknown>;
+    const label = String(record.label ?? record.value ?? "").trim();
+    if (!label) continue;
+    labels.push(label);
+    values.push(String(record.value ?? "").trim());
+  }
+  return {
+    labels,
+    values: values.some(Boolean) ? values : undefined,
+  };
+}
+
+function savedSchemaField(
+  field: Record<string, unknown>,
+  sectionId: string,
+  pageId: string | undefined,
+  fallbackId: string,
+): FormField {
+  const options = savedSchemaOptions(field.options);
+  const fieldId = String(field.id ?? fallbackId);
+  return {
+    id: fieldId,
+    label: String(field.label ?? field.title ?? `Question ${fallbackId}`),
+    type: String(field.type ?? "text") as FieldType,
+    required: Boolean(field.required),
+    hint: savedSchemaString(field.hint ?? field.helpText ?? field.help_text),
+    pageId: savedSchemaString(field.pageId ?? field.page_id) ?? pageId,
+    sectionId: savedSchemaString(field.sectionId ?? field.section_id) ?? sectionId,
+    variableName: savedSchemaString(field.variableName ?? field.variable_name),
+    options: options.labels,
+    optionValues: options.values,
+    validation:
+      field.validation && typeof field.validation === "object"
+        ? (field.validation as FormField["validation"])
+        : undefined,
+    logic: Array.isArray(field.logic) ? (field.logic as FormField["logic"]) : undefined,
+    appearance:
+      field.appearance && typeof field.appearance === "object"
+        ? (field.appearance as FormField["appearance"])
+        : undefined,
+    calculation:
+      typeof field.calculation === "string"
+        ? { expression: field.calculation }
+        : field.calculation && typeof field.calculation === "object"
+          ? (field.calculation as FormField["calculation"])
+          : undefined,
+    matrix:
+      field.matrix && typeof field.matrix === "object"
+        ? (field.matrix as FormField["matrix"])
+        : undefined,
+    repeat:
+      field.repeat && typeof field.repeat === "object"
+        ? (field.repeat as FormField["repeat"])
+        : undefined,
+    media:
+      field.media && typeof field.media === "object"
+        ? (field.media as FormField["media"])
+        : undefined,
+    gps:
+      field.gps && typeof field.gps === "object"
+        ? (field.gps as FormField["gps"])
+        : undefined,
+    children: savedSchemaRecords(field.children).map((child, index) =>
+      savedSchemaField(child, sectionId, pageId, `${fieldId}-child-${index + 1}`),
+    ),
+  } satisfies FormField;
+}
+
+export function createEditableDraftFromSavedSchema(
   form: FormListItem,
   schema: Record<string, unknown>,
   version: number,
@@ -3760,11 +3849,8 @@ function createEditableDraftFromSavedSchema(
   const schemaPages = Array.isArray((schema as { pages?: unknown }).pages)
     ? ((schema as { pages: Record<string, unknown>[] }).pages)
     : [];
-  const schemaSections = Array.isArray(
-    (schema as { sections?: unknown }).sections,
-  )
-    ? ((schema as { sections: Record<string, unknown>[] }).sections)
-    : [];
+  const schemaSections = savedSchemaRecords(schema.sections);
+  const rootFields = savedSchemaRecords(schema.fields);
   const pages =
     schemaPages.length > 0
       ? schemaPages.map((page, index) => ({
@@ -3790,69 +3876,29 @@ function createEditableDraftFromSavedSchema(
               : fallbackPageId,
         }))
       : [createSection(fallbackPageId, "Questions")];
-  const fields = schemaSections.flatMap((section, sectionIndex) => {
+  const fieldsFromSections = schemaSections.flatMap((section, sectionIndex) => {
     const sectionId = String(section.id ?? sections[sectionIndex]?.id);
-    const rawFields = Array.isArray(section.fields)
-      ? (section.fields as Record<string, unknown>[])
-      : [];
-    return rawFields.map((field, fieldIndex) => {
-      const optionValues = Array.isArray(field.options)
-        ? (field.options as Record<string, unknown>[]).map((option) =>
-            String(option.label ?? option.value ?? ""),
-          )
-        : [];
-      return {
-        id: String(field.id ?? `field-${sectionIndex + 1}-${fieldIndex + 1}`),
-        label: String(field.label ?? `Question ${fieldIndex + 1}`),
-        type: String(field.type ?? "text") as FieldType,
-        required: Boolean(field.required),
-        hint: typeof field.hint === "string" ? field.hint : undefined,
-        pageId:
-          typeof field.page_id === "string"
-            ? field.page_id
-            : sections[sectionIndex]?.pageId,
-        sectionId,
-        variableName:
-          typeof field.variable_name === "string"
-            ? field.variable_name
-            : undefined,
-        options: optionValues.filter(Boolean),
-        validation:
-          field.validation && typeof field.validation === "object"
-            ? (field.validation as FormField["validation"])
-            : undefined,
-        logic: Array.isArray(field.logic)
-          ? (field.logic as FormField["logic"])
-          : undefined,
-        appearance:
-          field.appearance && typeof field.appearance === "object"
-            ? (field.appearance as FormField["appearance"])
-            : undefined,
-        calculation:
-          typeof field.calculation === "string"
-            ? { expression: field.calculation }
-            : field.calculation && typeof field.calculation === "object"
-              ? (field.calculation as FormField["calculation"])
-              : undefined,
-        matrix:
-          field.matrix && typeof field.matrix === "object"
-            ? (field.matrix as FormField["matrix"])
-            : undefined,
-        repeat:
-          field.repeat && typeof field.repeat === "object"
-            ? (field.repeat as FormField["repeat"])
-            : undefined,
-        media:
-          field.media && typeof field.media === "object"
-            ? (field.media as FormField["media"])
-            : undefined,
-        gps:
-          field.gps && typeof field.gps === "object"
-            ? (field.gps as FormField["gps"])
-            : undefined,
-      } satisfies FormField;
-    });
+    const pageId = sections[sectionIndex]?.pageId;
+    return savedSchemaRecords(section.fields).map((field, fieldIndex) =>
+      savedSchemaField(field, sectionId, pageId, `field-${sectionIndex + 1}-${fieldIndex + 1}`),
+    );
   });
+  const fields =
+    fieldsFromSections.length > 0
+      ? fieldsFromSections
+      : rootFields.map((field, fieldIndex) => {
+          const sectionId =
+            savedSchemaString(field.sectionId ?? field.section_id) ??
+            sections[0]?.id ??
+            "section-1";
+          const section = sections.find((candidate) => candidate.id === sectionId);
+          return savedSchemaField(
+            field,
+            sectionId,
+            savedSchemaString(field.pageId ?? field.page_id) ?? section?.pageId ?? fallbackPageId,
+            `field-${fieldIndex + 1}`,
+          );
+        });
   const updatedAt = form.updated_at || new Date().toISOString();
   return {
     activeVersion: editingPublishedRevision ? liveVersion : 0,
