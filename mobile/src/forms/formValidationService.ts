@@ -1,6 +1,6 @@
 import { isCascadeBlocked, resolveQuestionOptions } from "@/forms/optionResolver";
 import type { MobileFormVersion, MobileQuestion, MobileReferenceList, MobileSubmission, MobileValidationRule } from "@/models/contracts";
-import { evaluateQuestionLogicStates, evaluateVisibility, LogicEngine } from "@/forms/logicEngine";
+import { evaluateQuestionLogicStates, evaluateVisibility, LogicEngine, skippedQuestionIds } from "@/forms/logicEngine";
 import { evaluateExpressionValue } from "@/forms/expressionEngine";
 
 /** Evaluates a cross-field constraint (`${this} >= ${other}`) using the calculation engine, which
@@ -27,6 +27,7 @@ export class FormValidationService {
     const allQuestions = formVersion.sections.flatMap((section) => section.questions);
     const variableValues = new Map<string, unknown>(allQuestions.map((q) => [q.variableName, responses.get(q.id)]));
     const logicState = new LogicEngine().evaluate(formVersion, draft);
+    const skippedIds = skippedQuestionIds(formVersion, draft);
     const issues: FormValidationIssue[] = [];
     for (const section of formVersion.sections) {
       // A section hidden by section-level relevance contributes no validation — its required
@@ -36,7 +37,7 @@ export class FormValidationService {
       }
       for (const question of section.questions) {
         const state = logicState[question.id];
-        if (state?.visible === false || question.type === "Hidden") {
+        if (skippedIds.has(question.id) || state?.visible === false || question.type === "Hidden") {
           continue;
         }
         const value = responses.get(question.id);
@@ -546,29 +547,45 @@ export class FormValidationService {
     if (question.type === "Matrix") {
       const matrix = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
       const rows = matrixRows(question);
-      const allowed = new Set(matrixColumns(question));
-      const multi = matrixAllowsMultiple(question);
-      for (const row of rows) {
-        const rowValue = matrix[row.value];
-        const rowMissing =
-          rowValue === null ||
-          rowValue === undefined ||
-          rowValue === "" ||
-          (Array.isArray(rowValue) && rowValue.length === 0);
-        if (question.required && rowMissing) {
-          addIssue(`Complete the matrix row "${row.label}".`, "Error", "Review each matrix row and choose the expected response before submitting.");
-          continue;
+      if (matrixMode(question) === "grid") {
+        for (const row of rows) {
+          const rowValue = matrix[row.value];
+          const rowRecord = rowValue && typeof rowValue === "object" && !Array.isArray(rowValue) ? rowValue as Record<string, unknown> : {};
+          const hasAnyValue = Object.values(rowRecord).some((cell) => {
+            if (cell === null || cell === undefined) return false;
+            if (Array.isArray(cell)) return cell.length > 0;
+            if (typeof cell === "object") return Object.keys(cell as Record<string, unknown>).length > 0;
+            return String(cell).trim() !== "";
+          });
+          if (question.required && !hasAnyValue) {
+            addIssue(`Complete at least one cell for "${row.label}".`, "Error", "Open the grid row and fill the relevant typed columns before submitting.");
+          }
         }
-        if (rowMissing || allowed.size === 0) {
-          continue;
-        }
-        const values = Array.isArray(rowValue) ? rowValue.map(String) : [String(rowValue)];
-        const invalid = values.filter((item) => !allowed.has(item));
-        if (invalid.length > 0) {
-          addIssue(`Use one of the approved choices for matrix row "${row.label}".`, "Error", "Clear the invalid matrix answer and pick from the visible row choices.");
-        }
-        if (!multi && values.length > 1) {
-          addIssue(`Choose only one answer for matrix row "${row.label}".`, "Error", "Clear extra choices so the row has just one response.");
+      } else {
+        const allowed = new Set(matrixColumns(question));
+        const multi = matrixAllowsMultiple(question);
+        for (const row of rows) {
+          const rowValue = matrix[row.value];
+          const rowMissing =
+            rowValue === null ||
+            rowValue === undefined ||
+            rowValue === "" ||
+            (Array.isArray(rowValue) && rowValue.length === 0);
+          if (question.required && rowMissing) {
+            addIssue(`Complete the matrix row "${row.label}".`, "Error", "Review each matrix row and choose the expected response before submitting.");
+            continue;
+          }
+          if (rowMissing || allowed.size === 0) {
+            continue;
+          }
+          const values = Array.isArray(rowValue) ? rowValue.map(String) : [String(rowValue)];
+          const invalid = values.filter((item) => !allowed.has(item));
+          if (invalid.length > 0) {
+            addIssue(`Use one of the approved choices for matrix row "${row.label}".`, "Error", "Clear the invalid matrix answer and pick from the visible row choices.");
+          }
+          if (!multi && values.length > 1) {
+            addIssue(`Choose only one answer for matrix row "${row.label}".`, "Error", "Clear extra choices so the row has just one response.");
+          }
         }
       }
     }
@@ -625,6 +642,7 @@ export class FormValidationService {
   ): { answered: number; total: number; percent: number } {
     const responses = new Map(draft.responses.map((response) => [response.questionId, response.value]));
     const logicState = new LogicEngine().evaluate(formVersion, draft);
+    const skippedIds = skippedQuestionIds(formVersion, draft);
     const blockingQuestions = new Set(
       this.validate(formVersion, draft, referenceLists)
         .filter((issue) => issue.severity === "Error")
@@ -633,9 +651,12 @@ export class FormValidationService {
     let total = 0;
     let answered = 0;
     for (const section of formVersion.sections) {
+      if (!evaluateVisibility(section.visibleWhen, responses)) {
+        continue;
+      }
       for (const question of section.questions) {
         const state = logicState[question.id];
-        if (state?.visible === false || question.type === "Hidden") {
+        if (skippedIds.has(question.id) || state?.visible === false || question.type === "Hidden") {
           continue;
         }
         total += 1;
@@ -761,8 +782,7 @@ function repeatGroupFields(question: MobileQuestion): MobileQuestion[] {
 }
 
 function matrixAllowsMultiple(question: MobileQuestion): boolean {
-  const metadata = isQuestionRecord(question.defaultValue) ? question.defaultValue : {};
-  const mode = String(metadata.mode ?? metadata.matrixMode ?? metadata.type ?? "").toLowerCase();
+  const mode = matrixMode(question);
   return (
     mode.includes("multi") ||
     question.validationRules.some(
@@ -772,6 +792,11 @@ function matrixAllowsMultiple(question: MobileQuestion): boolean {
         rule.value.toLowerCase() === "matrixmode:multi",
     )
   );
+}
+
+function matrixMode(question: MobileQuestion): string {
+  const metadata = isQuestionRecord(question.defaultValue) ? question.defaultValue : {};
+  return String(metadata.mode ?? metadata.matrixMode ?? metadata.type ?? "").toLowerCase();
 }
 
 function matrixRows(question: MobileQuestion): Array<{ label: string; value: string }> {

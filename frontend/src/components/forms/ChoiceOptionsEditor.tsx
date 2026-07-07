@@ -65,9 +65,11 @@ export function ChoiceOptionsEditor({
   );
   const [showCodes, setShowCodes] = useState<boolean>(Boolean(values?.some((value) => value?.trim())));
   const optionRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const editingRef = useRef(false);
 
   useEffect(() => {
     if (lastCommittedSignatureRef.current === optionsSignature) return;
+    if (editingRef.current) return;
     lastCommittedSignatureRef.current = optionsSignature;
     const normalized = normalizeChoiceDraftOptions(options);
     setDraftOptions(normalized);
@@ -100,15 +102,24 @@ export function ChoiceOptionsEditor({
   }
 
   function updateOption(index: number, value: string): void {
+    editingRef.current = true;
     const nextOptions = [...draftOptions];
     nextOptions[index] = value;
     commit(nextOptions, draftValues);
   }
 
   function updateValue(index: number, value: string): void {
+    editingRef.current = true;
     const nextValues = alignValues(draftValues, draftOptions.length);
     nextValues[index] = value;
     commit(draftOptions, nextValues);
+  }
+
+  function finishEditing(): void {
+    editingRef.current = false;
+    const normalized = normalizeChoiceDraftOptions(cleanChoiceOptions(draftOptions));
+    setDraftOptions(normalized);
+    setDraftValues(alignValues(draftValues, normalized.length));
   }
 
   function insertOption(afterIndex: number, value = ""): void {
@@ -133,7 +144,14 @@ export function ChoiceOptionsEditor({
   }
 
   return (
-    <div className="mt-2 space-y-2">
+    <div
+      className="mt-2 space-y-2"
+      onBlurCapture={(event) => {
+        const nextTarget = event.relatedTarget as Node | null;
+        if (nextTarget && event.currentTarget.contains(nextTarget)) return;
+        finishEditing();
+      }}
+    >
       {draftOptions.map((option, index) => (
         <div className="flex items-center gap-2" key={`choice-${index}`}>
           {draftOptions.length > 1 ? (
@@ -168,10 +186,12 @@ export function ChoiceOptionsEditor({
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
+                editingRef.current = false;
                 insertOption(index);
               }
               if (event.key === "Backspace" && !option && draftOptions.length > 1) {
                 event.preventDefault();
+                editingRef.current = false;
                 removeOption(index);
               }
             }}
@@ -183,6 +203,7 @@ export function ChoiceOptionsEditor({
               );
               if (!nextOptions) return;
               event.preventDefault();
+              editingRef.current = false;
               commit(nextOptions, draftValues);
               focusOption(index + nextOptions.length - draftOptions.length);
             }}

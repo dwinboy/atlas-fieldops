@@ -790,7 +790,7 @@ def _mobile_default_value(
         metadata["lookupSource"] = str(lookup_config.get("source") or "entities")
     if field_type in {"matrix_single", "matrix_multi", "grid"}:
         matrix_config = _as_dict(field.get("matrix"))
-        metadata.setdefault("mode", "multi" if field_type == "matrix_multi" else "single")
+        metadata.setdefault("mode", "grid" if field_type == "grid" else "multi" if field_type == "matrix_multi" else "single")
         metadata.setdefault(
             "rows",
             field.get("rows") or field.get("matrixRows") or field.get("statements") or matrix_config.get("rows") or [],
@@ -799,6 +799,9 @@ def _mobile_default_value(
             "columns",
             field.get("columns") or field.get("matrixColumns") or field.get("options") or matrix_config.get("columns") or [],
         )
+        if field_type == "grid":
+            metadata.setdefault("columnTypes", matrix_config.get("columnTypes") or [])
+            metadata.setdefault("columnOptions", matrix_config.get("columnOptions") or [])
     if field_type in {"repeat_group", "repeatable_group", "subform"}:
         raw_fields = field.get("fields") or field.get("questions") or field.get("children") or []
         metadata["fields"] = [

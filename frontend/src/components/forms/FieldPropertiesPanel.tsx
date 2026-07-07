@@ -1,6 +1,7 @@
 import { Check, Database, Palette, Plus, Settings2, Sparkles, Trash2, Type, Variable, Workflow } from "lucide-react";
 
 import { ChoiceOptionsEditor } from "@/components/forms/ChoiceOptionsEditor";
+import { LogicAnswerValueControl } from "@/components/forms/LogicAnswerValueControl";
 import { ResponseTypeField } from "@/components/forms/ResponseTypeField";
 import {
   isValidVariableName,
@@ -11,12 +12,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import {
+  LOGIC_CONDITION_OPERATORS,
   fieldValidationCapabilities,
-  logicValueInputForField,
   typeChangePatchForField,
   updateField,
   type DynamicForm,
   type FormField,
+  type LogicConditionOperator,
   type LogicRule,
 } from "@/lib/forms";
 import { cn } from "@/lib/utils";
@@ -35,6 +37,8 @@ export function FieldPropertiesPanel({
   logicActionKind,
   logicConditionFieldId,
   logicConditionValue,
+  logicConditionValue2,
+  logicConditionOperator,
   onApplySmartSetup,
   onBindReference,
   onAddVisualLogicRule,
@@ -43,6 +47,8 @@ export function FieldPropertiesPanel({
   setLogicActionKind,
   setLogicConditionFieldId,
   setLogicConditionValue,
+  setLogicConditionValue2,
+  setLogicConditionOperator,
   tab,
 }: {
   field?: FormField;
@@ -50,6 +56,8 @@ export function FieldPropertiesPanel({
   logicActionKind: LogicRule["kind"];
   logicConditionFieldId: string;
   logicConditionValue: string;
+  logicConditionValue2: string;
+  logicConditionOperator: LogicConditionOperator;
   onApplySmartSetup: (
     kind: "required" | "email" | "phone" | "gps" | "yes_no" | "skip_rule",
   ) => void;
@@ -60,6 +68,8 @@ export function FieldPropertiesPanel({
   setLogicActionKind: (kind: LogicRule["kind"]) => void;
   setLogicConditionFieldId: (fieldId: string) => void;
   setLogicConditionValue: (value: string) => void;
+  setLogicConditionValue2: (value: string) => void;
+  setLogicConditionOperator: (operator: LogicConditionOperator) => void;
   tab: RightPanelTab;
 }) {
   if (!form || !field) {
@@ -113,7 +123,9 @@ export function FieldPropertiesPanel({
   const logicConditionField = form.fields.find(
     (candidate) => candidate.id === resolvedConditionFieldId,
   );
-  const logicValueControl = logicValueInputForField(logicConditionField);
+  const operatorSpec =
+    LOGIC_CONDITION_OPERATORS.find((item) => item.value === logicConditionOperator) ??
+    LOGIC_CONDITION_OPERATORS[0];
 
   return (
     <section className="rounded-lg border bg-surface-container-lowest p-4">
@@ -722,14 +734,13 @@ export function FieldPropertiesPanel({
               </Select>
               <Select
                 value={
-                  logicConditionFieldId ||
-                  form.fields.find((candidate) => candidate.id !== field.id)
-                    ?.id ||
-                  ""
+                  logicConditionField?.id ?? ""
                 }
-                onChange={(event) =>
-                  setLogicConditionFieldId(event.target.value)
-                }
+                onChange={(event) => {
+                  setLogicConditionFieldId(event.target.value);
+                  setLogicConditionValue("");
+                  setLogicConditionValue2("");
+                }}
               >
                 {form.fields
                   .filter((candidate) => candidate.id !== field.id)
@@ -739,55 +750,32 @@ export function FieldPropertiesPanel({
                     </option>
                   ))}
               </Select>
-              {logicValueControl.kind === "select" ? (
-                <Select
-                  onChange={(event) => setLogicConditionValue(event.target.value)}
-                  value={logicConditionValue}
-                >
-                  <option value="">Choose an answer…</option>
-                  {(logicValueControl.options ?? []).map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </Select>
-              ) : logicValueControl.kind === "boolean" ? (
-                <Select
-                  onChange={(event) => setLogicConditionValue(event.target.value)}
-                  value={logicConditionValue}
-                >
-                  <option value="">Choose an answer…</option>
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </Select>
-              ) : (
-                <Input
-                  onChange={(event) => setLogicConditionValue(event.target.value)}
-                  placeholder={
-                    logicValueControl.kind === "number"
-                      ? "Answer value, for example 18"
-                      : logicValueControl.kind === "date"
-                        ? ""
-                        : "Answer value, for example Yes, Female, or High"
-                  }
-                  type={
-                    logicValueControl.kind === "number"
-                      ? "number"
-                      : logicValueControl.kind === "date"
-                        ? "date"
-                        : logicValueControl.kind === "datetime"
-                          ? "datetime-local"
-                          : logicValueControl.kind === "time"
-                            ? "time"
-                            : "text"
-                  }
-                  value={logicConditionValue}
-                />
-              )}
+              <Select
+                onChange={(event) =>
+                  setLogicConditionOperator(event.target.value as LogicConditionOperator)
+                }
+                value={logicConditionOperator}
+              >
+                {LOGIC_CONDITION_OPERATORS.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </Select>
+              <LogicAnswerValueControl
+                conditionField={logicConditionField}
+                onValue2Change={setLogicConditionValue2}
+                onValueChange={setLogicConditionValue}
+                operator={logicConditionOperator}
+                value={logicConditionValue}
+                value2={logicConditionValue2}
+              />
               <Button
                 disabled={
-                  form.fields.filter((candidate) => candidate.id !== field.id)
-                    .length === 0
+                  form.fields.filter((candidate) => candidate.id !== field.id).length === 0 ||
+                  (operatorSpec.needsValue &&
+                    (!logicConditionValue.trim() ||
+                      (operatorSpec.needsSecondValue && !logicConditionValue2.trim())))
                 }
                 onClick={onAddVisualLogicRule}
                 type="button"
@@ -1026,6 +1014,8 @@ export function FieldPropertiesPanel({
                       matrix: {
                         rows: event.target.value.split("\n").filter(Boolean),
                         columns: field.matrix?.columns ?? [],
+                        columnTypes: field.matrix?.columnTypes,
+                        columnOptions: field.matrix?.columnOptions,
                         scoring: field.matrix?.scoring,
                       },
                     })
@@ -1042,6 +1032,8 @@ export function FieldPropertiesPanel({
                       matrix: {
                         rows: field.matrix?.rows ?? [],
                         columns: event.target.value.split("\n").filter(Boolean),
+                        columnTypes: field.matrix?.columnTypes,
+                        columnOptions: field.matrix?.columnOptions,
                         scoring: field.matrix?.scoring,
                       },
                     })

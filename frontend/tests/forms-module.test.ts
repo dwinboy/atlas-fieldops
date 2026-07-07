@@ -30,7 +30,7 @@ describe("forms route helpers", () => {
   });
 
   it("uses version-safe edit labels", () => {
-    expect(formEditActionLabel({ status: "published" })).toBe("New Version");
+    expect(formEditActionLabel({ status: "published" })).toBe("Edit Form");
     expect(formEditActionLabel({ status: "draft" })).toBe("Edit");
     expect(formEditActionLabel({ status: "archived" })).toBe("Edit");
   });

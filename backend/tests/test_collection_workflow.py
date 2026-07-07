@@ -47,6 +47,7 @@ from app.schemas.mobile import MobileSubmissionUpload
 from app.services.collection import (
     CollectionConflictError,
     FieldOfficerService,
+    FormService,
     InvalidWorkflowTransitionError,
     SubmissionService,
     form_schema_compatibility,
@@ -411,6 +412,19 @@ async def test_editing_published_form_keeps_active_version_until_publish() -> No
         assert draft_version.version == 2
         assert draft_version.published_at is None
         assert (await forms.get_current_version(organization_id=organization_id, form_id=form.id)).id == published_version.id
+
+        service = FormService(session)
+        live_schema = await service.get_current_schema(organization_id=organization_id, form_id=form.id)
+        edit_schema = await service.get_current_schema(
+            organization_id=organization_id,
+            form_id=form.id,
+            include_unpublished_revision=True,
+        )
+        assert live_schema.version == 1
+        assert live_schema.is_draft_revision is False
+        assert edit_schema.version == 2
+        assert edit_schema.is_draft_revision is True
+        assert edit_schema.live_version == 1
 
         form, promoted_version = await forms.save_schema_revision(
             form=form,

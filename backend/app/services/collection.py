@@ -2344,15 +2344,33 @@ class FormService:
                 form.controls_json = FormControlsSettings().model_dump(mode="json")
         return forms
 
-    async def get_current_schema(self, *, organization_id: UUID, form_id: UUID) -> DataFormSchemaRead:
+    async def get_current_schema(
+        self,
+        *,
+        organization_id: UUID,
+        form_id: UUID,
+        include_unpublished_revision: bool = False,
+    ) -> DataFormSchemaRead:
         form = await self.forms.get(organization_id=organization_id, form_id=form_id)
         if form is None:
             raise CollectionNotFoundError("Form not found")
         version = await self.forms.get_current_version(organization_id=organization_id, form_id=form_id)
+        is_draft_revision = False
+        if include_unpublished_revision and form.status == "published":
+            draft_revision = await self.forms.get_unpublished_revision(
+                organization_id=organization_id,
+                form_id=form_id,
+                version=form.current_version + 1,
+            )
+            if draft_revision is not None:
+                version = draft_revision
+                is_draft_revision = True
         if version is None:
             raise CollectionNotFoundError("Form version not found")
         return DataFormSchemaRead(
             form_id=form.id,
+            is_draft_revision=is_draft_revision,
+            live_version=form.current_version,
             version=version.version,
             form_schema=version.schema_json,
             published_at=version.published_at,
@@ -4623,7 +4641,9 @@ class SubmissionService:
                     continue
                 name_variable = str(roster.get("nameVariable") or "").strip()
                 relationship = str(roster.get("relationship") or "member_of").strip() or "member_of"
-                rows = payload.get(field.variable_name) or payload.get(field.id)
+                rows = payload.get(field.variable_name) if field.variable_name else None
+                if rows is None:
+                    rows = payload.get(field.id)
                 if not isinstance(rows, list):
                     continue
                 for row in rows[:200]:

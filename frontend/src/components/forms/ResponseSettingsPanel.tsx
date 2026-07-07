@@ -20,7 +20,32 @@ import {
   updateField,
   type DynamicForm,
   type FormField,
+  type FieldType,
 } from "@/lib/forms";
+
+const gridColumnResponseTypes: Array<{ type: FieldType; label: string }> = [
+  { type: "text", label: "Text" },
+  { type: "textarea", label: "Long text" },
+  { type: "number", label: "Whole number" },
+  { type: "decimal", label: "Decimal" },
+  { type: "currency", label: "Currency" },
+  { type: "date", label: "Date" },
+  { type: "time", label: "Time" },
+  { type: "datetime", label: "Date and time" },
+  { type: "yes_no", label: "Yes / No" },
+  { type: "dropdown", label: "Dropdown" },
+  { type: "checkbox", label: "Multi-select" },
+];
+
+const gridChoiceColumnTypes = new Set<FieldType>(["yes_no", "dropdown", "select", "radio", "checkbox", "multiselect"]);
+
+function alignGridColumnTypes(columns: string[], existing?: FieldType[]): FieldType[] {
+  return columns.map((_, index) => existing?.[index] ?? "text");
+}
+
+function alignGridColumnOptions(columns: string[], existing?: string[][]): string[][] {
+  return columns.map((_, index) => existing?.[index] ?? []);
+}
 
 /** Response-configuration tab: per-type answer options/units, subform setup, and data-source pointer. */
 export function ResponseSettingsPanel({
@@ -263,8 +288,14 @@ export function ResponseSettingsPanel({
                                             key={`${field.id}-rows`}
                                             onChange={(rows) =>
                                               onUpdateForm(
-                                                updateField(form, field.id, {
-                                                  matrix: { rows, columns: field.matrix?.columns ?? [], scoring: field.matrix?.scoring },
+                                            updateField(form, field.id, {
+                                                  matrix: {
+                                                    rows,
+                                                    columns: field.matrix?.columns ?? [],
+                                                    columnTypes: field.matrix?.columnTypes,
+                                                    columnOptions: field.matrix?.columnOptions,
+                                                    scoring: field.matrix?.scoring,
+                                                  },
                                                 }),
                                               )
                                             }
@@ -373,7 +404,13 @@ export function ResponseSettingsPanel({
                                         onChange={(columns) =>
                                           onUpdateForm(
                                             updateField(form, field.id, {
-                                              matrix: { rows: field.matrix?.rows ?? [], columns, scoring: field.matrix?.scoring },
+                                              matrix: {
+                                                rows: field.matrix?.rows ?? [],
+                                                columns,
+                                                columnTypes: field.type === "grid" ? alignGridColumnTypes(columns, field.matrix?.columnTypes) : field.matrix?.columnTypes,
+                                                columnOptions: field.type === "grid" ? alignGridColumnOptions(columns, field.matrix?.columnOptions) : field.matrix?.columnOptions,
+                                                scoring: field.matrix?.scoring,
+                                              },
                                             }),
                                           )
                                         }
@@ -381,6 +418,92 @@ export function ResponseSettingsPanel({
                                       />
                                     </label>
                                   </div>
+                                  {field.type === "grid" ? (
+                                    <div className="rounded-md border bg-background p-3">
+                                      <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div>
+                                          <p className="text-sm font-semibold">Column response types</p>
+                                          <p className="text-xs text-muted-foreground">
+                                            Choose what each grid column collects. This makes grids work like a compact table with typed cells.
+                                          </p>
+                                        </div>
+                                        <Badge tone="neutral">{field.matrix?.columns?.length ?? 0} columns</Badge>
+                                      </div>
+                                      <div className="mt-3 space-y-3">
+                                        {(field.matrix?.columns ?? []).map((column, index) => {
+                                          const columnTypes = alignGridColumnTypes(field.matrix?.columns ?? [], field.matrix?.columnTypes);
+                                          const columnOptions = alignGridColumnOptions(field.matrix?.columns ?? [], field.matrix?.columnOptions);
+                                          const currentType = columnTypes[index] ?? "text";
+                                          const optionList = currentType === "yes_no" ? ["Yes", "No"] : columnOptions[index] ?? [];
+                                          return (
+                                            <div className="grid gap-2 rounded-md border bg-surface-container-lowest p-3 lg:grid-cols-[minmax(0,1fr)_190px] lg:items-start" key={`${column}-${index}`}>
+                                              <div className="min-w-0">
+                                                <p className="truncate text-sm font-semibold">{column || `Column ${index + 1}`}</p>
+                                                <p className="text-xs text-muted-foreground">Grid column {index + 1}</p>
+                                                {gridChoiceColumnTypes.has(currentType) && currentType !== "yes_no" ? (
+                                                  <div className="mt-2">
+                                                    <ChoiceOptionsEditor
+                                                      key={`${field.id}-grid-column-options-${index}`}
+                                                      onChange={(options) => {
+                                                        const nextOptions = alignGridColumnOptions(field.matrix?.columns ?? [], field.matrix?.columnOptions);
+                                                        nextOptions[index] = options;
+                                                        onUpdateForm(
+                                                          updateField(form, field.id, {
+                                                            matrix: {
+                                                              rows: field.matrix?.rows ?? [],
+                                                              columns: field.matrix?.columns ?? [],
+                                                              columnTypes,
+                                                              columnOptions: nextOptions,
+                                                              scoring: field.matrix?.scoring,
+                                                            },
+                                                          }),
+                                                        );
+                                                      }}
+                                                      options={columnOptions[index] ?? []}
+                                                    />
+                                                  </div>
+                                                ) : currentType === "yes_no" ? (
+                                                  <p className="mt-2 text-xs text-muted-foreground">Uses fixed Yes and No options.</p>
+                                                ) : null}
+                                              </div>
+                                              <label className="block text-sm font-semibold">
+                                                Response type
+                                                <Select
+                                                  className="mt-2"
+                                                  onChange={(event) => {
+                                                    const nextType = event.target.value as FieldType;
+                                                    const nextTypes = alignGridColumnTypes(field.matrix?.columns ?? [], field.matrix?.columnTypes);
+                                                    const nextOptions = alignGridColumnOptions(field.matrix?.columns ?? [], field.matrix?.columnOptions);
+                                                    nextTypes[index] = nextType;
+                                                    if (nextType === "yes_no") nextOptions[index] = ["Yes", "No"];
+                                                    if (!gridChoiceColumnTypes.has(nextType)) nextOptions[index] = [];
+                                                    onUpdateForm(
+                                                      updateField(form, field.id, {
+                                                        matrix: {
+                                                          rows: field.matrix?.rows ?? [],
+                                                          columns: field.matrix?.columns ?? [],
+                                                          columnTypes: nextTypes,
+                                                          columnOptions: nextOptions,
+                                                          scoring: field.matrix?.scoring,
+                                                        },
+                                                      }),
+                                                    );
+                                                  }}
+                                                  value={currentType}
+                                                >
+                                                  {gridColumnResponseTypes.map((item) => (
+                                                    <option key={item.type} value={item.type}>
+                                                      {item.label}
+                                                    </option>
+                                                  ))}
+                                                </Select>
+                                              </label>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  ) : null}
                                 </div>
                               ) : null}
                               {field.type === "repeat_group" ? (

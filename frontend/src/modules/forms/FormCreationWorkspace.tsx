@@ -3613,7 +3613,6 @@ export function backendFormTargetIdForSave(
   savedBackendFormId: string | null,
 ): string | null {
   if (savedBackendFormId) return savedBackendFormId;
-  if (initialForm?.status === "published") return null;
   return initialForm?.id ?? null;
 }
 
@@ -3751,7 +3750,13 @@ function createEditableDraftFromSavedSchema(
   form: FormListItem,
   schema: Record<string, unknown>,
   version: number,
+  options: { isDraftRevision?: boolean; liveVersion?: number | null } = {},
 ): DynamicForm {
+  const editingPublishedRevision = form.status === "published";
+  const liveVersion = options.liveVersion ?? form.version;
+  const builderStatus: DynamicForm["status"] = editingPublishedRevision
+    ? "draft"
+    : builderStatusFromListStatus(form.status);
   const schemaPages = Array.isArray((schema as { pages?: unknown }).pages)
     ? ((schema as { pages: Record<string, unknown>[] }).pages)
     : [];
@@ -3850,13 +3855,17 @@ function createEditableDraftFromSavedSchema(
   });
   const updatedAt = form.updated_at || new Date().toISOString();
   return {
-    activeVersion: form.status === "published" ? version : 0,
+    activeVersion: editingPublishedRevision ? liveVersion : 0,
     fields,
     history: [
       {
         createdAt: updatedAt,
-        status: builderStatusFromListStatus(form.status),
-        summary: `Loaded saved schema for ${form.name}`,
+        status: builderStatus,
+        summary: options.isDraftRevision
+          ? `Loaded draft revision v${version} for ${form.name}`
+          : editingPublishedRevision
+            ? `Started draft revision v${version} for ${form.name}`
+            : `Loaded saved schema for ${form.name}`,
         version,
       },
     ],
@@ -3864,7 +3873,7 @@ function createEditableDraftFromSavedSchema(
     name: form.name,
     pages,
     sections,
-    status: builderStatusFromListStatus(form.status),
+    status: builderStatus,
     updatedAt,
     version,
   };
@@ -5720,8 +5729,11 @@ export function FormCreationWorkspace({
   );
   const formSchemaQuery = useQuery({
     enabled: Boolean(initialForm && token && !preview),
-    queryFn: () => getFormSchema(token ?? "", initialForm?.id ?? ""),
-    queryKey: ["form-builder-schema", token, initialForm?.id],
+    queryFn: () =>
+      getFormSchema(token ?? "", initialForm?.id ?? "", {
+        includeDraft: initialForm?.status === "published",
+      }),
+    queryKey: ["form-builder-schema", token, initialForm?.id, initialForm?.status],
   });
   const availableProjectOptions = useMemo(() => {
     const projectsById = new Map<string, Pick<ProjectListItemRead, "id" | "name" | "sector_id" | "sector_name">>();
@@ -6966,6 +6978,10 @@ export function FormCreationWorkspace({
         initialForm,
         formSchemaQuery.data.schema,
         formSchemaQuery.data.version,
+        {
+          isDraftRevision: formSchemaQuery.data.is_draft_revision,
+          liveVersion: formSchemaQuery.data.live_version,
+        },
       ),
     );
     setStage("builder");
@@ -7192,7 +7208,11 @@ export function FormCreationWorkspace({
       lastPersistedSignatureRef.current = draftSignature;
       setAutoSaveState("saved");
       setLastSavedAt(Date.now());
-      setPublishMessage("Draft saved to the organization workspace. You can log out and continue it from Draft Forms.");
+      setPublishMessage(
+        editingPublishedForm
+          ? "Draft update saved to the organization workspace. Reopen this published form and choose Edit Form to continue."
+          : "Draft saved to the organization workspace. You can log out and continue it from Draft Forms.",
+      );
     } else {
       setAutoSaveState("error");
       setPublishMessage(
@@ -7557,7 +7577,7 @@ export function FormCreationWorkspace({
   const editingPublishedForm = initialForm?.status === "published" && !publishedForm;
   const workspaceTitle = initialForm
     ? editingPublishedForm
-      ? "Create New Version"
+      ? "Edit Published Form"
       : "Edit Form"
     : "Create Form";
 
@@ -7794,7 +7814,13 @@ export function FormCreationWorkspace({
                   variant="primary"
                 >
                   <Rocket aria-hidden="true" />
-                  {publishing ? "Publishing" : "Publish Form"}
+                  {publishing
+                    ? editingPublishedForm
+                      ? "Deploying"
+                      : "Publishing"
+                    : editingPublishedForm
+                      ? "Deploy Update"
+                      : "Publish Form"}
                 </Button>
                 {publishDisabled && !publishing ? (
                   <Button
@@ -7865,7 +7891,7 @@ export function FormCreationWorkspace({
             <div>
               <p className="font-semibold">You are editing the next draft version.</p>
               <p className="mt-1 text-xs">
-                Field officers continue using v{initialForm.version}. Save Draft keeps this revision unfinished; Publish Form promotes it to v{initialForm.version + 1} and sends the updated form to selected field officers.
+                Field officers continue using v{initialForm.version}. Save Draft keeps this revision unfinished; Deploy Update promotes it to v{initialForm.version + 1} and sends the updated form to selected field officers.
               </p>
             </div>
             <Button onClick={() => setStage("review")} size="sm" variant="secondary">
@@ -10893,7 +10919,13 @@ export function FormCreationWorkspace({
                   variant="primary"
                 >
                   <Rocket aria-hidden="true" />
-                  {publishing ? "Publishing" : "Publish Form"}
+                  {publishing
+                    ? editingPublishedForm
+                      ? "Deploying"
+                      : "Publishing"
+                    : editingPublishedForm
+                      ? "Deploy Update"
+                      : "Publish Form"}
                 </Button>
                 {publishDisabled && !publishing ? (
                   <Button

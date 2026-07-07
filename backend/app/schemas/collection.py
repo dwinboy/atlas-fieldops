@@ -629,6 +629,8 @@ class DataFormSchemaRead(BaseModel):
     form_schema: dict[str, Any] = Field(alias="schema")
     published_at: datetime | None = None
     published_by_user_id: UUID | None = None
+    is_draft_revision: bool = False
+    live_version: int | None = None
 
     model_config = {"populate_by_name": True}
 

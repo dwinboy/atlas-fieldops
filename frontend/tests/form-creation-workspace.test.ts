@@ -135,7 +135,7 @@ describe("enterprise form creation workspace", () => {
     expect(draft.fields.some((field) => field.type === "gps" && field.validation?.accuracyMax)).toBe(true);
   });
 
-  it("does not use the live published form id as the draft save target", () => {
+  it("uses the existing form id so published edits become a new version", () => {
     expect(
       backendFormTargetIdForSave(
         {
@@ -144,7 +144,7 @@ describe("enterprise form creation workspace", () => {
         },
         null,
       ),
-    ).toBeNull();
+    ).toBe("published-form-1");
     expect(
       backendFormTargetIdForSave(
         {

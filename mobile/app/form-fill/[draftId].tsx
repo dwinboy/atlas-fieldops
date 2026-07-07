@@ -25,7 +25,7 @@ import { useAppContext } from "@/context/AppContext";
 import { describeEntityHierarchy, describeFormEntityWorkflow } from "@/entities/entityCategoryUtils";
 import { DataCollectionSessionService } from "@/forms/dataCollectionSession";
 import { FormValidationService } from "@/forms/formValidationService";
-import { LogicEngine, evaluateVisibility } from "@/forms/logicEngine";
+import { LogicEngine, evaluateVisibility, skippedQuestionIds } from "@/forms/logicEngine";
 import type { FormValidationIssue } from "@/forms/formValidationService";
 import { FieldIntegrityService } from "@/services/fieldIntegrityService";
 import { localDatabase } from "@/storage/localDatabase";
@@ -47,6 +47,7 @@ export default function FormFillScreen() {
   const [sectionIndex, setSectionIndex] = useState(0);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [reviewMode, setReviewMode] = useState(false);
+  const [touchedQuestionIds, setTouchedQuestionIds] = useState<Set<string>>(() => new Set());
 
   const draft = useMemo(
     () => localDatabase.draftSubmissions.get(draftId ?? ""),
@@ -81,14 +82,25 @@ export default function FormFillScreen() {
     return ids;
   }, [draft, formVersion, refreshKey]);
 
+  const skippedIds = useMemo(
+    () => (draft && formVersion ? skippedQuestionIds(formVersion, draft) : new Set<string>()),
+    [draft, formVersion, refreshKey],
+  );
+
   const allIssues: FormValidationIssue[] = useMemo(
-    () =>
-      draft && formVersion && (submitAttempted || reviewMode)
-        ? [...validationService.validate(formVersion, draft, localDatabase.referenceLists.list()), ...dataCollection.evaluateRiskIssues(draft, formVersion)].filter(
-            (issue) => !hiddenSectionQuestionIds.has(issue.questionId),
-          )
-        : [],
-    [draft, formVersion, submitAttempted, reviewMode, refreshKey, hiddenSectionQuestionIds],
+    () => {
+      if (!draft || !formVersion) return [];
+      const validationIssues = validationService
+        .validate(formVersion, draft, localDatabase.referenceLists.list())
+        .filter((issue) => submitAttempted || reviewMode || touchedQuestionIds.has(issue.questionId));
+      const workflowIssues = submitAttempted || reviewMode
+        ? dataCollection.evaluateRiskIssues(draft, formVersion)
+        : [];
+      return [...validationIssues, ...workflowIssues].filter(
+        (issue) => !hiddenSectionQuestionIds.has(issue.questionId) && !skippedIds.has(issue.questionId),
+      );
+    },
+    [draft, formVersion, submitAttempted, reviewMode, refreshKey, hiddenSectionQuestionIds, skippedIds, touchedQuestionIds],
   );
 
   const progress = useMemo(
@@ -101,8 +113,17 @@ export default function FormFillScreen() {
     return (formVersion?.sections ?? [])
       .slice()
       .sort((a, b) => a.order - b.order)
-      .filter((section) => evaluateVisibility(section.visibleWhen, responses));
-  }, [formVersion, draft, refreshKey]);
+      .filter((section) => evaluateVisibility(section.visibleWhen, responses))
+      .filter((section) =>
+        section.questions.some((question) => logicState[question.id]?.visible !== false && !skippedIds.has(question.id)),
+      );
+  }, [formVersion, draft, refreshKey, logicState, skippedIds]);
+
+  useEffect(() => {
+    if (sections.length > 0 && sectionIndex >= sections.length) {
+      setSectionIndex(sections.length - 1);
+    }
+  }, [sectionIndex, sections.length]);
 
   // Languages a field officer can switch between — derived from the questions' translations.
   const availableLanguages = useMemo<string[]>(() => {
@@ -121,8 +142,14 @@ export default function FormFillScreen() {
   const currentSection = sections[sectionIndex] ?? null;
 
   const currentQuestions: MobileQuestion[] = useMemo(
-    () => (currentSection ? currentSection.questions.slice().sort((a, b) => a.order - b.order) : []),
-    [currentSection],
+    () =>
+      currentSection
+        ? currentSection.questions
+            .slice()
+            .sort((a, b) => a.order - b.order)
+            .filter((question) => logicState[question.id]?.visible !== false && !skippedIds.has(question.id))
+        : [],
+    [currentSection, logicState, skippedIds],
   );
 
   const selectedEntity = useMemo(() => {
@@ -203,6 +230,11 @@ export default function FormFillScreen() {
 
   function handleAnswer(questionId: string, variableName: string, value: unknown) {
     if (!draftId) return;
+    setTouchedQuestionIds((previous) => {
+      const next = new Set(previous);
+      next.add(questionId);
+      return next;
+    });
     let updated = dataCollection.answerQuestion(draftId, questionId, variableName, value);
     updated = clearInvalidatedCascades(updated, questionId);
     updated = clearHiddenLogicAnswers(updated);
@@ -262,10 +294,11 @@ export default function FormFillScreen() {
     let current = draftState;
 
     while (true) {
+      const currentSkippedIds = skippedQuestionIds(formVersion, current);
       const hiddenQuestion = allQuestions.find((question) => {
         if (question.type === "Hidden") return false;
         const state = logicEngine.evaluate(formVersion, current)[question.id];
-        if (state?.visible !== false) return false;
+        if (state?.visible !== false && !currentSkippedIds.has(question.id)) return false;
         const response = current.responses.find((item) => item.questionId === question.id);
         return response !== undefined && hasStoredAnswer(response.value, question.type);
       });
@@ -380,6 +413,7 @@ export default function FormFillScreen() {
     integrity,
     draft.linkedEntityIds?.length ?? 0,
     entityHierarchy?.summary ?? null,
+    skippedIds,
   );
 
   if (reviewMode) {
@@ -616,7 +650,7 @@ export default function FormFillScreen() {
                 question={q}
                 value={responseValue(q.id)}
                 onAnswer={handleAnswer}
-                issues={submitAttempted ? allIssues.filter((i) => i.questionId === q.id) : []}
+                issues={allIssues.filter((i) => i.questionId === q.id)}
                 visible={visible}
                 allResponses={allResponses}
                 referenceLists={referenceLists}
@@ -676,9 +710,12 @@ function buildReviewSummary(
   integrity: MobileCollectionIntegrity,
   linkedEntityCount: number,
   entityHierarchySummary: string | null,
+  skippedIds: Set<string>,
 ) {
   const responses = new Map(draft.responses.map((response) => [response.questionId, response.value]));
-  const questions = formVersion.sections.flatMap((section) => section.questions);
+  const questions = formVersion.sections
+    .flatMap((section) => section.questions)
+    .filter((question) => !skippedIds.has(question.id));
   const questionValues = expandQuestionValues(questions, responses);
   const gpsQuestions = questionValues.filter(({ question }) => question.type === "GPS" || question.qualityControls?.captureGps);
   const mediaQuestions = questionValues.filter(({ question }) => ["Photo", "Video", "Audio", "FileUpload", "Signature"].includes(question.type) || question.qualityControls?.photoEvidence);

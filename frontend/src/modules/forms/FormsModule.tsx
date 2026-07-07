@@ -116,7 +116,7 @@ export function canAssignForm(form: Pick<FormListItem, "status">): boolean {
 }
 
 export function formEditActionLabel(form: Pick<FormListItem, "status">): string {
-  return form.status === "published" ? "New Version" : "Edit";
+  return form.status === "published" ? "Edit Form" : "Edit";
 }
 
 function isPreview(token: string | null): boolean {
@@ -2849,7 +2849,7 @@ function FormStatusCards({
                     Assign
                   </Button>
                   <Button disabled={!canManageForms} onClick={() => onEdit(form)} size="sm" variant="secondary">
-                    New Version
+                    Edit Form
                   </Button>
                   <Button disabled={!canManageForms} onClick={() => onDuplicate(form)} size="sm" variant="secondary">
                     Duplicate

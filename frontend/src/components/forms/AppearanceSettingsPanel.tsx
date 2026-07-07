@@ -1,5 +1,6 @@
 import { Palette } from "lucide-react";
 
+import { CalculationBuilder } from "@/components/forms/CalculationBuilder";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
 import { updateField, type DynamicForm, type FormField } from "@/lib/forms";
@@ -477,31 +478,14 @@ export function AppearanceSettingsPanel({
                               ) : null}
 
                               {field.type === "calculated" ? (
-                                <label className="block rounded-md border bg-background p-3 text-sm font-semibold">
-                                  Calculation formula
-                                  <Input
-                                    className="mt-2 font-mono"
-                                    onChange={(event) =>
-                                      onUpdateForm(
-                                        updateField(
-                                          form,
-                                          field.id,
-                                          {
-                                            calculation: {
-                                              ...field.calculation,
-                                              expression: event.target.value,
-                                            },
-                                          },
-                                        ),
-                                      )
-                                    }
-                                    placeholder="${income} - ${expense}"
-                                    value={
-                                      field.calculation?.expression ??
-                                      ""
-                                    }
-                                  />
-                                </label>
+                                <CalculationBuilder
+                                  compact
+                                  field={field}
+                                  form={form}
+                                  onApplyPatch={(patch) =>
+                                    onUpdateForm(updateField(form, field.id, patch))
+                                  }
+                                />
                               ) : null}
                             </section>
   );

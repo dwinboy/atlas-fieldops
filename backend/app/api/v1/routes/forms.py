@@ -349,9 +349,14 @@ async def get_form_schema(
     form_id: UUID,
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.FORM_READ))],
     session: Annotated[AsyncSession, Depends(get_session)],
+    include_draft: Annotated[bool, Query(description="Return the unpublished next version when editing a published form.")] = False,
 ) -> DataFormSchemaRead:
     try:
-        return await FormService(session).get_current_schema(organization_id=UUID(principal.organization_id), form_id=form_id)
+        return await FormService(session).get_current_schema(
+            organization_id=UUID(principal.organization_id),
+            form_id=form_id,
+            include_unpublished_revision=include_draft,
+        )
     except CollectionNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form version not found") from exc
 

@@ -194,6 +194,70 @@ export function buildLogicConditionExpression(
   }
 }
 
+export type CalculationOperation =
+  | "sum"
+  | "average"
+  | "difference"
+  | "product"
+  | "percentage"
+  | "ratio";
+
+function calculationReference(variableName: string): string {
+  return `\${${variableName.trim()}}`;
+}
+
+/** Builds a calculated-question formula from selected source question variables using the same
+ * expression syntax used by web preview and mobile collection. */
+export function buildCalculationExpression(
+  operation: CalculationOperation,
+  variableNames: string[],
+): string {
+  const variables = variableNames.map((name) => name.trim()).filter(Boolean);
+  if (variables.length === 0) return "";
+  const refs = variables.map(calculationReference);
+  switch (operation) {
+    case "average":
+      return `avg(${refs.join(", ")})`;
+    case "difference":
+      return refs.length >= 2 ? `${refs[0]} - ${refs[1]}` : refs[0];
+    case "product":
+      return refs.join(" * ");
+    case "percentage":
+      return refs.length >= 2 ? `round((${refs[0]} / ${refs[1]}) * 100, 2)` : "";
+    case "ratio":
+      return refs.length >= 2 ? `round(${refs[0]} / ${refs[1]}, 2)` : "";
+    case "sum":
+    default:
+      return `sum(${refs.join(", ")})`;
+  }
+}
+
+export function calculationPatchForField(
+  field: FormField,
+  expression: string,
+  preview = "Formula is ready for testing.",
+): Partial<FormField> {
+  const existingLogic = field.logic ?? [];
+  const existingCalculation = existingLogic.find((rule) => rule.kind === "calculation");
+  const calculationRule: LogicRule = {
+    id: existingCalculation?.id ?? `${field.id}-calculation`,
+    kind: "calculation",
+    expression,
+    targetId: field.id,
+  };
+  return {
+    calculation: {
+      ...(field.calculation ?? {}),
+      expression,
+      preview,
+    },
+    logic: [
+      ...existingLogic.filter((rule) => rule.kind !== "calculation"),
+      calculationRule,
+    ],
+  };
+}
+
 export type FormField = {
   id: string;
   label: string;
@@ -270,6 +334,10 @@ export type FormField = {
   matrix?: {
     rows: string[];
     columns: string[];
+    /** Grid questions: response type per column, index-aligned with `columns`. */
+    columnTypes?: FieldType[];
+    /** Grid choice columns: option lists per column, index-aligned with `columns`. */
+    columnOptions?: string[][];
     scoring?: Record<string, number>;
   };
   /** Roster → entity linking: register each row as a child entity of the submission's parent entity
@@ -912,11 +980,11 @@ export function fieldValidationCapabilities(type: FieldType): FieldValidationCap
  */
 export function logicValueInputForField(field: FormField | undefined): {
   kind: "text" | "number" | "date" | "datetime" | "time" | "select" | "boolean";
-  options?: string[];
+  options?: Array<{ label: string; value: string }>;
 } {
   if (!field) return { kind: "text" };
   if (choiceFieldTypes.includes(field.type) || field.type === "day_of_week") {
-    return { kind: "select", options: field.options ?? [] };
+    return { kind: "select", options: exportedOptions(field.options, field.optionValues) };
   }
   if (numericFieldTypes.includes(field.type)) return { kind: "number" };
   if (field.type === "date" || field.type === "month") return { kind: "date" };
@@ -1003,7 +1071,11 @@ export function createField(type: FieldType, sectionId: string, pageId?: string)
                 : undefined,
     appearance: { width: "full" },
     matrix: ["matrix_single", "matrix_multi", "grid"].includes(type)
-      ? { rows: ["Row 1", "Row 2", "Row 3"], columns: ["Option 1", "Option 2", "Option 3"] }
+      ? {
+          rows: ["Row 1", "Row 2", "Row 3"],
+          columns: type === "grid" ? ["Value", "Date", "Notes"] : ["Option 1", "Option 2", "Option 3"],
+          columnTypes: type === "grid" ? ["text", "date", "textarea"] : undefined,
+        }
       : undefined,
     repeat: type === "repeat_group" ? { min: 0, max: 10, allowNested: false } : undefined,
     subform: type === "subform" ? { mode: "embed" as const, min: 0, max: 10 } : undefined,

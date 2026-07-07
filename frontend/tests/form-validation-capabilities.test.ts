@@ -146,7 +146,10 @@ describe("logicValueInputForField", () => {
     };
     const control = logicValueInputForField(field);
     expect(control.kind).toBe("select");
-    expect(control.options).toEqual(["Female", "Male"]);
+    expect(control.options).toEqual([
+      { label: "Female", value: "female" },
+      { label: "Male", value: "male" },
+    ]);
   });
 
   it("uses a number input for a numeric question and a date input for a date question", () => {

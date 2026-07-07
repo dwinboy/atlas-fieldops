@@ -35,22 +35,30 @@ function readEntityField(entity: MobileEntity, sourceField: string): unknown {
 export class PrefillService {
   createPrefill(entity: MobileEntity, formVersion: MobileFormVersion): PrefillResult {
     const mappings = formVersion.entitySettings.prefillMappings;
-    const variableNames = new Map(
+    const questionsById = new Map(
       formVersion.sections.flatMap((section) =>
-        section.questions.map((question) => [question.id, question.variableName] as const),
+        section.questions.map((question) => [question.id, question] as const),
       ),
     );
-    const responses = mappings.map((mapping: PrefillMapping) => ({
-      questionId: mapping.targetQuestionId,
-      variableName: variableNames.get(mapping.targetQuestionId) ?? mapping.targetQuestionId,
-      value: readEntityField(entity, mapping.sourceEntityField),
-      updatedAt: nowIso(),
-    }));
+    const responses = mappings.flatMap((mapping: PrefillMapping) => {
+      const question = questionsById.get(mapping.targetQuestionId);
+      if (!question) return [];
+      const value = readEntityField(entity, mapping.sourceEntityField);
+      if (value === null || value === undefined || (typeof value === "string" && value.trim() === "")) return [];
+      return [{
+        questionId: question.id,
+        variableName: question.variableName,
+        value,
+        updatedAt: nowIso(),
+      }];
+    });
     return {
       responses,
-      lockedQuestionIds: mappings.filter((mapping) => mapping.lockBehavior === "ReadOnly").map((mapping) => mapping.targetQuestionId),
+      lockedQuestionIds: mappings
+        .filter((mapping) => mapping.lockBehavior === "ReadOnly" && questionsById.has(mapping.targetQuestionId))
+        .map((mapping) => mapping.targetQuestionId),
       editableWithReasonQuestionIds: mappings
-        .filter((mapping) => mapping.lockBehavior === "EditableWithReason")
+        .filter((mapping) => mapping.lockBehavior === "EditableWithReason" && questionsById.has(mapping.targetQuestionId))
         .map((mapping) => mapping.targetQuestionId),
     };
   }

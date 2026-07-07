@@ -23,9 +23,14 @@ export function FieldInputPreview({ field }: { field: FormField }) {
           <span className="p-2">Row</span>
           {(field.matrix?.columns ?? ["Option 1", "Option 2", "Option 3"])
             .slice(0, 3)
-            .map((column) => (
+            .map((column, index) => (
               <span className="border-l p-2" key={column}>
                 {column}
+                {field.type === "grid" && field.matrix?.columnTypes?.[index] ? (
+                  <span className="mt-0.5 block text-[10px] uppercase tracking-wide text-muted-foreground/80">
+                    {field.matrix.columnTypes[index]?.replace("_", " ")}
+                  </span>
+                ) : null}
               </span>
             ))}
         </div>

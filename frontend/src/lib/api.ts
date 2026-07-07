@@ -2627,6 +2627,8 @@ export type DataFormSchemaRead = {
   schema: Record<string, unknown>;
   published_at?: string | null;
   published_by_user_id?: string | null;
+  is_draft_revision?: boolean;
+  live_version?: number | null;
 };
 
 export type FormDataImportIssue = {
@@ -4798,8 +4800,13 @@ export async function listForms(token: string): Promise<DataFormRead[]> {
   return request<DataFormRead[]>("/forms", { token });
 }
 
-export async function getFormSchema(token: string, formId: string): Promise<DataFormSchemaRead> {
-  return request<DataFormSchemaRead>(`/forms/${formId}/schema`, { token });
+export async function getFormSchema(
+  token: string,
+  formId: string,
+  options: { includeDraft?: boolean } = {},
+): Promise<DataFormSchemaRead> {
+  const suffix = options.includeDraft ? "?include_draft=true" : "";
+  return request<DataFormSchemaRead>(`/forms/${formId}/schema${suffix}`, { token });
 }
 
 export async function importFormDataRows(

@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
+import { LogicAnswerValueControl } from "@/components/forms/LogicAnswerValueControl";
 import {
   LOGIC_CONDITION_OPERATORS,
   updateField,
@@ -60,6 +61,10 @@ export function LogicSettingsPanel({
   onAddVisualLogicRule: () => void;
   onAddAdvancedLogicRule: () => void;
 }) {
+  const conditionField =
+    form.fields.find((candidate) => candidate.id === logicConditionFieldId) ??
+    form.fields.find((candidate) => candidate.id !== field.id);
+
   return (
                             <section className="mt-4 rounded-lg border bg-surface-container-lowest p-4">
                               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -114,15 +119,13 @@ export function LogicSettingsPanel({
                                     </Select>
                                     <Select
                                       value={
-                                        logicConditionFieldId ||
-                                        form.fields.find(
-                                          (candidate) => candidate.id !== field.id,
-                                        )?.id ||
-                                        ""
+                                        conditionField?.id ?? ""
                                       }
-                                      onChange={(event) =>
-                                        setLogicConditionFieldId(event.target.value)
-                                      }
+                                      onChange={(event) => {
+                                        setLogicConditionFieldId(event.target.value);
+                                        setLogicConditionValue("");
+                                        setLogicConditionValue2("");
+                                      }}
                                     >
                                       {form.fields
                                         .filter(
@@ -148,42 +151,20 @@ export function LogicSettingsPanel({
                                         </option>
                                       ))}
                                     </Select>
-                                    {operatorSpec.needsValue ? (
-                                      <div className="flex items-center gap-1">
-                                        <Input
-                                          onChange={(event) =>
-                                            setLogicConditionValue(event.target.value)
-                                          }
-                                          placeholder={
-                                            operatorSpec.valuePlaceholder ?? "Answer value"
-                                          }
-                                          value={logicConditionValue}
-                                        />
-                                        {operatorSpec.needsSecondValue ? (
-                                          <>
-                                            <span className="text-xs text-muted-foreground">
-                                              and
-                                            </span>
-                                            <Input
-                                              onChange={(event) =>
-                                                setLogicConditionValue2(event.target.value)
-                                              }
-                                              placeholder="High"
-                                              value={logicConditionValue2}
-                                            />
-                                          </>
-                                        ) : null}
-                                      </div>
-                                    ) : (
-                                      <div className="flex items-center text-xs text-muted-foreground">
-                                        No value needed
-                                      </div>
-                                    )}
+                                    <LogicAnswerValueControl
+                                      conditionField={conditionField}
+                                      onValue2Change={setLogicConditionValue2}
+                                      onValueChange={setLogicConditionValue}
+                                      operator={logicConditionOperator}
+                                      value={logicConditionValue}
+                                      value2={logicConditionValue2}
+                                    />
                                     <Button
                                       disabled={
-                                        form.fields.filter(
-                                          (candidate) => candidate.id !== field.id,
-                                        ).length === 0
+                                        form.fields.filter((candidate) => candidate.id !== field.id).length === 0 ||
+                                        (operatorSpec.needsValue &&
+                                          (!logicConditionValue.trim() ||
+                                            (operatorSpec.needsSecondValue && !logicConditionValue2.trim())))
                                       }
                                       onClick={onAddVisualLogicRule}
                                       type="button"

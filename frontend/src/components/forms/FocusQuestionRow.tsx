@@ -1,11 +1,39 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Trash2, Type } from "lucide-react";
+import {
+  GitBranch,
+  GripVertical,
+  Link2,
+  RotateCcw,
+  ShieldCheck,
+  Sigma,
+  Trash2,
+  Type,
+} from "lucide-react";
 
 import { fieldTypeIcons } from "@/components/forms/fieldTypeIcons";
 import { Button } from "@/components/ui/button";
 import { type FormField } from "@/lib/forms";
 import { cn } from "@/lib/utils";
+
+/**
+ * Capability chips: a question carrying skip logic, validation, a calculation, carry-forward,
+ * or an entity link looks identical to a plain one without these — which makes complex forms
+ * impossible to audit at a glance. Only render what's present.
+ */
+function capabilityChips(field: FormField): { icon: typeof Type; label: string }[] {
+  const chips: { icon: typeof Type; label: string }[] = [];
+  if (field.logic?.length) chips.push({ icon: GitBranch, label: `logic ×${field.logic.length}` });
+  const validation = field.validation ?? {};
+  if (Object.keys(validation).length) chips.push({ icon: ShieldCheck, label: "validation" });
+  if (field.calculation) chips.push({ icon: Sigma, label: "calc" });
+  if (field.carryForward) chips.push({ icon: RotateCcw, label: "carry-forward" });
+  const helpText = field.appearance?.helpText ?? "";
+  if (helpText.includes("[beneficiary-field:")) {
+    chips.push({ icon: Link2, label: helpText.includes("[duplicate-key]") ? "linked · dup key" : "linked" });
+  }
+  return chips;
+}
 
 export function FocusQuestionRow({
   field,
@@ -29,6 +57,7 @@ export function FocusQuestionRow({
     isDragging,
   } = useSortable({ id: field.id });
   const Icon = fieldTypeIcons[field.type] ?? Type;
+  const chips = capabilityChips(field);
 
   return (
     <div
@@ -61,10 +90,28 @@ export function FocusQuestionRow({
           <span className="line-clamp-2 text-sm font-semibold text-foreground">
             {field.label}
           </span>
-          <span className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <Icon aria-hidden="true" size={12} />
-            {field.type.replace("_", " ")}
-            {field.required ? " · mandatory" : ""}
+          <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <Icon aria-hidden="true" size={12} />
+              {field.type.replace("_", " ")}
+            </span>
+            {field.required ? (
+              <span className="rounded-full bg-warning/10 px-1.5 py-px font-semibold text-warning">
+                required
+              </span>
+            ) : null}
+            {chips.map((chip) => {
+              const ChipIcon = chip.icon;
+              return (
+                <span
+                  className="flex items-center gap-1 rounded-full bg-primary/8 px-1.5 py-px font-semibold text-primary"
+                  key={chip.label}
+                >
+                  <ChipIcon aria-hidden="true" size={10} />
+                  {chip.label}
+                </span>
+              );
+            })}
           </span>
         </span>
       </button>

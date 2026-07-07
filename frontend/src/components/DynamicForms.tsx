@@ -53,6 +53,8 @@ import {
   Sparkles,
   Star,
   Trash2,
+  Undo2,
+  Redo2,
   Type,
   UploadCloud,
   Users,
@@ -110,6 +112,7 @@ import { MobileSettingsPanel } from "@/components/forms/MobileSettingsPanel";
 import { AppearanceSettingsPanel } from "@/components/forms/AppearanceSettingsPanel";
 import { AuditControlsPanel } from "@/components/forms/AuditControlsPanel";
 import { BeneficiarySettingsPanel } from "@/components/forms/BeneficiarySettingsPanel";
+import { CalculationBuilder } from "@/components/forms/CalculationBuilder";
 import { CommonSettingsPanel } from "@/components/forms/CommonSettingsPanel";
 import { EntityControlsPanel } from "@/components/forms/EntityControlsPanel";
 import { VersionsControlsPanel } from "@/components/forms/VersionsControlsPanel";
@@ -633,6 +636,23 @@ export function DynamicForms({
   const activePageFields =
     selectedForm?.fields.filter((field) => field.pageId === activePage?.id) ??
     [];
+  // Question finder: long forms are unscannable without search. Filters the canvas list by
+  // label/variable/type text plus quick capability filters; drag reorder stays safe because
+  // onDragEnd resolves positions by field id, not list index.
+  const [questionQuery, setQuestionQuery] = useState("");
+  const [questionFilter, setQuestionFilter] = useState<"all" | "required" | "logic">("all");
+  const canvasQuery = questionQuery.trim().toLowerCase();
+  const canvasFields = activePageFields.filter((field) => {
+    if (questionFilter === "required" && !field.required) return false;
+    if (questionFilter === "logic" && !field.logic?.length) return false;
+    if (!canvasQuery) return true;
+    return (
+      field.label.toLowerCase().includes(canvasQuery) ||
+      field.type.toLowerCase().includes(canvasQuery) ||
+      (field.variableName ?? "").toLowerCase().includes(canvasQuery)
+    );
+  });
+  const canvasFiltered = canvasFields.length !== activePageFields.length;
   const selectedField =
     selectedForm?.fields.find((field) => field.id === selectedFieldId) ??
     selectedForm?.fields[0];
@@ -2290,15 +2310,25 @@ export function DynamicForms({
     const variable = sourceField.variableName ?? sourceField.id;
     const operatorSpec = LOGIC_CONDITION_OPERATORS.find((item) => item.value === logicConditionOperator);
     const needsValue = operatorSpec?.needsValue ?? true;
-    const value = needsValue ? logicConditionValue.trim() || "Yes" : "";
+    const value = needsValue ? logicConditionValue.trim() : "";
+    const value2 = logicConditionValue2.trim();
+    if (needsValue && (!value || (operatorSpec?.needsSecondValue && !value2))) {
+      pushToast({
+        title: "Choose the answer value",
+        description:
+          "Logic needs the exact answer from the selected question before the rule can be added.",
+        tone: "warning",
+      });
+      return;
+    }
     const expression = buildLogicConditionExpression(
       variable,
       logicConditionOperator,
       value,
-      logicConditionValue2,
+      value2,
     );
     const readable = needsValue
-      ? `${operatorSpec?.label ?? "is"} ${value}${operatorSpec?.needsSecondValue ? `–${logicConditionValue2.trim()}` : ""}`
+      ? `${operatorSpec?.label ?? "is"} ${value}${operatorSpec?.needsSecondValue ? `–${value2}` : ""}`
       : (operatorSpec?.label ?? "is empty");
     updateSelectedForm(
       updateField(selectedForm, selectedField.id, {
@@ -6423,11 +6453,35 @@ export function DynamicForms({
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <p className="text-sm font-semibold">Questions</p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {activePageFields.length} on this page
+                            <p className="mt-1 text-xs tabular-nums text-muted-foreground">
+                              {canvasFiltered
+                                ? `${canvasFields.length} of ${activePageFields.length} on this page`
+                                : `${activePageFields.length} on this page`}
                             </p>
                           </div>
                           <div className="flex items-center gap-1">
+                            <Button
+                              aria-label="Undo last builder change"
+                              disabled={!historyPast.length}
+                              onClick={undoLastChange}
+                              size="icon"
+                              title="Undo (⌘Z)"
+                              type="button"
+                              variant="ghost"
+                            >
+                              <Undo2 aria-hidden="true" />
+                            </Button>
+                            <Button
+                              aria-label="Redo last builder change"
+                              disabled={!historyFuture.length}
+                              onClick={redoLastChange}
+                              size="icon"
+                              title="Redo (⌘⇧Z)"
+                              type="button"
+                              variant="ghost"
+                            >
+                              <Redo2 aria-hidden="true" />
+                            </Button>
                             <Button
                               disabled={!selectedForm}
                               onClick={() => setShowPreviewTester(true)}
@@ -6450,6 +6504,30 @@ export function DynamicForms({
                               </Button>
                             ) : null}
                           </div>
+                        </div>
+                        <div className="mt-2 flex items-center gap-1.5">
+                          <Input
+                            aria-label="Find a question"
+                            className="h-7 text-xs"
+                            onChange={(event) => setQuestionQuery(event.target.value)}
+                            placeholder="Find question, type, or variable…"
+                            value={questionQuery}
+                          />
+                          {(["all", "required", "logic"] as const).map((filter) => (
+                            <button
+                              className={cn(
+                                "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition",
+                                questionFilter === filter
+                                  ? "border-primary bg-primary text-primary-foreground"
+                                  : "border-border-subtle bg-surface-container-lowest text-muted-foreground hover:border-primary/35",
+                              )}
+                              key={filter}
+                              onClick={() => setQuestionFilter(filter)}
+                              type="button"
+                            >
+                              {filter}
+                            </button>
+                          ))}
                         </div>
                         <div
                           className={cn(
@@ -6583,20 +6661,24 @@ export function DynamicForms({
                           questionFirstMode && "min-h-0",
                         )}
                       >
-                        {activePageFields.length ? (
+                        {canvasFields.length ? (
                           <DndContext
                             sensors={sensors}
                             collisionDetection={closestCenter}
                             onDragEnd={onDragEnd}
                           >
                             <SortableContext
-                              items={activePageFields.map((field) => field.id)}
+                              items={canvasFields.map((field) => field.id)}
                               strategy={verticalListSortingStrategy}
                             >
-                              {activePageFields.map((field, index) => (
+                              {canvasFields.map((field, index) => (
                                 <FocusQuestionRow
                                   field={field}
-                                  index={index}
+                                  index={
+                                    canvasFiltered
+                                      ? activePageFields.findIndex((item) => item.id === field.id)
+                                      : index
+                                  }
                                   key={field.id}
                                   onDelete={() => deleteQuestion(field.id)}
                                   onSelect={() => setSelectedFieldId(field.id)}
@@ -6605,6 +6687,20 @@ export function DynamicForms({
                               ))}
                             </SortableContext>
                           </DndContext>
+                        ) : canvasFiltered ? (
+                          <div className="p-4 text-center text-xs text-muted-foreground">
+                            No questions match “{questionQuery || questionFilter}”.
+                            <button
+                              className="ml-1 font-semibold text-primary hover:underline"
+                              onClick={() => {
+                                setQuestionQuery("");
+                                setQuestionFilter("all");
+                              }}
+                              type="button"
+                            >
+                              Clear
+                            </button>
+                          </div>
                         ) : (
                           <div className="p-4">
                             <div className="rounded-lg border border-dashed bg-background p-5 text-center">
@@ -7193,6 +7289,8 @@ export function DynamicForms({
                 logicActionKind={logicActionKind}
                 logicConditionFieldId={logicConditionFieldId}
                 logicConditionValue={logicConditionValue}
+                logicConditionValue2={logicConditionValue2}
+                logicConditionOperator={logicConditionOperator}
                 onApplySmartSetup={applySmartFieldSetup}
                 onAddVisualLogicRule={addVisualLogicRule}
                 onBindReference={addReferenceBinding}
@@ -7201,6 +7299,8 @@ export function DynamicForms({
                 setLogicActionKind={setLogicActionKind}
                 setLogicConditionFieldId={setLogicConditionFieldId}
                 setLogicConditionValue={setLogicConditionValue}
+                setLogicConditionValue2={setLogicConditionValue2}
+                setLogicConditionOperator={setLogicConditionOperator}
                 tab={rightPanelTab}
               />
             </aside>
@@ -8146,32 +8246,13 @@ export function DynamicForms({
 
                   {rightPanelTab === "calculation" ? (
                     <div className="mt-4 space-y-4">
-                      <label className="block text-sm font-medium">
-                        Formula
-                        <textarea
-                          className="mt-2 min-h-24 w-full rounded-md border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-primary"
-                          value={
-                            selectedField.calculation?.expression ??
-                            selectedField.logic?.find(
-                              (rule) => rule.kind === "calculation",
-                            )?.expression ??
-                            ""
-                          }
-                          onChange={(event) =>
-                            updateSelectedForm(
-                              updateField(selectedForm, selectedField.id, {
-                                calculation: {
-                                  ...(selectedField.calculation ?? {
-                                    preview: "Pending validation",
-                                  }),
-                                  expression: event.target.value,
-                                },
-                              }),
-                            )
-                          }
-                          placeholder="(${weight_kg} / (${height_m} * ${height_m}))"
-                        />
-                      </label>
+                      <CalculationBuilder
+                        field={selectedField}
+                        form={selectedForm}
+                        onApplyPatch={(patch) =>
+                          updateSelectedForm(updateField(selectedForm, selectedField.id, patch))
+                        }
+                      />
                       <div className="rounded-md border bg-background p-3">
                         <p className="text-sm font-medium">Formula preview</p>
                         <p className="mt-1 text-xs leading-5 text-muted-foreground">
@@ -8323,6 +8404,10 @@ export function DynamicForms({
                                         .filter(Boolean),
                                       columns:
                                         selectedField.matrix?.columns ?? [],
+                                      columnTypes:
+                                        selectedField.matrix?.columnTypes,
+                                      columnOptions:
+                                        selectedField.matrix?.columnOptions,
                                       scoring: selectedField.matrix?.scoring,
                                     },
                                   }),
@@ -8343,6 +8428,10 @@ export function DynamicForms({
                                       columns: event.target.value
                                         .split("\n")
                                         .filter(Boolean),
+                                      columnTypes:
+                                        selectedField.matrix?.columnTypes,
+                                      columnOptions:
+                                        selectedField.matrix?.columnOptions,
                                       scoring: selectedField.matrix?.scoring,
                                     },
                                   }),

@@ -114,27 +114,57 @@ export class LogicEngine {
   }
 }
 
+export function visibleOrderedQuestions(formVersion: MobileFormVersion, draft: MobileSubmission): MobileQuestion[] {
+  const responses = new Map(draft.responses.map((response) => [response.questionId, response.value]));
+  return formVersion.sections
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .filter((section) => evaluateVisibility(section.visibleWhen, responses))
+    .flatMap((section) => section.questions.slice().sort((a, b) => a.order - b.order));
+}
+
+export function skippedQuestionIds(formVersion: MobileFormVersion, draft: MobileSubmission): Set<string> {
+  const questions = visibleOrderedQuestions(formVersion, draft);
+  const responses = new Map(draft.responses.map((response) => [response.questionId, response.value]));
+  const state = evaluateQuestionLogicStates(questions, responses);
+  const skipped = new Set<string>();
+
+  for (let sourceIndex = 0; sourceIndex < questions.length; sourceIndex += 1) {
+    const sourceQuestion = questions[sourceIndex];
+    if (state[sourceQuestion.id]?.visible === false) continue;
+    const targetQuestionId = state[sourceQuestion.id]?.skippedToQuestionId;
+    if (!targetQuestionId) continue;
+    const targetIndex = questions.findIndex((question) => question.id === targetQuestionId);
+    if (targetIndex <= sourceIndex) continue;
+    for (let index = sourceIndex + 1; index < targetIndex; index += 1) {
+      skipped.add(questions[index].id);
+    }
+  }
+
+  return skipped;
+}
+
 export function evaluateQuestionLogicStates(
   questions: MobileQuestion[],
   responses: Map<string, unknown>,
 ): Record<string, QuestionLogicState> {
-    const variableValues = new Map<string, unknown>();
-    for (const question of questions) {
-      variableValues.set(question.variableName, responses.get(question.id));
-    }
-    const state: Record<string, QuestionLogicState> = {};
-    for (const question of questions) {
-      state[question.id] = {
-        visible: question.type !== "Hidden",
-        required: question.required,
-        calculatedValue: null,
-        skippedToQuestionId: null,
-      };
-    }
-    for (const question of questions) {
-      applyQuestionRules(question, responses, variableValues, state);
-    }
-    return state;
+  const variableValues = new Map<string, unknown>();
+  for (const question of questions) {
+    variableValues.set(question.variableName, responses.get(question.id));
+  }
+  const state: Record<string, QuestionLogicState> = {};
+  for (const question of questions) {
+    state[question.id] = {
+      visible: question.type !== "Hidden",
+      required: question.required,
+      calculatedValue: null,
+      skippedToQuestionId: null,
+    };
+  }
+  for (const question of questions) {
+    applyQuestionRules(question, responses, variableValues, state);
+  }
+  return state;
 }
 
 function applyQuestionRules(
@@ -166,7 +196,10 @@ function applyQuestionRules(
       target.required = true;
     }
     if (rule.action === "SkipTo" && passes) {
-      state[question.id].skippedToQuestionId = rule.targetQuestionId;
+      const source = state[rule.sourceQuestionId];
+      if (source) {
+        source.skippedToQuestionId = rule.targetQuestionId;
+      }
     }
   }
 }

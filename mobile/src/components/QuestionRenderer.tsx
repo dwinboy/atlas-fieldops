@@ -1793,6 +1793,10 @@ function humanize(value: string): string {
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function humanizeQuestionType(value: MobileQuestionType): string {
+  return humanize(String(value).replace(/([a-z])([A-Z])/g, "$1_$2"));
+}
+
 function renderEvidenceReference(
   kind: EvidenceReference["kind"],
   value: unknown,
@@ -2155,6 +2159,10 @@ function renderMatrix(
   const multi = base.multi;
   const matrix = isRecord(value) ? value : {};
 
+  if (base.mode === "grid") {
+    return renderTypedGrid(question, matrix, answer, rows, columns, base.columnTypes, base.columnOptions, referenceLists ?? []);
+  }
+
   function toggle(rowValue: string, columnValue: string) {
     if (multi) {
       const current = Array.isArray(matrix[rowValue]) ? (matrix[rowValue] as unknown[]).map(String) : [];
@@ -2208,6 +2216,124 @@ function renderMatrix(
       </ScrollView>
     </View>
   );
+}
+
+function renderTypedGrid(
+  question: MobileQuestion,
+  grid: Record<string, unknown>,
+  answer: (v: unknown) => void,
+  rows: SimpleOption[],
+  columns: SimpleOption[],
+  columnTypes: MobileQuestionType[],
+  columnOptions: MobileQuestionOption[][],
+  referenceLists: MobileReferenceList[],
+) {
+  function updateCell(rowValue: string, columnValue: string, nextValue: unknown) {
+    const currentRowValue = grid[rowValue];
+    const currentRow: Record<string, unknown> = isRecord(currentRowValue) ? currentRowValue : {};
+    const nextRow = { ...currentRow, [columnValue]: nextValue };
+    answer(updateMatrixRowValue(grid, rowValue, nextRow));
+  }
+
+  const cellWidth = 172;
+  const rowHeaderWidth = 136;
+  const tableWidth = rowHeaderWidth + columns.length * cellWidth;
+
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={{ color: "#49635a", fontSize: 12, fontWeight: "700" }}>
+        {rows.length} row{rows.length === 1 ? "" : "s"} · {columns.length} column{columns.length === 1 ? "" : "s"} · swipe sideways to complete the table.
+      </Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator style={gridScrollFrame}>
+        <View style={{ minWidth: tableWidth }}>
+          <View style={gridHeaderRow}>
+            <View style={[gridHeaderCell, { width: rowHeaderWidth }]}>
+              <Text style={gridHeaderText}>Row</Text>
+            </View>
+            {columns.map((column, index) => (
+              <View key={column.id} style={[gridHeaderCell, { width: cellWidth }]}>
+                <Text numberOfLines={2} style={gridHeaderText}>{column.label}</Text>
+                <Text style={gridTypeText}>{humanizeQuestionType(columnTypes[index] ?? "Text")}</Text>
+              </View>
+            ))}
+          </View>
+          {rows.map((row) => {
+            const rawRowRecord = grid[row.value];
+            const rowRecord: Record<string, unknown> = isRecord(rawRowRecord) ? rawRowRecord : {};
+            return (
+              <View key={row.id} style={gridDataRow}>
+                <View style={[gridRowLabelCell, { width: rowHeaderWidth }]}>
+                  <Text numberOfLines={3} style={gridRowLabel}>{row.label}</Text>
+                </View>
+                {columns.map((column, index) => {
+                  const cellType = columnTypes[index] ?? "Text";
+                  const cellOptions = columnOptions[index] ?? [];
+                  const cellValue = rowRecord[column.value];
+                  return (
+                    <View key={column.id} style={[gridDataCell, { width: cellWidth }]}>
+                      {renderGridCellInput(
+                        question,
+                        column,
+                        cellType,
+                        cellOptions,
+                        cellValue,
+                        (nextValue) => updateCell(row.value, column.value, nextValue),
+                        rowRecord,
+                        referenceLists,
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            );
+          })}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+function renderGridCellInput(
+  parent: MobileQuestion,
+  column: SimpleOption,
+  type: MobileQuestionType,
+  options: MobileQuestionOption[],
+  value: unknown,
+  onChange: (v: unknown) => void,
+  row: Record<string, unknown>,
+  referenceLists: MobileReferenceList[],
+) {
+  const choiceFallback =
+    (type === "SingleSelect" || type === "Dropdown" || type === "MultiSelect") && options.length === 0
+      ? [
+          { id: "yes", label: "Yes", value: "Yes", order: 1 },
+          { id: "no", label: "No", value: "No", order: 2 },
+        ]
+      : options;
+  const cellQuestion: MobileQuestion = {
+    ...parent,
+    id: `${parent.id}__${column.value}`,
+    variableName: column.value,
+    label: column.label,
+    helpText: null,
+    type,
+    required: false,
+    readOnly: false,
+    defaultValue: null,
+    dynamicDefault: null,
+    carryForward: null,
+    exclusiveOptions: [],
+    options: choiceFallback,
+    validationRules: [],
+    logicRules: [],
+    referenceListId: null,
+    cascadingParentQuestionId: null,
+    selection: null,
+    sensitive: parent.sensitive,
+    metadataTags: [],
+    repeatSettings: null,
+  };
+  return renderInput(cellQuestion, value, onChange, new Map(Object.entries(row)), referenceLists);
 }
 
 function updateMatrixRowValue(
@@ -2628,7 +2754,14 @@ function normalizeRepeatField(raw: unknown, parent: MobileQuestion, index: numbe
   };
 }
 
-function matrixMetadata(question: MobileQuestion): { rows: SimpleOption[]; columns: SimpleOption[]; multi: boolean } {
+function matrixMetadata(question: MobileQuestion): {
+  rows: SimpleOption[];
+  columns: SimpleOption[];
+  multi: boolean;
+  mode: string;
+  columnTypes: MobileQuestionType[];
+  columnOptions: MobileQuestionOption[][];
+} {
   const metadata = isRecord(question.defaultValue) ? question.defaultValue : {};
   const rows = firstNonEmptyOptionList(
     optionListFromUnknown(metadata.rows, "rows"),
@@ -2642,14 +2775,56 @@ function matrixMetadata(question: MobileQuestion): { rows: SimpleOption[]; colum
   );
   const mode = String(metadata.mode ?? metadata.matrixMode ?? metadata.type ?? "").toLowerCase();
   const multiRule = question.validationRules.some((rule) => rule.ruleType === "Custom" && String(rule.value).toLowerCase() === "matrixmode:multi");
+  const resolvedColumns = columns.length ? columns : [
+    { id: "yes", label: "Yes", value: "yes" },
+    { id: "no", label: "No", value: "no" },
+  ];
+  const rawColumnTypes = Array.isArray(metadata.columnTypes) ? metadata.columnTypes : [];
+  const rawColumnOptions = Array.isArray(metadata.columnOptions) ? metadata.columnOptions : [];
   return {
     rows: rows.length ? rows : [{ id: question.id, label: question.label, value: question.variableName || question.id }],
-    columns: columns.length ? columns : [
-      { id: "yes", label: "Yes", value: "yes" },
-      { id: "no", label: "No", value: "no" },
-    ],
+    columns: resolvedColumns,
     multi: mode.includes("multi") || multiRule,
+    mode,
+    columnTypes: resolvedColumns.map((_, index) => gridColumnRuntimeType(rawColumnTypes[index])),
+    columnOptions: resolvedColumns.map((_, index) => gridColumnOptions(rawColumnOptions[index])),
   };
+}
+
+function gridColumnRuntimeType(value: unknown): MobileQuestionType {
+  const normalized = String(value ?? "text").trim().toLowerCase();
+  const map: Record<string, MobileQuestionType> = {
+    text: "Text",
+    textarea: "LongText",
+    longtext: "LongText",
+    number: "Number",
+    decimal: "Decimal",
+    currency: "Currency",
+    date: "Date",
+    time: "Time",
+    datetime: "DateTime",
+    yes_no: "SingleSelect",
+    select: "SingleSelect",
+    radio: "SingleSelect",
+    dropdown: "Dropdown",
+    checkbox: "MultiSelect",
+    multiselect: "MultiSelect",
+    phone: "Text",
+    email: "Text",
+    url: "Text",
+  };
+  return map[normalized] ?? "Text";
+}
+
+function gridColumnOptions(value: unknown): MobileQuestionOption[] {
+  const options = optionListFromUnknown(value, "gridColumnOption");
+  if (options.length === 0) return [];
+  return options.map((option) => ({
+    id: option.id,
+    label: option.label,
+    value: option.value,
+    order: 0,
+  }));
 }
 
 function optionListFromUnknown(value: unknown, fallbackKey: string): SimpleOption[] {
@@ -2729,6 +2904,69 @@ const matrixRowCard = {
   borderRadius: 12,
   borderWidth: 1,
   padding: 12,
+} as const;
+
+const gridScrollFrame = {
+  borderColor: "#c9ddd5",
+  borderRadius: 12,
+  borderWidth: 1,
+} as const;
+
+const gridHeaderRow = {
+  backgroundColor: "#e7f1ed",
+  flexDirection: "row",
+} as const;
+
+const gridHeaderCell = {
+  borderColor: "#c9ddd5",
+  borderRightWidth: 1,
+  minHeight: 54,
+  paddingHorizontal: 10,
+  paddingVertical: 8,
+} as const;
+
+const gridHeaderText = {
+  color: "#12332b",
+  fontSize: 12,
+  fontWeight: "800",
+} as const;
+
+const gridTypeText = {
+  color: "#557067",
+  fontSize: 10,
+  fontWeight: "700",
+  marginTop: 2,
+  textTransform: "uppercase",
+} as const;
+
+const gridDataRow = {
+  backgroundColor: "white",
+  borderColor: "#dbe7e2",
+  borderTopWidth: 1,
+  flexDirection: "row",
+} as const;
+
+const gridRowLabelCell = {
+  backgroundColor: "#f6faf8",
+  borderColor: "#dbe7e2",
+  borderRightWidth: 1,
+  justifyContent: "center",
+  minHeight: 78,
+  padding: 10,
+} as const;
+
+const gridRowLabel = {
+  color: "#12332b",
+  fontSize: 12,
+  fontWeight: "800",
+} as const;
+
+const gridDataCell = {
+  borderColor: "#dbe7e2",
+  borderRightWidth: 1,
+  justifyContent: "center",
+  minHeight: 78,
+  padding: 8,
 } as const;
 
 const rankingRow = {

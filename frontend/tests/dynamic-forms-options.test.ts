@@ -10,6 +10,11 @@ import {
   removeChoiceOptionDraft,
   typeChangePatchForField,
 } from "@/components/DynamicForms";
+import {
+  buildCalculationExpression,
+  calculationPatchForField,
+  logicValueInputForField,
+} from "@/lib/forms";
 
 describe("choice option editor helpers", () => {
   it("keeps a blank draft row for keyboard entry while saving clean options", () => {
@@ -164,5 +169,81 @@ describe("question response type changes", () => {
       type: "slider",
       validation: { min: 0, max: 100, step: 1 },
     });
+  });
+});
+
+describe("calculated response helpers", () => {
+  it("builds readable formulas from selected question variables", () => {
+    expect(buildCalculationExpression("sum", ["quantity", "bonus"])).toBe(
+      "sum(${quantity}, ${bonus})",
+    );
+    expect(buildCalculationExpression("average", ["yield_a", "yield_b"])).toBe(
+      "avg(${yield_a}, ${yield_b})",
+    );
+    expect(buildCalculationExpression("percentage", ["trained", "registered"])).toBe(
+      "round((${trained} / ${registered}) * 100, 2)",
+    );
+  });
+
+  it("keeps calculated formulas synchronized with calculation logic", () => {
+    const patch = calculationPatchForField(
+      {
+        id: "calculated-1",
+        label: "Training completion rate",
+        required: false,
+        sectionId: "main",
+        type: "calculated",
+        variableName: "training_completion_rate",
+      },
+      "round((${trained} / ${registered}) * 100, 2)",
+    );
+
+    expect(patch.calculation?.expression).toBe(
+      "round((${trained} / ${registered}) * 100, 2)",
+    );
+    expect(patch.logic).toEqual([
+      {
+        expression: "round((${trained} / ${registered}) * 100, 2)",
+        id: "calculated-1-calculation",
+        kind: "calculation",
+        targetId: "calculated-1",
+      },
+    ]);
+  });
+});
+
+describe("logic answer value helpers", () => {
+  it("returns selectable answer labels with stored values for choice questions", () => {
+    expect(
+      logicValueInputForField({
+        id: "stock-status",
+        label: "Stock status",
+        optionValues: ["in_stock", "out_of_stock"],
+        options: ["In stock", "Out of stock"],
+        required: false,
+        sectionId: "main",
+        type: "dropdown",
+        variableName: "stock_status",
+      }),
+    ).toEqual({
+      kind: "select",
+      options: [
+        { label: "In stock", value: "in_stock" },
+        { label: "Out of stock", value: "out_of_stock" },
+      ],
+    });
+  });
+
+  it("keeps open response questions as typed controls", () => {
+    expect(
+      logicValueInputForField({
+        id: "age",
+        label: "Age",
+        required: false,
+        sectionId: "main",
+        type: "number",
+        variableName: "age",
+      }),
+    ).toEqual({ kind: "number" });
   });
 });
